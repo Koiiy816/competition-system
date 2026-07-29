@@ -8,7 +8,8 @@ function mergeUndersizedAgeGroups(groups, competition) {
   const order = (competition?.ageGroups || []).map(group => group.name);
   const buckets = {};
   Object.values(groups).forEach(group => {
-    if (group.isGroup || (group.event || '').includes('\u96c6\u4f53')) return;
+    const eventConfig = (competition?.events || []).find(event => event.name === group.event);
+    if (group.isGroup || !String(eventConfig?.category || '').includes('\u4e2a\u4eba')) return;
     const key = [group.event, group.gender || 'mixed'].join('|');
     (buckets[key] ||= []).push(group);
   });
