@@ -6,9 +6,10 @@ const fs = require('fs');
 const uploadDir = path.join(__dirname, '../uploads');
 const registrationFormsDir = path.join(uploadDir, 'registration-forms');
 const templatesDir = path.join(uploadDir, 'templates');
+const participantPhotosDir = path.join(uploadDir, 'participant-photos');
 
 // 创建目录
-[uploadDir, registrationFormsDir, templatesDir].forEach(dir => {
+[uploadDir, registrationFormsDir, templatesDir, participantPhotosDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -18,7 +19,9 @@ const templatesDir = path.join(uploadDir, 'templates');
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     // 根据文件类型决定存储位置
-    if (req.route.path.includes('template')) {
+    if (file.fieldname === 'photo') {
+      cb(null, participantPhotosDir);
+    } else if (req.route.path.includes('template')) {
       cb(null, templatesDir);
     } else {
       cb(null, registrationFormsDir);
@@ -72,6 +75,7 @@ const upload = multer({
 module.exports = {
   // 上传报名表文件
   uploadRegistrationForm: upload.single('registrationForm'),
+  uploadParticipantPhoto: upload.single('photo'),
   
   // 上传模板文件
   uploadTemplate: upload.single('template'),

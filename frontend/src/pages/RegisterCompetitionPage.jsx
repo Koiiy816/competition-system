@@ -83,9 +83,9 @@ const RegisterCompetitionPage = () => {
   
   // 文件上传相关状态
   const [templates, setTemplates] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [fileError, setFileError] = useState('');
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [photoError, setPhotoError] = useState('');
+  const [registrants, setRegistrants] = useState([]);
   
   // 表单数据
   const [formData, setFormData] = useState({
@@ -341,34 +341,15 @@ const RegisterCompetitionPage = () => {
   };
   
   // 处理文件选择
-  const handleFileSelect = (event) => {
+  const handlePhotoSelect = (event) => {
     const file = event.target.files[0];
-    setFileError('');
-    
-    if (!file) {
-      setSelectedFile(null);
-      return;
-    }
-    
-    // 检查文件类型
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/jpg'];
-    if (!allowedTypes.includes(file.type)) {
-      setFileError('不支持的文件类型。请上传 PDF、Word 文档或图片文件。');
-      setSelectedFile(null);
-      return;
-    }
-    
-    // 检查文件大小 (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      setFileError('文件大小不能超过 10MB');
-      setSelectedFile(null);
-      return;
-    }
-    
-    setSelectedFile(file);
+    setPhotoError('');
+    if (!file) { setSelectedPhoto(null); return; }
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) { setPhotoError('\u8bf7\u4e0a\u4f20 JPG \u6216 PNG \u683c\u5f0f\u7684\u8fd0\u52a8\u5458\u7167\u7247\u3002'); setSelectedPhoto(null); return; }
+    if (file.size > 5 * 1024 * 1024) { setPhotoError('\u7167\u7247\u5927\u5c0f\u4e0d\u80fd\u8d85\u8fc7 5MB\u3002'); setSelectedPhoto(null); return; }
+    setSelectedPhoto(file);
   };
-  
-  // 下载模板
+
   const handleDownloadTemplate = async (templateId) => {
     try {
       const response = await fetch(`/api/templates/${templateId}/download`);
@@ -605,100 +586,52 @@ const RegisterCompetitionPage = () => {
     // 验证其他必填字段
     // 这里可以根据比赛的具体要求添加更多验证
     
+    if (competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
   
   // 处理下一步
-  const handleNext = () => {
-    if (activeStep === 0 && !validateForm()) {
-      return;
-    }
-    
-    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+  const addRegistrant = () => {
+    if (!validateForm()) return;
+    setRegistrants(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, data: { ...formData, additionalInfo: { ...formData.additionalInfo } }, photo: selectedPhoto }]);
+    setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', insuranceConfirmed: false, additionalInfo: { notes: '' } }));
+    setSelectedPhoto(null); setFormErrors({}); setError('');
   };
-  
-  // 处理上一步
+
+  const removeRegistrant = (entryId) => setRegistrants(prev => prev.filter(item => item.id !== entryId));
+
+  const handleNext = () => {
+    if (activeStep === 0 && registrants.length === 0) { setError('\u8bf7\u5148\u5c06\u81f3\u5c11\u4e00\u540d\u8fd0\u52a8\u5458\u52a0\u5165\u62a5\u540d\u540d\u5355\u3002'); return; }
+    setError(''); setActiveStep(prev => prev + 1);
+  };
+
   const handleBack = () => {
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
   
   // 提交报名
   const handleSubmit = async () => {
-    if (!validateForm()) return;
-    
-    setSubmitting(true);
-    setError('');
-    
+    if (registrants.length === 0) { setError('\u62a5\u540d\u540d\u5355\u4e3a\u7a7a\uff0c\u8bf7\u8fd4\u56de\u6dfb\u52a0\u8fd0\u52a8\u5458\u3002'); return; }
+    setSubmitting(true); setError(''); const failed = [];
     try {
-      // 创建 FormData 对象以支持文件上传
-      const submitData = new FormData();
-      
-      // 添加表单数据
-      Object.keys(formData).forEach(key => {
-        if (key === 'additionalInfo') {
-          submitData.append(key, JSON.stringify(formData[key]));
-        } else if (key === 'members') {
-          // 如果 members 为空数组，不发送或发送空数组的 JSON 字符串
-          if (formData[key] && formData[key].length > 0) {
-            submitData.append(key, JSON.stringify(formData[key]));
-          }
-        } else {
-          submitData.append(key, formData[key]);
-        }
-      });
-      
-      // 查找所选比赛项目的 category
-      const availableEvents = getAvailableEvents();
-      const selectedEventObj = availableEvents.find(e => e.name === formData.event);
-      if (selectedEventObj && selectedEventObj.category) {
-        submitData.append('eventCategory', selectedEventObj.category);
+      for (const registrant of registrants) {
+        const submitData = new FormData(); const data = registrant.data;
+        Object.keys(data).forEach(key => { if (key === 'additionalInfo') submitData.append(key, JSON.stringify(data[key])); else if (key === 'members') { if (data[key]?.length) submitData.append(key, JSON.stringify(data[key])); } else submitData.append(key, data[key]); });
+        const event = (competition?.events || []).find(item => item.name === data.event);
+        if (event?.category) submitData.append('eventCategory', event.category);
+        const ageGroup = competition?.ageGroups?.some(group => group.name === data.grade) ? data.grade : getGradeGroup(data.grade);
+        if (ageGroup) submitData.append('ageGroup', ageGroup);
+        if (registrant.photo) submitData.append('photo', registrant.photo);
+        const response = await fetch(`/api/competitions/${id}/participants`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }, body: submitData });
+        if (!response.ok) { let message = '\u62a5\u540d\u5931\u8d25'; try { message = (await response.json()).message || message; } catch (_) {} failed.push(`${data.name || data.teamName}: ${message}`); }
       }
-      
-      // 计算并添加 ageGroup
-      let ageGroup = '';
-      if (competition && competition.ageGroups && competition.ageGroups.some(g => g.name === formData.grade)) {
-         ageGroup = formData.grade; 
-      } else {
-         ageGroup = getGradeGroup(formData.grade);
-      }
-      if (ageGroup) {
-        submitData.append('ageGroup', ageGroup);
-      }
-
-      // 添加文件（如果有选择）
-      if (selectedFile) {
-        submitData.append('registrationForm', selectedFile);
-      }
-      
-      // 使用 fetch 直接发送请求以支持文件上传
-      const response = await fetch(`/api/competitions/${id}/participants`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: submitData
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || '报名失败');
-      }
-      
-      setCompleted(true);
-      
-      // 延迟导航到比赛详情页
-      setTimeout(() => {
-        navigate(`/competitions/${id}`);
-      }, 3000);
-    } catch (error) {
-      setError(error.message || '报名失败');
-    } finally {
-      setSubmitting(false);
-    }
+      if (failed.length) { setError(`\u4ee5\u4e0b\u8fd0\u52a8\u5458\u672a\u63d0\u4ea4\u6210\u529f\uff1a${failed.join("?")}`); return; }
+      setCompleted(true); setTimeout(() => navigate(`/competitions/${id}`), 3000);
+    } catch (submitError) { setError(submitError.message || '\u62a5\u540d\u63d0\u4ea4\u5931\u8d25'); }
+    finally { setSubmitting(false); }
   };
-  
-  // 获取比赛状态的中文名称和颜色
+
   const getStatusInfo = (status) => {
     const statusMap = {
       'draft': { name: '草稿', color: 'default' },
@@ -1090,284 +1023,34 @@ const RegisterCompetitionPage = () => {
           )}
           
           {/* 纸质版报名表上传 */}
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>
-              纸质版报名表上传（可选）
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              请上传已填写的纸质版报名表（支持 PDF、Word 文档或图片格式，最大 10MB）
-            </Typography>
-            
-            <input
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              style={{ display: 'none' }}
-              id="registration-form-upload"
-              type="file"
-              onChange={handleFileSelect}
-            />
-            <label htmlFor="registration-form-upload">
-              <Button
-                variant="outlined"
-                component="span"
-                startIcon={<CloudUploadIcon />}
-                sx={{ mb: 1 }}
-              >
-                选择文件
-              </Button>
-            </label>
-            
-            {selectedFile && (
-              <Box sx={{ mt: 1, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <DescriptionIcon sx={{ mr: 1, color: 'primary.main' }} />
-                  <Typography variant="body2">
-                    {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                  </Typography>
-                </Box>
-              </Box>
-            )}
-            
-            {fileError && (
-              <Alert severity="error" sx={{ mt: 1 }}>
-                {fileError}
-              </Alert>
-            )}
+          <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>{'\u8fd0\u52a8\u5458\u7167\u7247'}{competition?.participantRequirements?.requirePhoto ? ' *' : ''}</Typography>
+            <input accept="image/jpeg,image/png" style={{ display: 'none' }} id="participant-photo-upload" type="file" onChange={handlePhotoSelect} />
+            <label htmlFor="participant-photo-upload"><Button variant="outlined" component="span" startIcon={<CloudUploadIcon />}>{'\u4e0a\u4f20\u7167\u7247'}</Button></label>
+            {selectedPhoto && <Typography variant="body2" sx={{ mt: 1 }}>{'\u5df2\u9009\u62e9\uff1a'}{selectedPhoto.name}</Typography>}
+            {(photoError || formErrors.photo) && <Alert severity="error" sx={{ mt: 1 }}>{photoError || formErrors.photo}</Alert>}
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 5MB\u3002'}</Typography>
+          </Paper>
+          <Box sx={{ mt: 2 }}>
+            <Button variant="contained" onClick={addRegistrant} disabled={submitting} sx={{ mr: 2 }}>{'\u52a0\u5165\u62a5\u540d\u540d\u5355\u5e76\u7ee7\u7eed\u6dfb\u52a0'}</Button>
+            <Typography variant="caption" color="text.secondary">{'\u6bcf\u4f4d\u8fd0\u52a8\u5458\u586b\u5199\u5b8c\u6210\u540e\u70b9\u51fb\u4e00\u6b21\uff1b\u5355\u4f4d\u3001\u9886\u961f\u548c\u6559\u7ec3\u4fe1\u606f\u4f1a\u4fdd\u7559\u3002'}</Typography>
           </Box>
+          {registrants.length > 0 && <Paper variant="outlined" sx={{ p: 2, mt: 2 }}><Typography variant="subtitle1" gutterBottom>{'\u62a5\u540d\u540d\u5355'} ({registrants.length})</Typography>{registrants.map((item, index) => <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography>{index + 1}. {item.data.name || item.data.teamName} ? {item.data.event} ? {item.photo ? '\u5df2\u4e0a\u4f20\u7167\u7247' : '\u672a\u4e0a\u4f20\u7167\u7247'}</Typography><Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>{'\u5220\u9664'}</Button></Box>)}</Paper>}
+
         </Grid>
       </Grid>
     );
   };
   
   // 渲染确认信息
-  const renderConfirmation = () => {
-    if (!competition) return null;
-    
-    const typeInfo = getTypeInfo(formData.type);
-    
-    return (
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          请确认您的报名信息
-        </Typography>
-        
-        <Paper sx={{ p: 3, mb: 3 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <Typography variant="subtitle1">
-                比赛信息
-              </Typography>
-              <Divider sx={{ my: 1 }} />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                比赛名称
-              </Typography>
-              <Typography variant="body1">
-                {competition.name}
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                比赛时间
-              </Typography>
-              <Typography variant="body1">
-                {new Date(competition.startDate).toLocaleDateString()} ~ {new Date(competition.endDate).toLocaleDateString()}
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                比赛地点
-              </Typography>
-              <Typography variant="body1">
-                {competition.location}
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                报名截止日期
-              </Typography>
-              <Typography variant="body1">
-                {new Date(competition.registrationDeadline).toLocaleDateString()}
-              </Typography>
-            </Grid>
-          </Grid>
-        </Paper>
-        
-        <Paper sx={{ p: 3 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <Typography variant="subtitle1">
-                参赛信息
-              </Typography>
-              <Divider sx={{ my: 1 }} />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                参赛类型
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {typeInfo.icon}
-                <Typography variant="body1" sx={{ ml: 1 }}>
-                  {typeInfo.name}
-                </Typography>
-              </Box>
-            </Grid>
-            
-            {formData.type === 'team' && (
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  团队名称
-                </Typography>
-                <Typography variant="body1">
-                  {formData.teamName}
-                </Typography>
-              </Grid>
-            )}
-            
-            {formData.type === 'individual' && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    参赛者姓名
-                  </Typography>
-                  <Typography variant="body1">
-                    {formData.name}
-                  </Typography>
-                </Grid>
-                
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="body2" color="text.secondary">
-                    联系邮箱
-                  </Typography>
-                  <Typography variant="body1">
-                    {user?.email}
-                  </Typography>
-                </Grid>
-              </>
-            )}
+  const renderConfirmation = () => (
+    <Box>
+      <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
+      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'}?{'\u9879\u76ee\uff1a'}{item.data.event || '-'}?{'\u7ec4\u522b\uff1a'}{item.data.grade || '-'}?{'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
+    </Box>
+  );
 
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                性别
-              </Typography>
-              <Typography variant="body1">
-                {formData.gender === 'male' ? '男' : '女'}
-              </Typography>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                身份证号码
-              </Typography>
-              <Typography variant="body1">
-                {formData.idCard}
-              </Typography>
-            </Grid>
-
-            {formData.teamLeader && (
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  领队姓名
-                </Typography>
-                <Typography variant="body1">
-                  {formData.teamLeader}
-                </Typography>
-              </Grid>
-            )}
-
-            {formData.leaderPhone && (
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  领队电话
-                </Typography>
-                <Typography variant="body1">
-                  {formData.leaderPhone}
-                </Typography>
-              </Grid>
-            )}
-
-            {formData.coach && (
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  教练姓名
-                </Typography>
-                <Typography variant="body1">
-                  {formData.coach}
-                </Typography>
-              </Grid>
-            )}
-
-            {formData.coachPhone && (
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  教练电话
-                </Typography>
-                <Typography variant="body1">
-                  {formData.coachPhone}
-                </Typography>
-              </Grid>
-            )}
-
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                保险确认
-              </Typography>
-              <Typography variant="body1">
-                {formData.insuranceConfirmed ? '已办理保险' : '未办理保险'}
-              </Typography>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                所属单位
-              </Typography>
-              <Typography variant="body1">
-                {formData.schoolName}
-              </Typography>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <Typography variant="body2" color="text.secondary">
-                年龄组别
-              </Typography>
-              <Typography variant="body1">
-                {formData.grade}
-              </Typography>
-            </Grid>
-            
-            {formData.event && (
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  比赛项目
-                </Typography>
-                <Typography variant="body1">
-                  {formData.event}
-                </Typography>
-              </Grid>
-            )}
-            
-            {formData.additionalInfo.notes && (
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">
-                  备注
-                </Typography>
-                <Typography variant="body1">
-                  {formData.additionalInfo.notes}
-                </Typography>
-              </Grid>
-            )}
-          </Grid>
-        </Paper>
-      </Box>
-    );
-  };
-  
-  // 渲染完成页面
   const renderCompleted = () => {
     return (
       <Box sx={{ textAlign: 'center', py: 4 }}>

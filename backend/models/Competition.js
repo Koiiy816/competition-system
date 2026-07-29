@@ -167,6 +167,10 @@ const CompetitionSchema = new mongoose.Schema({
   }],
   // 新增字段：参赛要求 - 武术比赛专用
   participantRequirements: {
+    requirePhoto: {
+      type: Boolean,
+      default: false
+    },
     requireIdCard: {
       type: Boolean,
       default: true // 武术比赛通常需要身份验证

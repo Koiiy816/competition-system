@@ -261,6 +261,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
       participantRequirements: {
         ...prev.participantRequirements,
         requireInsurance: true,
+        requirePhoto: true,
         requireMedicalCertificate: true,
         requireRiskWaiver: true
       },

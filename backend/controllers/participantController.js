@@ -236,7 +236,7 @@ exports.createParticipant = async (req, res, next) => {
     // 处理报名表文件上传（可选）
     if (req.file) {
       // 将文件路径保存到请求体中
-      req.body.registrationFormFile = req.file.filename;
+      req.body.photoFile = req.file.filename;
     }
 
     // 处理 multipart/form-data 传来的 JSON 字符串字段
@@ -284,6 +284,10 @@ exports.createParticipant = async (req, res, next) => {
     }
 
     // 检查比赛是否在报名阶段 (管理员或主裁判手动添加时跳过此检查)
+    if (competition.participantRequirements?.requirePhoto && !req.body.photoFile) {
+      return res.status(400).json({ success: false, message: '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247' });
+    }
+
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
     // 检查比赛状态
     if (!isAdmin && competition.status !== 'registration') {

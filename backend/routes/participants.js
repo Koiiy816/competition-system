@@ -3,7 +3,7 @@ const router = express.Router({ mergeParams: true });
 const { check } = require('express-validator');
 const participantController = require('../controllers/participantController');
 const { protect: auth, authorize } = require('../middlewares/authMiddleware');
-const { uploadRegistrationForm } = require('../middlewares/uploadMiddleware');
+const { uploadParticipantPhoto } = require('../middlewares/uploadMiddleware');
 
 // @route   GET api/competitions/all/participants/me
 // @desc    获取当前用户的所有参赛记录（不区分比赛）
@@ -76,7 +76,7 @@ router.post(
   [
     auth,
     authorize('admin', 'chief_referee', 'organization'), // 允许管理员、主裁和参赛单位报名
-    uploadRegistrationForm, // 添加文件上传中间件
+    uploadParticipantPhoto, // 添加文件上传中间件
     [
       check('name', '姓名是必填项').not().isEmpty(),
       // 身份证改为非强制，在 Model 层面控制 (虚拟队伍/测试人员不需要)

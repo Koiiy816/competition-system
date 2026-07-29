@@ -169,6 +169,9 @@ const ParticipantSchema = new mongoose.Schema({
   registrationFormFile: {
     type: String
   },
+  photoFile: {
+    type: String
+  },
   additionalInfo: {
     type: mongoose.Schema.Types.Mixed
   },
