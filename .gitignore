@@ -1,0 +1,59 @@
+mkdir C:\data\dbmkdir C:\data\dbmkdir C:\data\db# 依赖
+node_modules/
+.pnp
+.pnp.js
+
+# 测试
+coverage/
+
+# 生产环境构建文件
+build/
+dist/
+/frontend/dist/
+/frontend/build/
+
+# 环境变量
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.production
+
+# 日志
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 编辑器目录和文件
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+
+# 上传文件
+/backend/public/uploads/*
+!/backend/public/uploads/.gitkeep
+
+# 本地SSL证书
+*.pem
+*.key
+*.crt
+
+# Docker相关
+.dockerignore
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+*.sln
+*.sw?
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# 上传的文件
+uploads/
