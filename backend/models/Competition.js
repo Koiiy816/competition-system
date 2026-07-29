@@ -145,6 +145,9 @@ const CompetitionSchema = new mongoose.Schema({
       default: false
     },
     groupSize: Number, // 集体项目人数要求
+    minGroupSize: Number,
+    maxGroupSize: Number,
+    maxEquipmentParticipants: Number,
     isCombinedEvent: {
       type: Boolean,
       default: false

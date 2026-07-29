@@ -23,6 +23,11 @@ import competitionService from '../services/competitionService';
 import EventItem from '../components/competitions/EventItem';
 import { useAuth } from '../contexts/AuthContext';
 
+import {
+  createShenzhenWushu2026Events,
+  shenzhenWushu2026AgeGroups,
+  SHENZHEN_WUSHU_2026_TEMPLATE_NAME
+} from '../constants/shenzhenWushu2026Template';
 export default function CompetitionDetailsPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -243,6 +248,29 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
           maxParticipants: 0
         }
       ]
+    }));
+  };
+
+  const applyShenzhenWushu2026Template = () => {
+    setCompetition(prev => ({
+      ...prev,
+      ageGroups: shenzhenWushu2026AgeGroups,
+      events: createShenzhenWushu2026Events(),
+      participantType: 'team',
+      maxParticipants: 20,
+      participantRequirements: {
+        ...prev.participantRequirements,
+        requireInsurance: true,
+        requireMedicalCertificate: true,
+        requireRiskWaiver: true
+      },
+      registrationRules: {
+        ...prev.registrationRules,
+        maxEventsPerParticipant: 4,
+        schoolBasedRegistration: true,
+        minGroupSize: 3,
+        maxGroupSize: 15
+      }
     }));
   };
 
@@ -615,6 +643,16 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
               {activeStep === 1 && (
                 <Box>
                   <Typography variant="h6" sx={{ mb: 2 }}>比赛项目</Typography>
+                  <Card variant="outlined" sx={{ mb: 2, borderColor: 'primary.light' }}>
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight={700}>{'\u5FEB\u901F\u521B\u5EFA\uFF1A\u6DF1\u5733\u7AD9\u6B66\u672F\u516C\u5F00\u8D5B\u9879\u76EE\u6A21\u677F'}</Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 1.5 }}>{'\u81EA\u52A8\u586B\u5165 7 \u4E2A U \u7EC4\u5E74\u9F84\u7EC4\u3001\u4E2A\u4EBA\u89C4\u5B9A/\u4F20\u7EDF\u9879\u76EE\u3001\u53CC\u4EBA\u3001\u5BF9\u7EC3\u548C\u96C6\u4F53\u9879\u76EE\uFF1B\u518D\u6B21\u5E94\u7528\u4F1A\u66FF\u6362\u5F53\u524D\u9879\u76EE\u5217\u8868\u3002'}</Typography>
+                      <Button variant="contained" onClick={applyShenzhenWushu2026Template}>
+                        {'\u5E94\u7528'} {SHENZHEN_WUSHU_2026_TEMPLATE_NAME} {'\u6A21\u677F'}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
                   {competition.events && competition.events.map((event, index) => (
                     <EventItem
                       key={index}
