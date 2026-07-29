@@ -48,6 +48,8 @@ import {
   Download as DownloadIcon,
   UploadFile as UploadFileIcon,
   Edit as EditIcon,
+  Photo as PhotoIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
@@ -103,6 +105,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogAction, setDialogAction] = useState(null);
   const [selectedParticipant, setSelectedParticipant] = useState(null);
+  const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
+  const [photoDialogUrl, setPhotoDialogUrl] = useState('');
+  const [photoDialogParticipant, setPhotoDialogParticipant] = useState(null);
   
   // 导入Excel相关状态
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -961,6 +966,29 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   };
   
   // 处理下载报名表
+  const handleViewPhoto = async (participant) => {
+    try {
+      const competitionId = typeof participant.competition === 'object' ? participant.competition._id : participant.competition;
+      const blob = await participantService.getParticipantPhoto(competitionId, participant._id);
+      if (photoDialogUrl) window.URL.revokeObjectURL(photoDialogUrl);
+      setPhotoDialogUrl(window.URL.createObjectURL(blob));
+      setPhotoDialogParticipant(participant); setPhotoDialogOpen(true);
+    } catch (viewError) { setError(viewError?.message || '\u65e0\u6cd5\u8bfb\u53d6\u8fd0\u52a8\u5458\u7167\u7247'); }
+  };
+
+  const handleClosePhoto = () => { if (photoDialogUrl) window.URL.revokeObjectURL(photoDialogUrl); setPhotoDialogUrl(''); setPhotoDialogParticipant(null); setPhotoDialogOpen(false); };
+
+  const handleExportPhotos = async () => {
+    if (!filters.competitionId) { setError('\u8bf7\u5148\u9009\u62e9\u8d5b\u4e8b'); return; }
+    try {
+      setActionLoading(true);
+      const blob = await participantService.exportParticipantsWithPhotos(filters.competitionId);
+      const url = window.URL.createObjectURL(blob); const link = document.createElement('a');
+      link.href = url; link.download = 'registration_photos.zip'; document.body.appendChild(link); link.click(); document.body.removeChild(link); window.URL.revokeObjectURL(url);
+      setSuccessMessage('\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u4e0b\u8f7d\u5df2\u5f00\u59cb');
+    } catch (exportError) { setError(exportError?.message || '\u7167\u7247\u5bfc\u51fa\u5931\u8d25'); } finally { setActionLoading(false); }
+  };
+
   const handleDownload = async (participant) => {
     try {
       // 确保有比赛ID
@@ -1259,6 +1287,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           <TableHead>
             <TableRow>
               <TableCell>参赛者</TableCell>
+              <TableCell>??</TableCell>
               <TableCell>所属单位</TableCell>
               <TableCell>性别</TableCell>
               <TableCell>年龄组别</TableCell>
@@ -1290,6 +1319,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         <Chip label="测试" color="secondary" size="small" sx={{ ml: 1, height: 20 }} />
                       )}
                     </Box>
+                  </TableCell>
+                  <TableCell>
+                    {participant.photoFile ? <Tooltip title="\u67e5\u770b\u7167\u7247"><IconButton color="primary" size="small" onClick={() => handleViewPhoto(participant)}><VisibilityIcon /></IconButton></Tooltip> : <Typography variant="body2" color="text.secondary">-</Typography>}
                   </TableCell>
                   <TableCell>{participant.schoolName || '-'}</TableCell>
                   <TableCell>{getGenderLabel(participant.gender)}</TableCell>
@@ -1837,6 +1869,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                       </Button>
                     )}
                     {isAdminOrChiefReferee && (
+                      <Button variant="contained" color="info" startIcon={<PhotoIcon />} onClick={handleExportPhotos} disabled={actionLoading}>{'\u5bfc\u51fa\u62a5\u540d\u8d44\u6599\u53ca\u7167\u7247'}</Button>
+                    )}
+                    {isAdminOrChiefReferee && (
                       <Button
                         variant="contained"
                         color="success"
@@ -2017,7 +2052,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       )}
       
       {/* 确认对话框 */}
-      {renderConfirmDialog()}
+            <Dialog open={photoDialogOpen} onClose={handleClosePhoto} maxWidth="sm" fullWidth>
+        <DialogTitle>{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoDialogParticipant ? ' - ' + (photoDialogParticipant.name || photoDialogParticipant.teamName || '') : ''}</DialogTitle>
+        <DialogContent dividers sx={{ textAlign: 'center' }}>{photoDialogUrl && <Box component="img" src={photoDialogUrl} alt="participant photo" sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }} />}</DialogContent>
+        <DialogActions><Button onClick={handleClosePhoto}>{'\u5173\u95ed'}</Button></DialogActions>
+      </Dialog>
+
+{renderConfirmDialog()}
 
       {/* 导入名单对话框 */}
       <Dialog

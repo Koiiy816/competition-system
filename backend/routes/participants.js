@@ -41,6 +41,12 @@ router.get(
   participantController.getMyParticipations
 );
 
+// @route   GET api/competitions/:competitionId/participants/export-photos
+router.get('/export-photos', auth, authorize('admin', 'chief_referee'), participantController.exportParticipantsWithPhotos);
+
+// @route   GET api/competitions/:competitionId/participants/:id/photo
+router.get('/:id/photo', auth, authorize('admin', 'chief_referee'), participantController.getParticipantPhoto);
+
 // @route   POST api/competitions/:competitionId/participants/import
 // @desc    导入参赛者
 // @access  私有/管理员、主裁

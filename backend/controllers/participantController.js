@@ -1,5 +1,8 @@
 const Participant = require('../models/Participant');
 const Competition = require('../models/Competition');
+const fs = require('fs');
+const path = require('path');
+const archiver = require('archiver');
 
 /**
  * @desc    获取所有参赛者
@@ -202,6 +205,50 @@ exports.getParticipants = async (req, res, next) => {
  * @route   GET /api/competitions/:competitionId/participants/:id
  * @access  Public
  */
+
+exports.getParticipantPhoto = async (req, res, next) => {
+  try {
+    const participant = await Participant.findOne({ _id: req.params.id, competition: req.params.competitionId });
+    if (!participant || !participant.photoFile) return res.status(404).json({ success: false, message: '\u7167\u7247\u4e0d\u5b58\u5728' });
+    const photoPath = path.join(__dirname, '..', 'uploads', 'participant-photos', participant.photoFile);
+    if (!fs.existsSync(photoPath)) return res.status(404).json({ success: false, message: '\u7167\u7247\u6587\u4ef6\u4e0d\u5b58\u5728' });
+    return res.sendFile(photoPath);
+  } catch (error) { return next(error); }
+};
+
+exports.exportParticipantsWithPhotos = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId).select('name');
+    if (!competition) return res.status(404).json({ success: false, message: '\u672a\u627e\u5230\u8d5b\u4e8b' });
+    const participants = await Participant.find({ competition: competition._id }).sort({ schoolName: 1, name: 1, registrationDate: 1 });
+    const safeName = String(competition.name || 'competition').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    res.attachment(safeName + '_registration_photos.zip');
+    archive.on('error', next);
+    archive.pipe(res);
+    const quote = (value) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
+    const csvRows = [['\u5e8f\u53f7', '\u59d3\u540d', '\u6240\u5c5e\u5355\u4f4d', '\u6027\u522b', '\u5e74\u9f84\u7ec4\u522b', '\u53c2\u8d5b\u9879\u76ee', '\u9886\u961f', '\u6559\u7ec3', '\u62a5\u540d\u72b6\u6001', '\u7167\u7247\u6587\u4ef6']];
+    let photoNumber = 0;
+    participants.forEach((participant, index) => {
+      let photoEntry = '';
+      if (participant.photoFile) {
+        const photoPath = path.join(__dirname, '..', 'uploads', 'participant-photos', participant.photoFile);
+        if (fs.existsSync(photoPath)) {
+          photoNumber += 1;
+          const extension = path.extname(participant.photoFile) || '.jpg';
+          const displayName = String(participant.name || participant.teamName || ('participant_' + (index + 1))).replace(/[\\/:*?"<>|]/g, '_');
+          photoEntry = 'photos/' + String(photoNumber).padStart(3, '0') + '_' + displayName + extension;
+          archive.file(photoPath, { name: photoEntry });
+        }
+      }
+      csvRows.push([index + 1, participant.name || participant.teamName || '', participant.schoolName || '', participant.gender || '', participant.ageGroup || participant.grade || '', participant.event || '', participant.teamLeader || '', participant.coach || '', participant.status || '', photoEntry || '\u672a\u4e0a\u4f20']);
+    });
+    archive.append('\uFEFF' + csvRows.map((row) => row.map(quote).join(',')).join('\r\n'), { name: '\u62a5\u540d\u8d44\u6599\u6e05\u5355.csv' });
+    archive.append('\u8d5b\u4e8b\uff1a' + competition.name + '\n\u8fd0\u52a8\u5458\u603b\u6570\uff1a' + participants.length + '\n\u5df2\u6253\u5305\u7167\u7247\uff1a' + photoNumber + '\n', { name: 'README.txt' });
+    await archive.finalize();
+  } catch (error) { return next(error); }
+};
+
 exports.getParticipant = async (req, res, next) => {
   try {
     const participant = await Participant.findById(req.params.id)

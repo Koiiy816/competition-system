@@ -202,6 +202,16 @@ const participantService = {
    * @param {File} file - 包含参赛者数据的CSV或Excel文件
    * @returns {Promise} - 返回导入结果
    */
+  getParticipantPhoto: async (competitionId, participantId) => {
+    const response = await api.get(`/competitions/${competitionId}/participants/${participantId}/photo`, { responseType: 'blob' });
+    return response.data;
+  },
+
+  exportParticipantsWithPhotos: async (competitionId) => {
+    const response = await api.get(`/competitions/${competitionId}/participants/export-photos`, { responseType: 'blob' });
+    return response.data;
+  },
+
   importParticipants: async (competitionId, file) => {
     const formData = new FormData();
     formData.append('file', file);
