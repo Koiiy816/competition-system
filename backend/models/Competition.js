@@ -246,6 +246,13 @@ const CompetitionSchema = new mongoose.Schema({
     }
   },
   // 评分规则配置
+  awardRules: {
+    enabled: { type: Boolean, default: false },
+    firstPrizePercent: { type: Number, default: 30 },
+    secondPrizePercent: { type: Number, default: 60 },
+    teamPoints: { type: [Number], default: [8, 7, 6, 5, 4, 3, 2, 1] },
+    mergeGroupsBelow: { type: Number, default: 3 }
+  },
   scoringRules: {
     traditionalExclusion: {
       type: Boolean,

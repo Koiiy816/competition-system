@@ -198,6 +198,19 @@ const isLuohuExcludedTeamScoreEvent = (scheduleName = '') => {
   return normalizedScheduleName.includes('集体武术操') || normalizedScheduleName.includes('幼儿集体拳');
 };
 
+const isPercentAwardCompetition = (competition) => Boolean(competition?.awardRules?.enabled);
+
+const getPercentAwardLevel = (rank, formalCount, competition) => {
+  if (!rank || rank === '-' || rank === '\u6d4b\u8bd5' || formalCount <= 0) return null;
+  const firstLimit = Math.max(1, Math.ceil(formalCount * ((competition?.awardRules?.firstPrizePercent ?? 30) / 100)));
+  const secondLimit = Math.max(firstLimit, Math.ceil(formalCount * ((competition?.awardRules?.secondPrizePercent ?? 60) / 100)));
+  if (rank <= firstLimit) return '\u4e00\u7b49\u5956';
+  if (rank <= secondLimit) return '\u4e8c\u7b49\u5956';
+  return '\u4e09\u7b49\u5956';
+};
+
+const isIndividualScoringSchedule = (scheduleName = '') => !/(\u96c6\u4f53|\u53cc\u4eba|\u5bf9\u7ec3)/.test(scheduleName);
+
 const getAdmissionCount = (competition, scheduleName, scheduleResults) => {
   const formalCount = getFormalResultCount(scheduleResults);
 
@@ -694,8 +707,12 @@ const ResultsPage = () => {
             basePoints = [9, 7, 6, 5, 4, 3, 2, 1];
           }
         }
+      const percentAwardMode = isPercentAwardCompetition(selectedCompetition);
+      if (percentAwardMode) basePoints = selectedCompetition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
 
-      const admissionCount = getAdmissionCount(selectedCompetition, scheduleName, scheduleResults);
+
+      const formalCount = getFormalResultCount(scheduleResults);
+      const admissionCount = percentAwardMode ? Math.min(8, formalCount) : getAdmissionCount(selectedCompetition, scheduleName, scheduleResults);
       const luohuTeamRule = shouldCountForTeamRanking(selectedCompetition, scheduleName, scheduleResults);
 
       let currentRankIndex = 0; // 0-7，对应1-8名
@@ -746,12 +763,14 @@ const ResultsPage = () => {
         if (normalMembers.length > 0) {
           const tieCount = normalMembers.length;
           const displayRank = currentRankIndex + 1;
-          const isWithinAdmissionRange = displayRank <= admissionCount;
+          const awardLevel = percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null;
+          const isWithinAdmissionRange = percentAwardMode ? Boolean(awardLevel) : displayRank <= admissionCount;
+          const isWithinTeamPointsRange = percentAwardMode ? displayRank <= 8 : isWithinAdmissionRange;
           let totalPointsForTies = 0;
           let actualPointsAwarded = 0;
 
           for (let k = 0; k < tieCount; k++) {
-            if (isWithinAdmissionRange && currentRankIndex + k < basePoints.length) {
+            if (isWithinTeamPointsRange && currentRankIndex + k < basePoints.length) {
               totalPointsForTies += basePoints[currentRankIndex + k];
               actualPointsAwarded++;
             }
@@ -765,6 +784,7 @@ const ResultsPage = () => {
             result.dynamicRank = displayRank; 
             result.teamPoints = averagePoints;
             result.isAwarded = isWithinAdmissionRange;
+            result.awardLevel = awardLevel;
             result.awardRankLimit = admissionCount;
             
             // 累加到团体分
@@ -775,7 +795,9 @@ const ResultsPage = () => {
 
             // 团体分计入逻辑
             let shouldCountForTeam = false;
-            if (isLuohuTraditionalCompetition(selectedCompetition)) {
+            if (percentAwardMode) {
+              shouldCountForTeam = isIndividualScoringSchedule(scheduleName) && averagePoints > 0;
+            } else if (isLuohuTraditionalCompetition(selectedCompetition)) {
               shouldCountForTeam = luohuTeamRule === true && averagePoints > 0;
             } else if (isTargetCompetition) {
               // 特殊规则：传统拳术、传统器械不计入；集体项目要计入
@@ -1176,7 +1198,7 @@ const ResultsPage = () => {
                         <TableCell>{schoolName}</TableCell>
                         <TableCell>
                           <Chip
-                            label={result.isAwarded ? '录取' : '未录取'}
+                            label={result.awardLevel || (result.isAwarded ? '\u5f55\u53d6' : '\u672a\u5f55\u53d6')}
                             color={result.isAwarded ? 'success' : 'default'}
                             size="small"
                             variant={result.isAwarded ? 'filled' : 'outlined'}

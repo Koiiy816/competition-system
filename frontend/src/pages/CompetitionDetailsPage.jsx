@@ -265,6 +265,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
         requireMedicalCertificate: true,
         requireRiskWaiver: true
       },
+      awardRules: { enabled: true, firstPrizePercent: 30, secondPrizePercent: 60, teamPoints: [8, 7, 6, 5, 4, 3, 2, 1], mergeGroupsBelow: 3 },
       registrationRules: {
         ...prev.registrationRules,
         maxEventsPerParticipant: 4,

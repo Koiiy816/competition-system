@@ -2,6 +2,38 @@ const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 
+function mergeUndersizedAgeGroups(groups, competition) {
+  const minimum = competition?.awardRules?.mergeGroupsBelow || 0;
+  if (minimum < 2) return groups;
+  const order = (competition?.ageGroups || []).map(group => group.name);
+  const buckets = {};
+  Object.values(groups).forEach(group => {
+    if (group.isGroup || (group.event || '').includes('\u96c6\u4f53')) return;
+    const key = [group.event, group.gender || 'mixed'].join('|');
+    (buckets[key] ||= []).push(group);
+  });
+  Object.values(buckets).forEach(list => {
+    list.sort((a, b) => {
+      const ai = order.indexOf(a.ageGroup); const bi = order.indexOf(b.ageGroup);
+      return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
+    });
+    const merged = []; let pending = null;
+    list.forEach(group => {
+      if (!pending) { pending = { ...group, participants: [...group.participants], mergedAgeGroups: [group.ageGroup] }; return; }
+      if (pending.participants.length < minimum) { pending.participants.push(...group.participants); pending.mergedAgeGroups.push(group.ageGroup); }
+      else { merged.push(pending); pending = { ...group, participants: [...group.participants], mergedAgeGroups: [group.ageGroup] }; }
+    });
+    if (pending) {
+      if (pending.participants.length < minimum && merged.length > 0) { const previous = merged[merged.length - 1]; previous.participants.push(...pending.participants); previous.mergedAgeGroups.push(...pending.mergedAgeGroups); }
+      else merged.push(pending);
+    }
+    list.forEach(group => Object.keys(groups).forEach(key => { if (groups[key] === group) delete groups[key]; }));
+    merged.forEach((group, index) => { if (group.mergedAgeGroups.length > 1) group.ageGroup = group.mergedAgeGroups.join('/'); groups['merged|' + group.event + '|' + group.gender + '|' + index + '|' + group.ageGroup] = group; });
+  });
+  return groups;
+}
+
+
 /**
  * @desc    自动生成赛程（出场顺序）
  * @route   POST /api/competitions/:competitionId/schedules/generate-start-list
@@ -143,6 +175,8 @@ exports.generateStartList = async (req, res, next) => {
     });
 
     // 把聚合好的集体项目队伍加入到 groups 中
+    mergeUndersizedAgeGroups(groups, competition);
+
     for (const key in teamGroups) {
       const [event, ageGroup, gender] = key.split('|');
       if (!groups[key]) {
