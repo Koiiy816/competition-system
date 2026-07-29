@@ -44,20 +44,18 @@ export const shenzhenWushu2026AgeGroups = [
 
 export const createShenzhenWushu2026Events = () => {
   const ageGroups = shenzhenWushu2026AgeGroups.map(group => group.name);
-  const personal = personalEvents.map((event, index) => ({
+  const personal = personalEvents.map(event => ({
     ...event,
-    id: `sz-2026-personal-${index}`,
     ageGroups,
     genderRestriction: 'both',
     isGroupEvent: false,
     maxParticipants: 0
   }));
 
-  const noAgeOrGender = (id, name, category, options = {}) => ({
-    id: `sz-2026-${id}`,
+  const noAgeOrGender = (name, category, options = {}) => ({
     name,
     category,
-    ageGroups: [],
+    ageGroups,
     genderRestriction: 'both',
     maxParticipants: 0,
     ...options
@@ -65,12 +63,12 @@ export const createShenzhenWushu2026Events = () => {
 
   return [
     ...personal,
-    noAgeOrGender('pair-taiji', '混双太极拳', '双人项目'),
-    noAgeOrGender('sparring-unarmed', '徒手对练', '对练项目'),
-    noAgeOrGender('sparring-weapon', '器械对练（含徒手与器械对练）', '对练项目'),
-    noAgeOrGender('group-fist', '集体拳术', '集体项目', { isGroupEvent: true, minGroupSize: 3, maxGroupSize: 15 }),
-    noAgeOrGender('group-weapon', '集体器械（含徒手与器械）', '集体项目', { isGroupEvent: true, minGroupSize: 3, maxGroupSize: 15, maxEquipmentParticipants: 12 }),
-    noAgeOrGender('group-exercise', '武术操', '集体项目', { isGroupEvent: true, minGroupSize: 3, maxGroupSize: 15 })
+    noAgeOrGender('混双太极拳', '双人项目'),
+    noAgeOrGender('徒手对练', '对练项目'),
+    noAgeOrGender('器械对练（含徒手与器械对练）', '对练项目'),
+    noAgeOrGender('集体拳术', '集体项目', { isGroupEvent: true, minGroupSize: 3, maxGroupSize: 15 }),
+    noAgeOrGender('集体器械（含徒手与器械）', '集体项目', { isGroupEvent: true, minGroupSize: 3, maxGroupSize: 15, maxEquipmentParticipants: 12 }),
+    noAgeOrGender('武术操', '集体项目', { isGroupEvent: true, minGroupSize: 3, maxGroupSize: 15 })
   ];
 };
 
