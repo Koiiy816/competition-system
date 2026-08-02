@@ -24,6 +24,67 @@ import EventIcon from '@mui/icons-material/Event';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
+import api from '../services/api';
+
+
+const extractCollection = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
+
+const toDate = (value) => {
+  const date = value ? new Date(value) : null;
+  return date && !Number.isNaN(date.getTime()) ? date : null;
+};
+
+const formatEventDate = (value) => {
+  const date = toDate(value);
+  return date ? date.toLocaleString('zh-CN', { hour12: false }) : '\u65f6\u95f4\u5f85\u5b9a';
+};
+
+const escapeIcsText = (value = '') => String(value)
+  .replace(/\\/g, '\\\\')
+  .replace(/;/g, '\\;')
+  .replace(/,/g, '\\,')
+  .replace(/\r?\n/g, '\\n');
+
+const toIcsDate = (value) => {
+  const date = toDate(value);
+  if (!date) return null;
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+};
+
+const downloadCalendarEvent = (event) => {
+  const start = toIcsDate(event.startTime);
+  const end = toIcsDate(event.endTime) || start;
+  if (!start) return;
+
+  const calendar = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//SaiYiTong//Competition//CN',
+    'BEGIN:VEVENT',
+    'UID:' + event.id + '@saiyitong',
+    'DTSTAMP:' + toIcsDate(new Date()),
+    'DTSTART:' + start,
+    'DTEND:' + end,
+    'SUMMARY:' + escapeIcsText(event.name),
+    'LOCATION:' + escapeIcsText(event.location),
+    'DESCRIPTION:' + escapeIcsText(event.competition),
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].join('\r\n');
+
+  const url = URL.createObjectURL(new Blob([calendar], { type: 'text/calendar;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'competition-event.ics';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+};
 
 const DashboardPage = () => {
   const navigate = useNavigate();
@@ -61,24 +122,67 @@ const DashboardPage = () => {
     const fetchData = async () => {
       try {
         const competitions = await competitionService.getUserCompetitions();
-        setUserCompetitions(competitions);
+        const personalCompetitions = extractCollection(competitions);
+        setUserCompetitions(personalCompetitions);
 
-        setUpcomingEvents([
-          {
-            id: 1,
-            name: '小组赛 - 第3轮',
-            competition: '2023年全国大学生足球联赛',
-            date: '2023-09-25 14:00',
-            location: '大学城体育场'
-          },
-          {
-            id: 2,
-            name: '马拉松起跑仪式',
-            competition: '城市马拉松挑战赛',
-            date: '2023-10-01 07:30',
-            location: '市中心广场'
-          }
-        ]);
+        const allCompetitionsResponse = await competitionService.getCompetitions({
+          limit: 100,
+          exclude_status: 'completed'
+        });
+        const activeCompetitions = extractCollection(allCompetitionsResponse)
+          .filter((competition) => competition.status !== 'cancelled');
+        const now = new Date();
+
+        const scheduleResponses = await Promise.all(
+          activeCompetitions.map(async (competition) => {
+            try {
+              const response = await api.get('/competitions/' + competition._id + '/schedules/public', {
+                params: { limit: 100 }
+              });
+              return { competition, schedules: extractCollection(response.data) };
+            } catch (scheduleError) {
+              return { competition, schedules: [] };
+            }
+          })
+        );
+
+        const scheduleEvents = scheduleResponses.flatMap(({ competition, schedules }) => schedules
+          .filter((schedule) => {
+            const startTime = toDate(schedule.startTime || schedule.scheduleDate);
+            return startTime && startTime >= now && schedule.status !== 'cancelled' && schedule.status !== 'completed';
+          })
+          .map((schedule) => ({
+            id: 'schedule-' + schedule._id,
+            name: schedule.name,
+            competition: competition.name,
+            startTime: schedule.startTime || schedule.scheduleDate,
+            endTime: schedule.endTime || schedule.startTime || schedule.scheduleDate,
+            location: schedule.location || schedule.court || competition.location || '\u5730\u70b9\u5f85\u5b9a',
+            date: formatEventDate(schedule.startTime || schedule.scheduleDate)
+          }))
+        );
+
+        const scheduledCompetitionIds = new Set(scheduleResponses
+          .filter(({ schedules }) => schedules.length > 0)
+          .map(({ competition }) => String(competition._id)));
+        const competitionEvents = activeCompetitions
+          .filter((competition) => {
+            const startTime = toDate(competition.startDate);
+            return startTime && startTime >= now && !scheduledCompetitionIds.has(String(competition._id));
+          })
+          .map((competition) => ({
+            id: 'competition-' + competition._id,
+            name: '\u6bd4\u8d5b\u5f00\u59cb',
+            competition: competition.name,
+            startTime: competition.startDate,
+            endTime: competition.endDate || competition.startDate,
+            location: competition.location || '\u5730\u70b9\u5f85\u5b9a',
+            date: formatEventDate(competition.startDate)
+          }));
+
+        setUpcomingEvents([...scheduleEvents, ...competitionEvents]
+          .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))
+          .slice(0, 5));
 
       } catch (error) {
         console.error('获取仪表盘数据失败:', error);
@@ -236,7 +340,7 @@ const DashboardPage = () => {
                         </React.Fragment>
                       }
                     />
-                    <Button size="small" variant="outlined">
+                    <Button size="small" variant="outlined" onClick={() => downloadCalendarEvent(event)}>
                       添加到日历
                     </Button>
                   </ListItem>
