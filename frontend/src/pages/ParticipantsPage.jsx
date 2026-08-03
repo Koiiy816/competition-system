@@ -1287,7 +1287,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           <TableHead>
             <TableRow>
               <TableCell>参赛者</TableCell>
-              <TableCell>??</TableCell>
+              <TableCell>照片</TableCell>
               <TableCell>所属单位</TableCell>
               <TableCell>性别</TableCell>
               <TableCell>年龄组别</TableCell>
@@ -1321,7 +1321,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     </Box>
                   </TableCell>
                   <TableCell>
-                    {participant.photoFile ? <Tooltip title="\u67e5\u770b\u7167\u7247"><IconButton color="primary" size="small" onClick={() => handleViewPhoto(participant)}><VisibilityIcon /></IconButton></Tooltip> : <Typography variant="body2" color="text.secondary">-</Typography>}
+                    {participant.photoFile ? (
+                      <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => handleViewPhoto(participant)}>
+                        {'\u67e5\u770b\u7167\u7247'}
+                      </Button>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">{'\u672a\u4e0a\u4f20'}</Typography>
+                    )}
                   </TableCell>
                   <TableCell>{participant.schoolName || '-'}</TableCell>
                   <TableCell>{getGenderLabel(participant.gender)}</TableCell>
