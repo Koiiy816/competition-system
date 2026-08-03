@@ -289,6 +289,7 @@ const AdminPage = () => {
       name: user.name || '',
       email: user.email || '',
       roles: user.roles || [],
+      phone: user.profile?.phone || '',
       password: '' // 密码字段初始化为空
     });
     setDialogAction('edit');
@@ -655,6 +656,13 @@ const AdminPage = () => {
               disabled={dialogAction === 'edit'} // 创建时可填，编辑时禁用
               onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
               helperText={dialogAction === 'edit' ? "邮箱地址作为登录账号，不可修改。" : "此邮箱将作为用户的登录账号"}
+            />
+            <TextField
+              label={'\u8054\u7cfb\u7535\u8bdd'}
+              fullWidth
+              value={editFormData.phone || ''}
+              onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+              helperText={'\u53c2\u8d5b\u5355\u4f4d\u6ce8\u518c\u65f6\u586b\u5199\u7684\u8054\u7cfb\u7535\u8bdd'}
             />
             <TextField
               label={dialogAction === 'create' ? "登录密码" : "重置密码 (选填)"}

@@ -87,11 +87,14 @@ exports.updateUser = async (req, res, next) => {
     }
 
     // 手动更新字段以确保 pre-save 钩子(用于密码加密)生效
-    const { name, email, roles, password } = req.body;
+    const { name, email, roles, password, phone } = req.body;
     
     if (name) user.name = name;
     if (email) user.email = email;
     if (roles) user.roles = roles;
+    if (typeof phone === 'string') {
+      user.profile = { ...(user.profile || {}), phone: phone.trim() };
+    }
     
     // 如果管理员填写了新密码，则更新密码
     if (password && password.trim().length > 0) {

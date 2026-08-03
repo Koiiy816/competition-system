@@ -35,7 +35,6 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
-import { PARTICIPANT_TAGS_HELPER_TEXT } from '../constants/participantTags';
 
 const RegisterCompetitionPage = () => {
   const { id } = useParams();
@@ -975,7 +974,6 @@ const RegisterCompetitionPage = () => {
             rows={4}
             sx={{ mb: 3 }}
             placeholder="请输入备注信息..."
-            helperText={PARTICIPANT_TAGS_HELPER_TEXT}
           />
           
           {/* 报名表模板下载 */}
