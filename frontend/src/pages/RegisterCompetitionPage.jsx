@@ -85,6 +85,7 @@ const RegisterCompetitionPage = () => {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [registrants, setRegistrants] = useState([]);
+  const [selectedEvents, setSelectedEvents] = useState(['']);
   
   // 表单数据
   const [formData, setFormData] = useState({
@@ -395,6 +396,7 @@ const RegisterCompetitionPage = () => {
   // 处理表单变更
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+    if (['grade', 'gender', 'birthDate', 'idCard'].includes(name)) setSelectedEvents(['']);
     
     // 如果年级发生变化，清空比赛项目选择
     if (name === 'grade') {
@@ -518,10 +520,10 @@ const RegisterCompetitionPage = () => {
     }
     
     // 如果年级或性别变化，也清除比赛项目的错误
-    if ((name === 'grade' || name === 'gender') && formErrors.event) {
+    if ((name === 'grade' || name === 'gender') && formErrors.events) {
       setFormErrors(prev => ({
         ...prev,
-        event: ''
+        events: ''
       }));
     }
   };
@@ -546,6 +548,18 @@ const RegisterCompetitionPage = () => {
     }
   };
   
+  const handleEventSelectionChange = (index, value) => {
+    setSelectedEvents(prev => prev.map((event, eventIndex) => eventIndex === index ? value : event));
+    if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
+  };
+
+  const addEventSelection = () => setSelectedEvents(prev => [...prev, '']);
+
+  const removeEventSelection = (index) => {
+    setSelectedEvents(prev => prev.length === 1 ? [''] : prev.filter((_, eventIndex) => eventIndex !== index));
+    if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
+  };
+
   // 验证表单
   const validateForm = () => {
     const errors = {};
@@ -577,9 +591,9 @@ const RegisterCompetitionPage = () => {
       errors.grade = '请输入年龄组别';
     }
   
-    // 比赛项目必选
-    if (!formData.event || !formData.event.trim()) {
-      errors.event = '请选择比赛项目';
+    // 至少选择一个比赛项目
+    if (!selectedEvents.some(event => event && event.trim())) {
+      errors.events = '请至少选择一个比赛项目';
     }
     
     // 验证其他必填字段
@@ -590,11 +604,18 @@ const RegisterCompetitionPage = () => {
     return Object.keys(errors).length === 0;
   };
   
-  // 处理下一步
+  // 同一名运动员的多个项目会拆成对应报名记录，无需重复填写个人资料。
   const addRegistrant = () => {
     if (!validateForm()) return;
-    setRegistrants(prev => [...prev, { id: `${Date.now()}-${Math.random()}`, data: { ...formData, additionalInfo: { ...formData.additionalInfo } }, photo: selectedPhoto }]);
+    const events = selectedEvents.filter(event => event && event.trim());
+    const baseId = `${Date.now()}-${Math.random()}`;
+    setRegistrants(prev => [...prev, ...events.map((event, index) => ({
+      id: `${baseId}-${index}`,
+      data: { ...formData, event, additionalInfo: { ...formData.additionalInfo } },
+      photo: selectedPhoto
+    }))]);
     setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', insuranceConfirmed: false, additionalInfo: { notes: '' } }));
+    setSelectedEvents(['']);
     setSelectedPhoto(null); setFormErrors({}); setError('');
   };
 
@@ -905,36 +926,38 @@ const RegisterCompetitionPage = () => {
           </FormControl>
         </Grid>
         
-        {/* 比赛项目 */}
+        {/* 比赛项目：同一名运动员可连续选择多个项目 */}
         <Grid item xs={12}>
-          <FormControl fullWidth required>
-            <InputLabel id="event-label">比赛项目</InputLabel>
-            <Select
-              labelId="event-label"
-              id="event"
-              name="event"
-              value={formData.event}
-              label="比赛项目"
-              onChange={handleFormChange}
-              error={!!formErrors.event}
-              disabled={!formData.grade}
-            >
-              {getAvailableEvents().map((event, index) => (
-                <MenuItem key={index} value={event.name}>
-                  {event.displayName}
-                </MenuItem>
-              ))}
-            </Select>
-            {formErrors.event && (
-              <FormHelperText error>{formErrors.event}</FormHelperText>
-            )}
-            {!formData.grade && (
-              <FormHelperText>请先选择年龄组别</FormHelperText>
-            )}
-            {formData.grade && getAvailableEvents().length === 0 && (
-              <FormHelperText>该组别暂无可选项目</FormHelperText>
-            )}
-          </FormControl>
+          <Paper variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>比赛项目</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>同一名运动员可一次选择多个项目，无需重复填写个人资料。</Typography>
+            {selectedEvents.map((selectedEvent, index) => (
+              <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
+                <FormControl fullWidth required error={!!formErrors.events}>
+                  <InputLabel id={'event-label-' + index}>{'比赛项目' + ' ' + (index + 1)}</InputLabel>
+                  <Select
+                    labelId={'event-label-' + index}
+                    id={'event-' + index}
+                    value={selectedEvent}
+                    label={'比赛项目' + ' ' + (index + 1)}
+                    onChange={(event) => handleEventSelectionChange(index, event.target.value)}
+                    disabled={!formData.grade}
+                  >
+                    {getAvailableEvents().map((event) => (
+                      <MenuItem key={event.name} value={event.name} disabled={selectedEvents.includes(event.name) && selectedEvent !== event.name}>
+                        {event.displayName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {selectedEvents.length > 1 && <Button color="error" onClick={() => removeEventSelection(index)}>删除</Button>}
+              </Box>
+            ))}
+            {formErrors.events && <FormHelperText error>{formErrors.events}</FormHelperText>}
+            {!formData.grade && <FormHelperText>请先选择年龄组别</FormHelperText>}
+            {formData.grade && getAvailableEvents().length === 0 && <FormHelperText>该组别暂无可选项目</FormHelperText>}
+            <Button variant="outlined" onClick={addEventSelection} disabled={!formData.grade || getAvailableEvents().length === 0} sx={{ mt: 1 }}>添加比赛项目</Button>
+          </Paper>
         </Grid>
         
         {/* 附加信息 */}
