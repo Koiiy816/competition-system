@@ -346,7 +346,7 @@ const RegisterCompetitionPage = () => {
     setPhotoError('');
     if (!file) { setSelectedPhoto(null); return; }
     if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) { setPhotoError('\u8bf7\u4e0a\u4f20 JPG \u6216 PNG \u683c\u5f0f\u7684\u8fd0\u52a8\u5458\u7167\u7247\u3002'); setSelectedPhoto(null); return; }
-    if (file.size > 5 * 1024 * 1024) { setPhotoError('\u7167\u7247\u5927\u5c0f\u4e0d\u80fd\u8d85\u8fc7 5MB\u3002'); setSelectedPhoto(null); return; }
+    if (file.size > 10 * 1024 * 1024) { setPhotoError('\u7167\u7247\u5927\u5c0f\u4e0d\u80fd\u8d85\u8fc7 10MB\u3002'); setSelectedPhoto(null); return; }
     setSelectedPhoto(file);
   };
 
@@ -644,7 +644,7 @@ const RegisterCompetitionPage = () => {
         if (ageGroup) submitData.append('ageGroup', ageGroup);
         if (registrant.photo) submitData.append('photo', registrant.photo);
         const response = await fetch(`/api/competitions/${id}/participants`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }, body: submitData });
-        if (!response.ok) { let message = '\u62a5\u540d\u5931\u8d25'; try { message = (await response.json()).message || message; } catch (_) {} failed.push(`${data.name || data.teamName}: ${message}`); }
+        if (!response.ok) { let message = response.status === 413 ? '\u7167\u7247\u5927\u5c0f\u8d85\u8fc7 10MB\uff0c\u8bf7\u538b\u7f29\u540e\u91cd\u8bd5' : '\u62a5\u540d\u5931\u8d25'; try { message = (await response.json()).message || message; } catch (_) {} failed.push(`${data.name || data.teamName}: ${message}`); }
       }
       if (failed.length) { setError(`\u4ee5\u4e0b\u8fd0\u52a8\u5458\u672a\u63d0\u4ea4\u6210\u529f\uff1a${failed.join("?")}`); return; }
       setCompleted(true); setTimeout(() => navigate(`/competitions/${id}`), 3000);
@@ -1050,7 +1050,7 @@ const RegisterCompetitionPage = () => {
             <label htmlFor="participant-photo-upload"><Button variant="outlined" component="span" startIcon={<CloudUploadIcon />}>{'\u4e0a\u4f20\u7167\u7247'}</Button></label>
             {selectedPhoto && <Typography variant="body2" sx={{ mt: 1 }}>{'\u5df2\u9009\u62e9\uff1a'}{selectedPhoto.name}</Typography>}
             {(photoError || formErrors.photo) && <Alert severity="error" sx={{ mt: 1 }}>{photoError || formErrors.photo}</Alert>}
-            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 5MB\u3002'}</Typography>
+            <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 10MB\u3002'}</Typography>
           </Paper>
           <Box sx={{ mt: 2 }}>
             <Button variant="contained" onClick={addRegistrant} disabled={submitting} sx={{ mr: 2 }}>{'\u52a0\u5165\u62a5\u540d\u540d\u5355\u5e76\u7ee7\u7eed\u6dfb\u52a0'}</Button>
