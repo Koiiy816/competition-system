@@ -47,6 +47,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   });
 
   const [errors, setErrors] = useState({});
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
 
   const gradeOptions = [
     { value: 'U10组 (7-10岁)', label: 'U10组 (7-10岁)' },
@@ -126,6 +127,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
         isTest: false
        });
        setErrors({});
+       setSelectedPhoto(null);
     }
   }, [open, competitionId, editData]);
 
@@ -201,6 +203,23 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     });
   };
 
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) { setSelectedPhoto(null); return; }
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+      setErrors(prev => ({ ...prev, photo: '\u8bf7\u4e0a\u4f20 JPG \u6216 PNG \u683c\u5f0f\u7684\u8fd0\u52a8\u5458\u7167\u7247' }));
+      setSelectedPhoto(null);
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, photo: '\u7167\u7247\u5927\u5c0f\u4e0d\u80fd\u8d85\u8fc7 10MB' }));
+      setSelectedPhoto(null);
+      return;
+    }
+    setSelectedPhoto(file);
+    setErrors(prev => ({ ...prev, photo: '' }));
+  };
+
   const validate = () => {
     const newErrors = {};
     if (!formData.name.trim()) newErrors.name = '请输入姓名';
@@ -208,6 +227,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.gender) newErrors.gender = '请选择性别';
     if (!formData.grade) newErrors.grade = '请选择年龄组别';
     if (!formData.event) newErrors.event = '请选择比赛项目';
+    if (competition?.participantRequirements?.requirePhoto && !editData && !selectedPhoto) newErrors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     
     if (formData.idCard && !/^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(formData.idCard)) {
       newErrors.idCard = '身份证格式不正确';
@@ -241,6 +261,13 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       
       if (editData) {
          await participantService.updateParticipant(competitionId, editData._id, submitData);
+      } else if (selectedPhoto) {
+         const multipartData = new FormData();
+         Object.entries(submitData).forEach(([key, value]) => {
+           if (value !== undefined && value !== null) multipartData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+         });
+         multipartData.append('photo', selectedPhoto);
+         await participantService.addParticipant(competitionId, multipartData);
       } else {
          await participantService.addParticipant(competitionId, submitData);
       }
@@ -253,6 +280,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const availableEvents = getAvailableEvents();
+  const photoRequired = Boolean(competition?.participantRequirements?.requirePhoto);
 
   return (
     <Dialog open={open} onClose={!submitting ? onClose : null} maxWidth="md" fullWidth>
@@ -462,6 +490,18 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               />
             </Grid>
 
+            {!editData && (
+              <Grid item xs={12}>
+                <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>
+                  <Typography variant="subtitle2">{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoRequired ? ' *' : ''}</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 10MB\u3002'}</Typography>
+                  <input accept="image/jpeg,image/png" id="admin-participant-photo" type="file" style={{ display: 'none' }} onChange={handlePhotoChange} />
+                  <label htmlFor="admin-participant-photo"><Button component="span" variant="outlined">{'\u4e0a\u4f20\u7167\u7247'}</Button></label>
+                  {selectedPhoto && <Typography variant="body2" sx={{ mt: 1 }}>{'\u5df2\u9009\u62e9\uff1a'}{selectedPhoto.name}</Typography>}
+                  {errors.photo && <FormHelperText error>{errors.photo}</FormHelperText>}
+                </Box>
+              </Grid>
+            )}
           </Grid>
         )}
       </DialogContent>

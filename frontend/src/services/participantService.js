@@ -57,7 +57,8 @@ const participantService = {
    */
   addParticipant: async (competitionId, participantData) => {
     try {
-      const response = await api.post(`/competitions/${competitionId}/participants`, participantData);
+      const requestOptions = participantData instanceof FormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined;
+      const response = await api.post(`/competitions/${competitionId}/participants`, participantData, requestOptions);
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : { message: '添加参赛者失败' };
