@@ -90,6 +90,12 @@ const ParticipantSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  // 管理员备注
+  remark: {
+    type: String,
+    trim: true,
+    maxlength: [1000, '备注不能超过1000个字符']
+  },
   // 保险确认
   insuranceConfirmed: {
     type: Boolean,

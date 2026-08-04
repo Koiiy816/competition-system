@@ -41,6 +41,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     leaderPhone: '',
     coach: '',
     coachPhone: '',
+    remark: '',
     insuranceConfirmed: true,
     type: 'individual',
     isTest: false
@@ -92,6 +93,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 leaderPhone: editData.leaderPhone || '',
                 coach: editData.coach || '',
                 coachPhone: editData.coachPhone || '',
+                remark: editData.remark || '',
                 insuranceConfirmed: true,
                 type: editData.type || 'individual',
                 isTest: editData.isTest || false
@@ -122,6 +124,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
         leaderPhone: '',
         coach: '',
         coachPhone: '',
+        remark: '',
         insuranceConfirmed: true,
         type: 'individual',
         isTest: false
@@ -489,7 +492,19 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 onChange={handleChange}
               />
             </Grid>
-
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="备注"
+                name="remark"
+                value={formData.remark}
+                onChange={handleChange}
+                multiline
+                minRows={3}
+                inputProps={{ maxLength: 1000 }}
+                helperText="仅供管理员记录，最多 1000 字"
+              />
+            </Grid>
             {!editData && (
               <Grid item xs={12}>
                 <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>
