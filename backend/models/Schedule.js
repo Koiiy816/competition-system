@@ -56,6 +56,11 @@ const ScheduleSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User'
   }],
+  judgeCount: {
+    type: Number,
+    enum: [3, 4, 5],
+    default: 5
+  },
   status: {
     type: String,
     enum: ['scheduled', 'ongoing', 'completed', 'cancelled', 'postponed'],

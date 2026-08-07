@@ -542,7 +542,7 @@ exports.getSchedule = async (req, res, next) => {
       .populate('competition', 'name startDate endDate location')
       .populate({
         path: 'participants',
-        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkedInAt checkedInBy',
+        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy',
         populate: [
           {
             path: 'user',

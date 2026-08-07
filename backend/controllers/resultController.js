@@ -86,6 +86,19 @@ function getEffectiveCheckInStatus(participant) {
   return 'mixed';
 }
 
+function calculateFinalScore(scores, deduction, judgeCount) {
+  const activeScores = scores.slice(0, judgeCount).filter(score => score > 0);
+  if (activeScores.length === 0) return 0;
+
+  if (judgeCount === 5 && activeScores.length === 5) {
+    const sortedScores = [...activeScores].sort((a, b) => a - b);
+    const middleScores = sortedScores.slice(1, 4);
+    return middleScores.reduce((sum, score) => sum + score, 0) / middleScores.length + deduction;
+  }
+
+  return activeScores.reduce((sum, score) => sum + score, 0) / activeScores.length + deduction;
+}
+
 /**
  * @desc    获取所有成绩
  * @route   GET /api/competitions/:competitionId/results
@@ -289,7 +302,7 @@ exports.createResult = async (req, res, next) => {
  * @access  Private/Referee/Admin
  */
 exports.submitScore = async (req, res, next) => {
-  const { scheduleId, participantId, scores, deduction, finalScore: providedFinalScore } = req.body;
+  const { scheduleId, participantId, scores, deduction } = req.body;
 
   if (!scheduleId || !participantId || !scores) {
     return res.status(400).json({
@@ -302,6 +315,12 @@ exports.submitScore = async (req, res, next) => {
   await acquireLock(lockKey);
 
   try {
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount');
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: '未找到对应赛程' });
+    }
+    const judgeCount = schedule.judgeCount || 5;
+
     const participant = await Participant.findById(participantId).populate(
       'teamMembers',
       'isCheckedIn checkInStatus'
@@ -331,7 +350,9 @@ exports.submitScore = async (req, res, next) => {
     }
 
     let finalScore = 0;
-    let newScores = scores.map(s => parseFloat(s) || 0);
+    let newScores = scores.map(s => parseFloat(s) || 0).slice(0, 5);
+    while (newScores.length < 5) newScores.push(0);
+    for (let index = judgeCount; index < 5; index += 1) newScores[index] = 0;
     let newDeduction = parseFloat(deduction) || 0;
     let finalIsAbsent = effectiveCheckInStatus === 'absent';
 
@@ -341,21 +362,8 @@ exports.submitScore = async (req, res, next) => {
       newScores = [0, 0, 0, 0, 0];
       newDeduction = 0;
     } else {
-      // 正常计分逻辑
-      if (providedFinalScore !== undefined && providedFinalScore !== null) {
-        finalScore = parseFloat(providedFinalScore);
-      } else {
-        const validScores = newScores.filter(s => s > 0);
-        if (validScores.length >= 5) {
-          const sortedScores = [...validScores].sort((a, b) => a - b);
-          const middleScores = sortedScores.slice(1, validScores.length - 1);
-          const sum = middleScores.reduce((a, b) => a + b, 0);
-          finalScore = (sum / middleScores.length) + newDeduction;
-        } else {
-          const sum = validScores.reduce((a, b) => a + b, 0);
-          finalScore = (validScores.length > 0 ? sum / validScores.length : 0) + newDeduction;
-        }
-      }
+      // 由服务器按赛程规则计算，避免客户端传入的最终分数影响结果。
+      finalScore = calculateFinalScore(newScores, newDeduction, judgeCount);
     }
     
     finalScore = Math.round(finalScore * 100) / 100;
@@ -383,23 +391,20 @@ exports.submitScore = async (req, res, next) => {
           });
         }
 
+        if (allowedIndex >= judgeCount) {
+          return res.status(403).json({ success: false, message: '当前赛程未分配此裁判评分栏位' });
+        }
+
         if (!finalIsAbsent) {
           newScores = [...(result.details?.scores || [0, 0, 0, 0, 0])];
           newScores[allowedIndex] = req.body.scores[allowedIndex] ? parseFloat(req.body.scores[allowedIndex]) || 0 : 0;
+          while (newScores.length < 5) newScores.push(0);
+          for (let index = judgeCount; index < 5; index += 1) newScores[index] = 0;
           newDeduction = result.details?.deduction || 0;
           finalIsAbsent = effectiveCheckInStatus === 'absent';
 
           if (!finalIsAbsent) {
-            const validNewScores = newScores.filter(s => s > 0);
-            if (validNewScores.length >= 5) {
-              const sortedScores = [...validNewScores].sort((a, b) => a - b);
-              const middleScores = sortedScores.slice(1, validNewScores.length - 1);
-              const sum = middleScores.reduce((a, b) => a + b, 0);
-              finalScore = (sum / middleScores.length) + newDeduction;
-            } else {
-              const sum = validNewScores.reduce((a, b) => a + b, 0);
-              finalScore = (validNewScores.length > 0 ? sum / validNewScores.length : 0) + newDeduction;
-            }
+            finalScore = calculateFinalScore(newScores, newDeduction, judgeCount);
             finalScore = Math.round(finalScore * 100) / 100;
           } else {
             finalScore = 0;

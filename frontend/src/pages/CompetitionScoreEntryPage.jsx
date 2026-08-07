@@ -62,7 +62,7 @@ const getResultScore = (result) => (
     : (typeof result?.score === 'number' ? result.score : 0)
 );
 
-const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave, index, displayNameContent, isChiefOrAdmin, allowedIndex, isThreeRefereesMode, currentRank, isDuplicateScore, checkInStatus }) => {
+const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus }) => {
   const [scores, setScores] = useState(['', '', '', '', '']);
   const [deduction, setDeduction] = useState('');
   const [finalScore, setFinalScore] = useState(0);
@@ -95,19 +95,14 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave,
   useEffect(() => {
     if (!isDirty) return;
     let totalCalculated = 0;
-    // 如果是3裁判模式，我们只取前三个分数
-    const activeScores = isThreeRefereesMode ? scores.slice(0, 3) : scores;
+    const activeScores = scores.slice(0, judgeCount);
     const filledScores = activeScores.filter(s => s !== '').map(parseFloat);
     
     if (filledScores.length > 0) {
-      if (!isThreeRefereesMode && filledScores.length === 5) {
+      if (judgeCount === 5 && filledScores.length === 5) {
         // 5裁判模式：去掉最高分和最低分，取平均
         const sorted = [...filledScores].sort((a, b) => a - b);
         const sum = sorted.slice(1, 4).reduce((a, b) => a + b, 0);
-        totalCalculated = (sum / 3);
-      } else if (isThreeRefereesMode && filledScores.length === 3) {
-        // 3裁判模式：三个全加起来除以3
-        const sum = filledScores.reduce((a, b) => a + b, 0);
         totalCalculated = (sum / 3);
       } else {
         // 还没填满时的临时平均分
@@ -119,7 +114,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave,
     // 这里把 deduction 的逻辑改成直接相加，因为我们要支持加分（正数）和减分（负数）
     const finalCalculated = totalCalculated + numericDeduction;
     setFinalScore(Math.round(finalCalculated * 100) / 100);
-  }, [scores, deduction, isDirty, isThreeRefereesMode]);
+  }, [scores, deduction, isDirty, judgeCount]);
 
   const handleScoreChange = (idx, value) => {
     const newScores = [...scores];
@@ -170,8 +165,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave,
 
   const disabled = isCompleted || !canEdit || isLockedForMe || isAbsent || isNotChecked || isMixed;
   
-  // 根据是否为3裁判模式，决定要渲染几个输入框
-  const renderIndices = isThreeRefereesMode ? [0, 1, 2] : [0, 1, 2, 3, 4];
+  const renderIndices = Array.from({ length: judgeCount }, (_, index) => index);
 
   return (
     <TableRow
@@ -190,6 +184,19 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave,
       <TableCell sx={{ verticalAlign: 'middle' }}>{participant.schoolName || (participant.user && participant.user.schoolName) || '-'}</TableCell>
       <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
         <Chip size="small" label={checkInMeta.label} color={checkInMeta.color} />
+        {canCheckIn && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5, mt: 0.75, flexWrap: 'wrap' }} className="no-print">
+            {checkInStatus === 'not_checked' && (
+              <>
+                <Button size="small" variant="contained" color="success" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'checked')}>检录</Button>
+                <Button size="small" variant="outlined" color="error" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'absent')}>缺席</Button>
+              </>
+            )}
+            {['checked', 'absent'].includes(checkInStatus) && (
+              <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>撤销</Button>
+            )}
+          </Box>
+        )}
       </TableCell>
       
       {renderIndices.map(idx => {
@@ -320,6 +327,7 @@ const CompetitionScoreEntryPage = () => {
   const [error, setError] = useState('');
   const [nextSchedule, setNextSchedule] = useState(null);
   const [prevSchedule, setPrevSchedule] = useState(null);
+  const [checkInUpdatingId, setCheckInUpdatingId] = useState(null);
   
   const [printModalOpen, setPrintModalOpen] = useState(false);
 
@@ -330,6 +338,7 @@ const CompetitionScoreEntryPage = () => {
   
   const canEdit = hasPermission(['admin', 'chief_referee', 'referee']);
   const isChiefOrAdmin = hasPermission(['admin', 'chief_referee']);
+  const canCheckIn = hasPermission(['admin', 'chief_referee']);
   
   let allowedIndex = -1;
   // 依然限制普通裁判只能填写自己的格子，不影响他们看到最后得分
@@ -353,6 +362,7 @@ const CompetitionScoreEntryPage = () => {
     schedule?.name?.includes('5月31') ||
     schedule?.name?.includes('6月13') ||
     competition?.name?.includes('第五届南山区中小学教育集团联盟');
+  const judgeCount = isThreeRefereesMode ? 3 : (schedule?.judgeCount || 5);
   
   useEffect(() => {
     fetchData();
@@ -565,6 +575,19 @@ const CompetitionScoreEntryPage = () => {
     } catch (err) {
       alert(err.message || '保存失败');
       throw err;
+    }
+  };
+
+  const handleInlineCheckIn = async (participant, status) => {
+    setCheckInUpdatingId(participant._id);
+    setError('');
+    try {
+      await scheduleService.updateParticipantCheckInStatus(id, participant._id, status, scheduleId);
+      await Promise.all([fetchScheduleOnly(), fetchResultsOnly()]);
+    } catch (err) {
+      setError(err.message || '检录状态更新失败');
+    } finally {
+      setCheckInUpdatingId(null);
     }
   };
 
@@ -855,15 +878,9 @@ const CompetitionScoreEntryPage = () => {
                   <TableCell width="23%">姓名</TableCell>
                   <TableCell width="14%">代表队/学校</TableCell>
                   <TableCell width="9%" align="center">检录状态</TableCell>
-                  <TableCell width="7%" align="center">裁1</TableCell>
-                  <TableCell width="7%" align="center">裁2</TableCell>
-                  <TableCell width="7%" align="center">裁3</TableCell>
-                  {!isThreeRefereesMode && (
-                    <>
-                      <TableCell width="7%" align="center">裁4</TableCell>
-                      <TableCell width="7%" align="center">裁5</TableCell>
-                    </>
-                  )}
+                  {Array.from({ length: judgeCount }, (_, index) => (
+                    <TableCell key={index} width="7%" align="center">裁{index + 1}</TableCell>
+                  ))}
                   <TableCell width="7%" align="center">裁判长加减分</TableCell>
                   <TableCell width="8%" align="center">最后得分</TableCell>
                   <TableCell width="5%" align="center">实时排名</TableCell>
@@ -903,11 +920,14 @@ const CompetitionScoreEntryPage = () => {
                       scheduleStatus={schedule?.status}
                       canEdit={canEdit}
                       onSave={handleInlineSave}
+                      onCheckIn={handleInlineCheckIn}
+                      canCheckIn={canCheckIn}
+                      isCheckInUpdating={checkInUpdatingId === p._id}
                       index={index}
                       displayNameContent={displayNameContent}
                       isChiefOrAdmin={isChiefOrAdmin}
                       allowedIndex={allowedIndex}
-                      isThreeRefereesMode={isThreeRefereesMode}
+                      judgeCount={judgeCount}
                       currentRank={participantRanks[p._id]}
                       isDuplicateScore={duplicateScores.includes(getResultScore(result))}
                       checkInStatus={checkInStatus}
