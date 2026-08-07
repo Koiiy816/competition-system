@@ -441,7 +441,8 @@ const CompetitionScoreEntryPage = () => {
           timeSlot: schedData.timeSlot,
           exactTime: schedData.exactTime,
           court: schedData.court,
-          name: schedData.name
+          name: schedData.name,
+          judgeCount: schedData.judgeCount
         };
         const prevKey = JSON.stringify({
           status: prev.status,
@@ -452,7 +453,8 @@ const CompetitionScoreEntryPage = () => {
           timeSlot: prev.timeSlot,
           exactTime: prev.exactTime,
           court: prev.court,
-          name: prev.name
+          name: prev.name,
+          judgeCount: prev.judgeCount
         });
         const nextKey = JSON.stringify({
           status: nextSchedule.status,
@@ -463,7 +465,8 @@ const CompetitionScoreEntryPage = () => {
           timeSlot: nextSchedule.timeSlot,
           exactTime: nextSchedule.exactTime,
           court: nextSchedule.court,
-          name: nextSchedule.name
+          name: nextSchedule.name,
+          judgeCount: nextSchedule.judgeCount
         });
         if (prevKey !== nextKey) return nextSchedule;
         return prev;
