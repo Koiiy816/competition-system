@@ -62,6 +62,17 @@ const getResultScore = (result) => (
     : (typeof result?.score === 'number' ? result.score : 0)
 );
 
+const formatScheduleTime = (schedule) => {
+  if (schedule?.scheduleDate) {
+    const [year, month, day] = schedule.scheduleDate.split('-');
+    const dateText = `${year}/${Number(month)}/${Number(day)}`;
+    const timeText = [schedule.timeSlot, schedule.exactTime].filter(Boolean).join(' ');
+    return timeText ? `${dateText} | ${timeText}` : dateText;
+  }
+
+  return schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : '';
+};
+
 const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus }) => {
   const [scores, setScores] = useState(['', '', '', '', '']);
   const [deduction, setDeduction] = useState('');
@@ -831,7 +842,7 @@ const CompetitionScoreEntryPage = () => {
               {schedule?.name} - 成绩录入
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
-              {schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} | {schedule?.location}
+              {formatScheduleTime(schedule)}
             </Typography>
           </Box>
           <Box>
@@ -868,9 +879,7 @@ const CompetitionScoreEntryPage = () => {
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
                <Typography variant="h4" align="center" gutterBottom>{schedule?.name} - 成绩单</Typography>
                <Typography variant="subtitle1" align="center" gutterBottom>
-                 日期：{schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} 
-                 &nbsp;&nbsp;|&nbsp;&nbsp; 
-                 地点：{schedule?.location}
+                 日期及時間：{formatScheduleTime(schedule)}
                </Typography>
             </Box>
 
