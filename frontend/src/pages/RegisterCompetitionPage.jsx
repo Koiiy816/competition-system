@@ -86,6 +86,7 @@ const RegisterCompetitionPage = () => {
   const [photoError, setPhotoError] = useState('');
   const [registrants, setRegistrants] = useState([]);
   const [selectedEvents, setSelectedEvents] = useState(['']);
+  const [selectedEventDetails, setSelectedEventDetails] = useState({});
   
   // 表单数据
   const [formData, setFormData] = useState({
@@ -248,8 +249,9 @@ const RegisterCompetitionPage = () => {
       }).map(event => ({
         category: event.category || '',
         name: event.name,
-        displayName: event.name,
-        isGroupEvent: event.isGroupEvent || false
+        displayName: event.displayName || event.name,
+        isGroupEvent: event.isGroupEvent || false,
+        registrationDetail: event.registrationDetail || {}
       }));
     }
 
@@ -549,14 +551,41 @@ const RegisterCompetitionPage = () => {
   };
   
   const handleEventSelectionChange = (index, value) => {
-    setSelectedEvents(prev => prev.map((event, eventIndex) => eventIndex === index ? value : event));
+    setSelectedEvents(prev => {
+      const previousEvent = prev[index];
+      if (previousEvent && previousEvent !== value) {
+        setSelectedEventDetails(current => {
+          const next = { ...current };
+          delete next[previousEvent];
+          return next;
+        });
+      }
+      return prev.map((event, eventIndex) => eventIndex === index ? value : event);
+    });
     if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
+  };
+
+  const handleEventDetailChange = (eventName, value) => {
+    setSelectedEventDetails(prev => ({ ...prev, [eventName]: value }));
+    if (formErrors[`eventDetails.${eventName}`]) {
+      setFormErrors(prev => ({ ...prev, [`eventDetails.${eventName}`]: '' }));
+    }
   };
 
   const addEventSelection = () => setSelectedEvents(prev => [...prev, '']);
 
   const removeEventSelection = (index) => {
-    setSelectedEvents(prev => prev.length === 1 ? [''] : prev.filter((_, eventIndex) => eventIndex !== index));
+    setSelectedEvents(prev => {
+      const removedEvent = prev[index];
+      if (removedEvent) {
+        setSelectedEventDetails(current => {
+          const next = { ...current };
+          delete next[removedEvent];
+          return next;
+        });
+      }
+      return prev.length === 1 ? [''] : prev.filter((_, eventIndex) => eventIndex !== index);
+    });
     if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
   };
 
@@ -595,6 +624,12 @@ const RegisterCompetitionPage = () => {
     if (!selectedEvents.some(event => event && event.trim())) {
       errors.events = '请至少选择一个比赛项目';
     }
+    selectedEvents.filter(Boolean).forEach(eventName => {
+      const eventConfig = getAvailableEvents().find(event => event.name === eventName);
+      if (eventConfig?.registrationDetail?.required && !selectedEventDetails[eventName]?.trim()) {
+        errors[`eventDetails.${eventName}`] = eventConfig.registrationDetail.label || '请填写项目详情';
+      }
+    });
     
     // 验证其他必填字段
     // 这里可以根据比赛的具体要求添加更多验证
@@ -611,11 +646,20 @@ const RegisterCompetitionPage = () => {
     const baseId = `${Date.now()}-${Math.random()}`;
     setRegistrants(prev => [...prev, ...events.map((event, index) => ({
       id: `${baseId}-${index}`,
-      data: { ...formData, event, additionalInfo: { ...formData.additionalInfo } },
+      data: {
+        ...formData,
+        event,
+        additionalInfo: {
+          ...formData.additionalInfo,
+          eventDetail: selectedEventDetails[event] || '',
+          eventDetailLabel: getAvailableEvents().find(item => item.name === event)?.registrationDetail?.label || ''
+        }
+      },
       photo: selectedPhoto
     }))]);
     setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', insuranceConfirmed: false, additionalInfo: { notes: '' } }));
     setSelectedEvents(['']);
+    setSelectedEventDetails({});
     setSelectedPhoto(null); setFormErrors({}); setError('');
   };
 
@@ -931,9 +975,13 @@ const RegisterCompetitionPage = () => {
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Typography variant="subtitle1" gutterBottom>比赛项目</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>同一名运动员可一次选择多个项目，无需重复填写个人资料。</Typography>
-            {selectedEvents.map((selectedEvent, index) => (
-              <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
-                <FormControl fullWidth required error={!!formErrors.events}>
+            {selectedEvents.map((selectedEvent, index) => {
+              const selectedEventConfig = getAvailableEvents().find(event => event.name === selectedEvent);
+              const detailConfig = selectedEventConfig?.registrationDetail;
+              return (
+              <Box key={index} sx={{ mb: 1.5 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <FormControl fullWidth required error={!!formErrors.events}>
                   <InputLabel id={'event-label-' + index}>{'比赛项目' + ' ' + (index + 1)}</InputLabel>
                   <Select
                     labelId={'event-label-' + index}
@@ -949,10 +997,26 @@ const RegisterCompetitionPage = () => {
                       </MenuItem>
                     ))}
                   </Select>
-                </FormControl>
-                {selectedEvents.length > 1 && <Button color="error" onClick={() => removeEventSelection(index)}>删除</Button>}
+                  </FormControl>
+                  {selectedEvents.length > 1 && <Button color="error" onClick={() => removeEventSelection(index)}>删除</Button>}
+                </Box>
+                {selectedEvent && detailConfig?.required && (
+                  <TextField
+                    fullWidth
+                    required
+                    sx={{ mt: 1 }}
+                    label={detailConfig.label || '项目详情'}
+                    placeholder={detailConfig.placeholder || '请填写具体项目名称'}
+                    value={selectedEventDetails[selectedEvent] || ''}
+                    onChange={(event) => handleEventDetailChange(selectedEvent, event.target.value)}
+                    error={!!formErrors[`eventDetails.${selectedEvent}`]}
+                    helperText={formErrors[`eventDetails.${selectedEvent}`] || '此内容会与该报名项目一并保存，供编排和成绩分组使用。'}
+                    inputProps={{ maxLength: detailConfig.maxLength || 100 }}
+                  />
+                )}
               </Box>
-            ))}
+              );
+            })}
             {formErrors.events && <FormHelperText error>{formErrors.events}</FormHelperText>}
             {!formData.grade && <FormHelperText>请先选择年龄组别</FormHelperText>}
             {formData.grade && getAvailableEvents().length === 0 && <FormHelperText>该组别暂无可选项目</FormHelperText>}

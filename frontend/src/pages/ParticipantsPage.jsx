@@ -547,6 +547,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           '身份证号': p.idCard || '-',
           '年龄组别': p.ageGroup || p.grade || '-',
           '比赛项目': p.event || '-',
+          '项目详情': p.additionalInfo?.eventDetail || '-',
           '代表单位': p.schoolName || '-',
           '领队': p.teamLeader || '-',
           '领队电话': p.leaderPhone || '-',
@@ -575,6 +576,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         { wch: 20 }, // 身份证号
         { wch: 15 }, // 年龄组别
         { wch: 25 }, // 比赛项目
+        { wch: 30 }, // 项目详情
         { wch: 25 }, // 代表单位
         { wch: 12 }, // 领队
         { wch: 15 }, // 领队电话

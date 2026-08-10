@@ -135,6 +135,19 @@ const CompetitionSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     },
+    // 部分项目需要报名人补充具体套路、器械或组合说明，不能只依赖通用备注。
+    registrationDetail: {
+      required: {
+        type: Boolean,
+        default: false
+      },
+      label: String,
+      placeholder: String,
+      maxLength: {
+        type: Number,
+        default: 100
+      }
+    },
     countInTeamScore: {
       type: Boolean,
       default: true // 传统项目设为false
