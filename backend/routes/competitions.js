@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { check } = require('express-validator');
 const competitionController = require('../controllers/competitionController');
-const { protect: auth, authorize } = require('../middlewares/authMiddleware');
+const { protect: auth, optionalAuth, authorize } = require('../middlewares/authMiddleware');
 const { uploadRegistrationForm } = require('../middlewares/uploadMiddleware');
 
 // 重新导入嵌套路由
@@ -20,7 +20,7 @@ router.use('/:competitionId/templates', templateRoutes);
 // @route   GET api/competitions
 // @desc    获取所有比赛
 // @access  公开
-router.get('/', competitionController.getCompetitions);
+router.get('/', optionalAuth, competitionController.getCompetitions);
 
 // @route   GET api/competitions/statuses
 // @desc    获取比赛状态列表
@@ -38,7 +38,7 @@ router.get('/my-competitions', auth, competitionController.getUserCompetitions);
 // @route   GET api/competitions/:id
 // @desc    通过ID获取单个比赛
 // @access  公开
-router.get('/:id', competitionController.getCompetition);
+router.get('/:id', optionalAuth, competitionController.getCompetition);
 
 // @route   GET api/competitions/:id/public-details
 // @desc    获取比赛详细信息（公开，所有人可见）

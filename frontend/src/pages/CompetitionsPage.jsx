@@ -112,7 +112,10 @@ const CompetitionsPage = () => {
         }
         
         const response = await competitionService.getCompetitions(params);
-        setCompetitions(response.data);
+        const visibleCompetitions = isAdmin
+          ? response.data
+          : response.data.filter((competition) => ['registration', 'ongoing'].includes(competition.status));
+        setCompetitions(visibleCompetitions);
         setTotalPages(Math.ceil(response.total / 9));
       } catch (error) {
         console.error('获取比赛列表失败 - 详细错误:', error);

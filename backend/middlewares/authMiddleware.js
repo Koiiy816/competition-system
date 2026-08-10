@@ -50,6 +50,17 @@ const protect = async (req, res, next) => {
  * 检查用户角色的中间件
  * @param {...String} roles - 允许访问的角色列表
  */
+const optionalAuth = (req, res, next) => {
+  const hasBearerToken = req.headers.authorization
+    && req.headers.authorization.startsWith('Bearer');
+
+  if (!hasBearerToken) {
+    return next();
+  }
+
+  return protect(req, res, next);
+};
+
 const authorize = (...roles) => {
   const flatRoles = roles.flat();
   return (req, res, next) => {
@@ -78,4 +89,4 @@ const authorize = (...roles) => {
   };
 };
 
-module.exports = { protect, authorize };
+module.exports = { protect, optionalAuth, authorize };

@@ -2,6 +2,10 @@ const Competition = require('../models/Competition');
 const path = require('path');
 const fs = require('fs');
 
+const PUBLIC_COMPETITION_STATUSES = ['registration', 'ongoing'];
+
+const isAdminUser = (user) => Array.isArray(user?.roles) && user.roles.includes('admin');
+
 /**
  * @desc    获取所有比赛
  * @route   GET /api/competitions
@@ -67,6 +71,16 @@ exports.getCompetitions = async (req, res, next) => {
     }
 
     // 分页
+    // 參賽單位與未登入訪客只可查看已公開的比賽；此限制不能只放在前端。
+    if (!isAdminUser(req.user)) {
+      const requestedStatuses = Array.isArray(query.status?.$in)
+        ? query.status.$in
+        : (typeof query.status === 'string' ? [query.status] : PUBLIC_COMPETITION_STATUSES);
+      query.status = {
+        $in: requestedStatuses.filter((status) => PUBLIC_COMPETITION_STATUSES.includes(status))
+      };
+    }
+
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const startIndex = (page - 1) * limit;
@@ -135,6 +149,13 @@ exports.getCompetition = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: `未找到ID为${req.params.id}的比赛`
+      });
+    }
+
+    if (!isAdminUser(req.user) && !PUBLIC_COMPETITION_STATUSES.includes(competition.status)) {
+      return res.status(404).json({
+        success: false,
+        message: '未找到該比賽'
       });
     }
 
