@@ -110,16 +110,9 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave,
     const filledScores = activeScores.filter(s => s !== '').map(parseFloat);
     
     if (filledScores.length > 0) {
-      if (judgeCount === 5 && filledScores.length === 5) {
-        // 5裁判模式：去掉最高分和最低分，取平均
-        const sorted = [...filledScores].sort((a, b) => a - b);
-        const sum = sorted.slice(1, 4).reduce((a, b) => a + b, 0);
-        totalCalculated = (sum / 3);
-      } else {
-        // 还没填满时的临时平均分
-        const sum = filledScores.reduce((a, b) => a + b, 0);
-        totalCalculated = (sum / filledScores.length);
-      }
+      // 所有已填寫裁判分數直接取平均；5 位裁判時亦不去除最高、最低分。
+      const sum = filledScores.reduce((a, b) => a + b, 0);
+      totalCalculated = (sum / filledScores.length);
     }
     const numericDeduction = parseFloat(deduction) || 0;
     // 这里把 deduction 的逻辑改成直接相加，因为我们要支持加分（正数）和减分（负数）

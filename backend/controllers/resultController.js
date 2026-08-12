@@ -90,12 +90,7 @@ function calculateFinalScore(scores, deduction, judgeCount) {
   const activeScores = scores.slice(0, judgeCount).filter(score => score > 0);
   if (activeScores.length === 0) return 0;
 
-  if (judgeCount === 5 && activeScores.length === 5) {
-    const sortedScores = [...activeScores].sort((a, b) => a - b);
-    const middleScores = sortedScores.slice(1, 4);
-    return middleScores.reduce((sum, score) => sum + score, 0) / middleScores.length + deduction;
-  }
-
+  // 所有有效裁判分數直接取平均；5 位裁判時亦不去除最高、最低分。
   return activeScores.reduce((sum, score) => sum + score, 0) / activeScores.length + deduction;
 }
 
