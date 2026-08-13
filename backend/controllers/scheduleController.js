@@ -99,6 +99,8 @@ exports.generateStartList = async (req, res, next) => {
       }
       
       // 检查是否为集体项目
+      const eventDetail = String(p.additionalInfo?.eventDetail || '').trim();
+      const scheduleEvent = eventDetail ? `${event}｜${eventDetail}` : event;
       const eventConfig = competition.events?.find(e => e.name === event);
       
       // 容错处理：即使用户在创建比赛时忘记勾选“集体项目”，只要名称或组别里带有“集体”字眼，我们也认为是集体项目
@@ -165,7 +167,9 @@ exports.generateStartList = async (req, res, next) => {
         // 个人项目：正常加入
         if (!groups[key]) {
           groups[key] = {
-            event,
+            event: scheduleEvent,
+            sourceEvent: event,
+            eventDetail,
             ageGroup,
             gender,
             participants: []
@@ -284,7 +288,7 @@ exports.generateStartList = async (req, res, next) => {
       const shuffled = [...normalIds, ...testIds];
 
       // 如果是合并项目，需要拆分成独立的子赛程
-      const eventConfig = competition.events?.find(e => e.name === group.event);
+      const eventConfig = competition.events?.find(e => e.name === (group.sourceEvent || group.event));
       if (eventConfig && eventConfig.isCombinedEvent && eventConfig.subEvents?.length > 0) {
         for (const subEventName of eventConfig.subEvents) {
           if (!subEventName) continue;
@@ -967,6 +971,8 @@ exports.syncNewParticipants = async (req, res, next) => {
         event = event.replace('集体混合', '集体项目');
       }
       
+      const eventDetail = String(p.additionalInfo?.eventDetail || '').trim();
+      const scheduleEvent = eventDetail ? `${event}｜${eventDetail}` : event;
       const eventConfig = competition.events?.find(e => e.name === event);
       const isGroup = (eventConfig && eventConfig.isGroupEvent) || event.includes('集体') || ageGroup.includes('集体');
       
@@ -999,9 +1005,9 @@ exports.syncNewParticipants = async (req, res, next) => {
       else if (gender === '男' || gender === 'male') normalizedGender = 'male';
 
       if (finalAgeGroup.includes('混合') || event.includes('混合') || isForceMixedGroup) {
-        key = `${event}|${finalAgeGroup}|mixed`;
+        key = `${scheduleEvent}|${finalAgeGroup}|mixed`;
       } else {
-        key = `${event}|${finalAgeGroup}|${normalizedGender}`;
+        key = `${scheduleEvent}|${finalAgeGroup}|${normalizedGender}`;
       }
       
       if (isGroup) {
