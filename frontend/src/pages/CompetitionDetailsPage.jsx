@@ -19,6 +19,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import DownloadIcon from '@mui/icons-material/Download';
 import ShuffleIcon from '@mui/icons-material/Shuffle';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import competitionService from '../services/competitionService';
 import EventItem from '../components/competitions/EventItem';
 import { useAuth } from '../contexts/AuthContext';
@@ -976,6 +977,16 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                 sx={{ mr: 1 }}
               >
                 比赛打分
+              </Button>
+            )}
+            {(isAdmin || isChiefReferee) && competition?.awardRules?.enabled && (
+              <Button
+                variant="outlined"
+                startIcon={<EmojiEventsIcon />}
+                onClick={() => navigate(`/competitions/${id}/awards`)}
+                sx={{ mr: 1 }}
+              >
+                {'\u734e\u9879\u7edf\u8ba1'}
               </Button>
             )}
             {(isAdmin || isChiefReferee) && (

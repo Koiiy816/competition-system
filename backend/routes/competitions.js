@@ -10,12 +10,14 @@ const scheduleRoutes = require('./schedules');
 const resultRoutes = require('./results');
 const participantRoutes = require('./participants');
 const templateRoutes = require('./templates');
+const awardRoutes = require('./awards');
 
 // 使用嵌套路由
 router.use('/:competitionId/schedules', scheduleRoutes);
 router.use('/:competitionId/results', resultRoutes);
 router.use('/:competitionId/participants', participantRoutes);
 router.use('/:competitionId/templates', templateRoutes);
+router.use('/:competitionId/awards', awardRoutes);
 
 // @route   GET api/competitions
 // @desc    获取所有比赛

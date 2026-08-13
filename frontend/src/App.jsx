@@ -34,6 +34,7 @@ import CheckInPage from './pages/CheckInPage';
 import CompetitionCheckInPage from './pages/CompetitionCheckInPage';
 import CompetitionCheckInEntryPage from './pages/CompetitionCheckInEntryPage';
 import ResultsPage from './pages/ResultsPage';
+import AwardManagementPage from './pages/AwardManagementPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
@@ -207,6 +208,14 @@ function App() {
             </ProtectedRoute>
           }>
             <Route index element={<CompetitionCheckInEntryPage />} />
+          </Route>
+
+          <Route path="/competitions/:id/awards" element={
+            <ProtectedRoute allowedRoles={['admin', 'chief_referee']}>
+              <MainLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<AwardManagementPage />} />
           </Route>
 
           {/* 我的报名 (参赛单位) */}
