@@ -16,6 +16,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import DeleteIcon from '@mui/icons-material/Delete';
+import PreviewIcon from '@mui/icons-material/Preview';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
@@ -215,6 +216,9 @@ const CompetitionScheduleManagementPage = () => {
 
   const [hasOrderChanges, setHasOrderChanges] = useState(false);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [groupPreviewOpen, setGroupPreviewOpen] = useState(false);
+  const [groupPreviewLoading, setGroupPreviewLoading] = useState(false);
+  const [groupPreview, setGroupPreview] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -262,6 +266,21 @@ const CompetitionScheduleManagementPage = () => {
       setError(err.message || '生成失败');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handlePreviewGroups = async () => {
+    setGroupPreviewOpen(true);
+    setGroupPreviewLoading(true);
+    setError('');
+    try {
+      const response = await scheduleService.getGroupPreview(id);
+      setGroupPreview(response.data || []);
+    } catch (err) {
+      setGroupPreview([]);
+      setError(err.message || '读取项目分组预览失败');
+    } finally {
+      setGroupPreviewLoading(false);
     }
   };
 
@@ -506,6 +525,16 @@ const CompetitionScheduleManagementPage = () => {
               </Button>
             )}
             
+            {isAdminOrOrganizer && (
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<PreviewIcon />}
+                onClick={handlePreviewGroups}
+              >
+                预览项目分组
+              </Button>
+            )}
             {isAdminOrOrganizer && (
               <Button
                 variant="contained"
@@ -771,6 +800,28 @@ const CompetitionScheduleManagementPage = () => {
         onClose={handleCloseAssignDialog}
         onSave={handleAssignSave}
       />
+      <Dialog open={groupPreviewOpen} onClose={() => setGroupPreviewOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>项目分组预览</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>此预览不会创建赛程、不会打乱出场顺序，也不会修改任何报名资料。请先在参赛者编辑页填写「人工项目分组」，确认无误后再生成出场顺序。</Alert>
+          {groupPreviewLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}><CircularProgress /></Box> : (
+            groupPreview.length === 0 ? <Typography color="text.secondary">暂无可预览的参赛者。</Typography> : (
+              <List dense>
+                {groupPreview.map((group) => <React.Fragment key={group.key}>
+                  <ListItem alignItems="flex-start">
+                    <ListItemText
+                      primary={<><Typography component="span" fontWeight={700}>{group.name}</Typography><Chip label={`${group.count}人`} size="small" color="primary" sx={{ ml: 1 }} /></>}
+                      secondary={group.participants.map((participant) => `${participant.name}（${participant.schoolName}）`).join('、')}
+                    />
+                  </ListItem>
+                  <Divider component="li" />
+                </React.Fragment>)}
+              </List>
+            )
+          )}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setGroupPreviewOpen(false)}>关闭</Button></DialogActions>
+      </Dialog>
 
       {/* 打印专用区域 */}
       <Box 

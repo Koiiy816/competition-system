@@ -22,6 +22,14 @@ router.get(
   scheduleController.getSchedules
 );
 
+// @route   GET api/competitions/:competitionId/schedules/group-preview
+// @desc    预览人工项目分组（不创建赛程）
+router.get(
+  '/group-preview',
+  auth, authorize('admin', 'chief_referee'),
+  scheduleController.previewGroups
+);
+
 // @route   PUT api/competitions/:competitionId/schedules/bulk/order
 // @desc    批量更新赛程排序
 // @access  私有/管理员、主裁

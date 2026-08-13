@@ -34,6 +34,51 @@ function mergeUndersizedAgeGroups(groups, competition) {
   return groups;
 }
 
+/**
+ * 仅供管理员核对的分组预览：不创建赛程、不写入数据库、不随机排序。
+ */
+exports.previewGroups = async (req, res, next) => {
+  try {
+    const { competitionId } = req.params;
+    const competition = await Competition.findById(competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+
+    const participants = await Participant.find({ competition: competitionId, isVirtualTeam: { $ne: true } })
+      .select('name schoolName event ageGroup grade gender manualEventGroup remark status')
+      .sort({ event: 1, ageGroup: 1, gender: 1, name: 1 });
+    const groups = new Map();
+
+    participants.forEach((participant) => {
+      const sourceEvent = String(participant.event || '未填写项目').trim();
+      const groupEvent = String(participant.manualEventGroup || '').trim() || sourceEvent;
+      const ageGroup = String(participant.ageGroup || participant.grade || '未填写年龄组').trim();
+      const eventConfig = competition.events?.find((event) => event.name === sourceEvent);
+      const isMixed = sourceEvent.includes('混合') || sourceEvent.includes('集体') || ageGroup.includes('集体') || eventConfig?.isGroupEvent;
+      const gender = isMixed ? 'mixed' : (participant.gender === 'female' ? 'female' : participant.gender === 'male' ? 'male' : 'unknown');
+      const genderLabel = gender === 'male' ? '男子' : gender === 'female' ? '女子' : gender === 'mixed' ? '混合' : '未填写性别';
+      const key = [groupEvent, ageGroup, gender].join('|');
+      if (!groups.has(key)) {
+        groups.set(key, { key, event: groupEvent, sourceEvent, ageGroup, gender, genderLabel, participants: [] });
+      }
+      groups.get(key).participants.push({
+        _id: participant._id,
+        name: participant.name,
+        schoolName: participant.schoolName || '-',
+        manualEventGroup: participant.manualEventGroup || '',
+        remark: participant.remark || ''
+      });
+    });
+
+    const data = [...groups.values()]
+      .sort((a, b) => a.event.localeCompare(b.event, 'zh-CN') || a.ageGroup.localeCompare(b.ageGroup, 'zh-CN') || a.gender.localeCompare(b.gender))
+      .map((group) => ({ ...group, count: group.participants.length, name: `${group.ageGroup} ${group.gender === 'mixed' ? '' : group.genderLabel} ${group.event}`.replace(/\s+/g, ' ').trim() }));
+
+    res.status(200).json({ success: true, data, totalParticipants: participants.length });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 /**
  * @desc    自动生成赛程（出场顺序）

@@ -40,6 +40,15 @@ const scheduleService = {
     }
   },
 
+  getGroupPreview: async (competitionId) => {
+    try {
+      const response = await api.get(`/competitions/${competitionId}/schedules/group-preview`);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '读取项目分组预览失败' };
+    }
+  },
+
   /**
    * 获取单个赛程详情
    * @param {string} competitionId - 比赛ID
