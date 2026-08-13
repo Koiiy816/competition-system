@@ -261,9 +261,32 @@ const CompetitionSchema = new mongoose.Schema({
   // 评分规则配置
   awardRules: {
     enabled: { type: Boolean, default: false },
+    // legacy_percentage: all completed competitors are divided into award levels by rank.
+    // top3_then_percentage: ranks 1-3 are named places; the rest receive graded awards.
+    mode: {
+      type: String,
+      enum: ['legacy_percentage', 'top3_then_percentage'],
+      default: 'legacy_percentage'
+    },
+    rankAwardCount: { type: Number, default: 3 },
+    minParticipantsForRanking: { type: Number, default: 3 },
     firstPrizePercent: { type: Number, default: 30 },
     secondPrizePercent: { type: Number, default: 60 },
+    remainingPrizePercents: {
+      first: { type: Number, default: 50 },
+      second: { type: Number, default: 30 },
+      third: { type: Number, default: 20 }
+    },
     teamPoints: { type: [Number], default: [8, 7, 6, 5, 4, 3, 2, 1] },
+    teamAwardPoints: {
+      rank1: { type: Number, default: 6 },
+      rank2: { type: Number, default: 5 },
+      rank3: { type: Number, default: 4 },
+      firstPrize: { type: Number, default: 3 },
+      secondPrize: { type: Number, default: 2 },
+      thirdPrize: { type: Number, default: 1 }
+    },
+    teamMinEventsPerParticipant: { type: Number, default: 2 },
     mergeGroupsBelow: { type: Number, default: 3 }
   },
   scoringRules: {

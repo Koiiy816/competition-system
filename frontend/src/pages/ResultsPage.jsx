@@ -200,6 +200,77 @@ const isLuohuExcludedTeamScoreEvent = (scheduleName = '') => {
 
 const isPercentAwardCompetition = (competition) => Boolean(competition?.awardRules?.enabled);
 
+const isTop3ThenPercentageCompetition = (competition) => (
+  isPercentAwardCompetition(competition)
+  && competition?.awardRules?.mode === 'top3_then_percentage'
+);
+
+const getCompletedFormalResultCount = (scheduleResults = []) => (
+  scheduleResults.filter(result => !result.participant?.isTest && !result.details?.isAbsent).length
+);
+
+const getRemainingAwardCounts = (remainingCount, competition) => {
+  if (remainingCount <= 0) return { first: 0, second: 0, third: 0 };
+
+  const configured = competition?.awardRules?.remainingPrizePercents || {};
+  const weights = [
+    { key: 'first', weight: Number(configured.first ?? 50) },
+    { key: 'second', weight: Number(configured.second ?? 30) },
+    { key: 'third', weight: Number(configured.third ?? 20) }
+  ];
+  const totalWeight = weights.reduce((sum, item) => sum + Math.max(0, item.weight), 0) || 100;
+  const counts = { first: 0, second: 0, third: 0 };
+  const remainders = [];
+  let assigned = 0;
+
+  weights.forEach((item, index) => {
+    const raw = remainingCount * Math.max(0, item.weight) / totalWeight;
+    counts[item.key] = Math.floor(raw);
+    assigned += counts[item.key];
+    remainders.push({ index, key: item.key, fraction: raw - Math.floor(raw) });
+  });
+
+  remainders.sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (let index = 0; index < remainingCount - assigned; index += 1) {
+    counts[remainders[index % remainders.length].key] += 1;
+  }
+  return counts;
+};
+
+const getTop3ThenPercentageAwardLevel = (rank, completedCount, competition) => {
+  if (!rank || rank === '-' || rank === '\u6d4b\u8bd5' || completedCount <= 0) return null;
+  const rankAwardCount = Number(competition?.awardRules?.rankAwardCount ?? 3);
+  const minimum = Number(competition?.awardRules?.minParticipantsForRanking ?? 3);
+  const hasRanking = completedCount >= minimum;
+
+  if (hasRanking && rank <= rankAwardCount) return `\u7b2c${rank}\u540d`;
+
+  const remainingStart = hasRanking ? rankAwardCount + 1 : 1;
+  const remainingRank = rank - remainingStart + 1;
+  const remainingCount = Math.max(0, completedCount - (hasRanking ? rankAwardCount : 0));
+  if (remainingRank < 1 || remainingRank > remainingCount) return null;
+
+  const counts = getRemainingAwardCounts(remainingCount, competition);
+  if (remainingRank <= counts.first) return '\u4e00\u7b49\u5956';
+  if (remainingRank <= counts.first + counts.second) return '\u4e8c\u7b49\u5956';
+  return '\u4e09\u7b49\u5956';
+};
+
+const getTop3ThenPercentageTeamPoints = (rank, awardLevel, competition) => {
+  const points = competition?.awardRules?.teamAwardPoints || {};
+  if (awardLevel === '\u4e00\u7b49\u5956') return Number(points.firstPrize ?? 3);
+  if (awardLevel === '\u4e8c\u7b49\u5956') return Number(points.secondPrize ?? 2);
+  if (awardLevel === '\u4e09\u7b49\u5956') return Number(points.thirdPrize ?? 1);
+  if (rank === 1) return Number(points.rank1 ?? 6);
+  if (rank === 2) return Number(points.rank2 ?? 5);
+  if (rank === 3) return Number(points.rank3 ?? 4);
+  return 0;
+};
+
+const getParticipantScoreKey = (participant) => (
+  participant?._id || `${participant?.name || ''}__${participant?.schoolName || participant?.teamName || ''}`
+);
+
 const getPercentAwardLevel = (rank, formalCount, competition) => {
   if (!rank || rank === '-' || rank === '\u6d4b\u8bd5' || formalCount <= 0) return null;
   const firstLimit = Math.max(1, Math.ceil(formalCount * ((competition?.awardRules?.firstPrizePercent ?? 30) / 100)));
@@ -674,6 +745,33 @@ const ResultsPage = () => {
     }
 
     const teamScores = {};
+    const eligibleTeamParticipantKeys = new Set();
+    const selectedCompetitionForRules = competitions.find(c => c._id === filters.competitionId);
+
+    // This competition only adds an athlete's points to the team total when the
+    // athlete has completed at least the configured number of individual events.
+    if (isTop3ThenPercentageCompetition(selectedCompetitionForRules)) {
+      const completedIndividualSchedules = new Map();
+      Object.entries(grouped).forEach(([scheduleName, scheduleResults]) => {
+        if (!isIndividualScoringSchedule(scheduleName)) return;
+        const seenInSchedule = new Set();
+        scheduleResults.forEach(result => {
+          if (result.participant?.isTest || result.details?.isAbsent) return;
+          const participantKey = getParticipantScoreKey(result.participant);
+          if (participantKey) seenInSchedule.add(participantKey);
+        });
+        seenInSchedule.forEach(participantKey => {
+          completedIndividualSchedules.set(
+            participantKey,
+            (completedIndividualSchedules.get(participantKey) || 0) + 1
+          );
+        });
+      });
+      const minimumEvents = Number(selectedCompetitionForRules?.awardRules?.teamMinEventsPerParticipant ?? 2);
+      completedIndividualSchedules.forEach((count, participantKey) => {
+        if (count >= minimumEvents) eligibleTeamParticipantKeys.add(participantKey);
+      });
+    }
 
     Object.keys(grouped).forEach(scheduleName => {
       const scheduleResults = grouped[scheduleName];
@@ -708,11 +806,15 @@ const ResultsPage = () => {
           }
         }
       const percentAwardMode = isPercentAwardCompetition(selectedCompetition);
+      const top3ThenPercentageMode = isTop3ThenPercentageCompetition(selectedCompetition);
       if (percentAwardMode) basePoints = selectedCompetition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
 
 
       const formalCount = getFormalResultCount(scheduleResults);
-      const admissionCount = percentAwardMode ? Math.min(8, formalCount) : getAdmissionCount(selectedCompetition, scheduleName, scheduleResults);
+      const completedFormalCount = getCompletedFormalResultCount(scheduleResults);
+      const admissionCount = top3ThenPercentageMode
+        ? Math.min(Number(selectedCompetition.awardRules?.rankAwardCount ?? 3), completedFormalCount)
+        : (percentAwardMode ? Math.min(8, formalCount) : getAdmissionCount(selectedCompetition, scheduleName, scheduleResults));
       const luohuTeamRule = shouldCountForTeamRanking(selectedCompetition, scheduleName, scheduleResults);
 
       let currentRankIndex = 0; // 0-7，对应1-8名
@@ -763,9 +865,16 @@ const ResultsPage = () => {
         if (normalMembers.length > 0) {
           const tieCount = normalMembers.length;
           const displayRank = currentRankIndex + 1;
-          const awardLevel = percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null;
+          const awardLevel = top3ThenPercentageMode
+            ? getTop3ThenPercentageAwardLevel(displayRank, completedFormalCount, selectedCompetition)
+            : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null);
           const isWithinAdmissionRange = percentAwardMode ? Boolean(awardLevel) : displayRank <= admissionCount;
-          const isWithinTeamPointsRange = percentAwardMode ? displayRank <= 8 : isWithinAdmissionRange;
+          const top3TeamPoints = top3ThenPercentageMode
+            ? getTop3ThenPercentageTeamPoints(displayRank, awardLevel, selectedCompetition)
+            : null;
+          const isWithinTeamPointsRange = top3ThenPercentageMode
+            ? top3TeamPoints > 0
+            : (percentAwardMode ? displayRank <= 8 : isWithinAdmissionRange);
           let totalPointsForTies = 0;
           let actualPointsAwarded = 0;
 
@@ -777,7 +886,9 @@ const ResultsPage = () => {
           }
           
           // 并列名次得分：空出名次的分值相加后的平均数
-          const averagePoints = actualPointsAwarded > 0 ? totalPointsForTies / tieCount : 0;
+          const averagePoints = top3ThenPercentageMode
+            ? top3TeamPoints
+            : (actualPointsAwarded > 0 ? totalPointsForTies / tieCount : 0);
 
           // 分配分数并设置显示名次
           normalMembers.forEach(result => {
@@ -795,7 +906,11 @@ const ResultsPage = () => {
 
             // 团体分计入逻辑
             let shouldCountForTeam = false;
-            if (percentAwardMode) {
+            if (top3ThenPercentageMode) {
+              shouldCountForTeam = isIndividualScoringSchedule(scheduleName)
+                && eligibleTeamParticipantKeys.has(getParticipantScoreKey(result.participant))
+                && averagePoints > 0;
+            } else if (percentAwardMode) {
               shouldCountForTeam = isIndividualScoringSchedule(scheduleName) && averagePoints > 0;
             } else if (isLuohuTraditionalCompetition(selectedCompetition)) {
               shouldCountForTeam = luohuTeamRule === true && averagePoints > 0;
