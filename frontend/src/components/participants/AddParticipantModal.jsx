@@ -33,6 +33,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     name: '',
     schoolName: '',
     event: '',
+    manualEventGroup: '',
     grade: '',
     gender: '',
     idCard: '',
@@ -85,6 +86,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 name: editData.type === 'team' ? (editData.members?.[0]?.name || '') : editData.name || '',
                 schoolName: editData.schoolName || editData.teamName || '',
                 event: editData.event || '',
+                manualEventGroup: editData.manualEventGroup || '',
                 grade: editData.grade || editData.ageGroup || '',
                 gender: editData.gender || '',
                 idCard: editData.idCard || '',
@@ -116,6 +118,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
         name: '',
         schoolName: '',
         event: '',
+        manualEventGroup: '',
         grade: '',
         gender: '',
         idCard: '',
@@ -399,6 +402,18 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 </Select>
                 {errors.event && <FormHelperText>{errors.event}</FormHelperText>}
               </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="人工项目分组（可选）"
+                name="manualEventGroup"
+                value={formData.manualEventGroup}
+                onChange={handleChange}
+                inputProps={{ maxLength: 150 }}
+                helperText="仅在管理员人工填写时用于赛程分组；不会读取备注自动分组。示例：其他传统拳术｜洪拳。留空则按上方比赛项目分组。"
+              />
             </Grid>
 
             <Grid item xs={12} sm={6}>

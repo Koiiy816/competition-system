@@ -43,6 +43,12 @@ const ParticipantSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, '比赛项目不能超过100个字符']
   },
+  // 管理员依据报名资料人工指定的赛程分组名称；不读取备注自动生成。
+  manualEventGroup: {
+    type: String,
+    trim: true,
+    maxlength: [150, '人工项目分组不能超过150个字符']
+  },
   // 是否为测试人员（不计入排名和团体分）
   isTest: {
     type: Boolean,
