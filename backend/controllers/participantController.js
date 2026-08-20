@@ -249,13 +249,14 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
     const csvRows = [['\u5e8f\u53f7', '\u59d3\u540d', '\u6240\u5c5e\u5355\u4f4d', '\u6027\u522b', '\u5e74\u9f84\u7ec4\u522b', '\u53c2\u8d5b\u9879\u76ee', '\u9886\u961f', '\u6559\u7ec3', '\u62a5\u540d\u72b6\u6001', '\u7167\u7247\u6587\u4ef6']];
     let photoNumber = 0;
     const uniqueParticipants = new Set();
-    const exportedPhotoFiles = new Set();
-    const exportedAthletePhotos = new Set();
+    const photoEntryByFile = new Map();
+    const photoEntryByAthlete = new Map();
     participants.forEach((participant, index) => {
       let photoEntry = '';
       const identityKey = participantIdentityKey(participant);
       uniqueParticipants.add(identityKey);
-      const photoAlreadyExported = exportedPhotoFiles.has(participant.photoFile) || exportedAthletePhotos.has(identityKey);
+      const existingPhotoEntry = photoEntryByFile.get(participant.photoFile) || photoEntryByAthlete.get(identityKey) || '';
+      const photoAlreadyExported = Boolean(existingPhotoEntry);
       if (participant.photoFile && !photoAlreadyExported) {
         const photoPath = path.join(__dirname, '..', 'uploads', 'participant-photos', participant.photoFile);
         if (fs.existsSync(photoPath)) {
@@ -264,11 +265,11 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
           const displayName = String(participant.name || participant.teamName || ('participant_' + (index + 1))).replace(/[\\/:*?"<>|]/g, '_');
           photoEntry = 'photos/' + String(photoNumber).padStart(3, '0') + '_' + displayName + extension;
           archive.file(photoPath, { name: photoEntry });
-          exportedPhotoFiles.add(participant.photoFile);
-          exportedAthletePhotos.add(identityKey);
+          photoEntryByFile.set(participant.photoFile, photoEntry);
+          photoEntryByAthlete.set(identityKey, photoEntry);
         }
       }
-      const photoStatus = photoEntry || (participant.photoFile && photoAlreadyExported ? '\u7167\u7247\u5df2\u6309\u9009\u624b\u53bb\u91cd\uff08\u89c1 photos \u6587\u4ef6\u5939\uff09' : participant.photoFile ? '\u7167\u7247\u6587\u4ef6\u4e0d\u5b58\u5728' : '\u672a\u4e0a\u4f20');
+      const photoStatus = photoEntry || existingPhotoEntry || (participant.photoFile ? '\u7167\u7247\u6587\u4ef6\u4e0d\u5b58\u5728' : '\u672a\u4e0a\u4f20');
       csvRows.push([index + 1, participant.name || participant.teamName || '', participant.schoolName || '', participant.gender || '', participant.ageGroup || participant.grade || '', participant.event || '', participant.teamLeader || '', participant.coach || '', participant.status || '', photoStatus]);
     });
     archive.append('\uFEFF' + csvRows.map((row) => row.map(quote).join(',')).join('\r\n'), { name: '\u62a5\u540d\u8d44\u6599\u6e05\u5355.csv' });
