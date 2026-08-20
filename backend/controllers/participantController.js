@@ -4,18 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 
-// 一位选手可以报名多个项目。优先身份证；没有身份证时，只有出生日期或同一张照片可作为可靠的去重依据。
-// 不会仅按姓名、单位、性别合并，避免同名同单位选手被误算成一个人。
-const participantIdentityKey = (participant) => {
+// 本赛事的导入资料存在不同选手共用身份证号码的情况，不能用身份证或照片推断选手身份。
+// 人数统计按报名册中的姓名、单位、性别归并；若三项均缺失则保留为独立记录。
+const participantRosterKey = (participant) => {
   const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
-  const idCard = normalize(participant.idCard);
-  if (idCard) return `id:${idCard}`;
-  const birthDateValue = participant.birthDate ? new Date(participant.birthDate) : null;
-  const birthDate = birthDateValue && !Number.isNaN(birthDateValue.getTime()) ? birthDateValue.toISOString().slice(0, 10) : '';
-  const fields = [normalize(participant.name || participant.teamName), normalize(participant.schoolName || participant.teamName), normalize(participant.gender), birthDate];
-  if (birthDate) return `person:${fields.join('|')}`;
-  const photoFile = normalize(participant.photoFile);
-  if (photoFile) return `photo:${photoFile}`;
+  const fields = [normalize(participant.name || participant.teamName), normalize(participant.schoolName || participant.teamName), normalize(participant.gender)];
+  if (fields.some(Boolean)) return `roster:${fields.join('|')}`;
   return `record:${participant._id}`;
 };
 
@@ -74,8 +68,8 @@ exports.getParticipants = async (req, res, next) => {
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const total = await Participant.countDocuments(query);
-    const identityRows = await Participant.find(query).select('name teamName schoolName gender birthDate idCard photoFile').lean();
-    const uniqueParticipantTotal = new Set(identityRows.map(participantIdentityKey)).size;
+    const identityRows = await Participant.find(query).select('name teamName schoolName gender').lean();
+    const uniqueParticipantTotal = new Set(identityRows.map(participantRosterKey)).size;
 
     // 执行查询
     const participants = await Participant.find(query)
@@ -250,12 +244,11 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
     let photoNumber = 0;
     const uniqueParticipants = new Set();
     const photoEntryByFile = new Map();
-    const photoEntryByAthlete = new Map();
     participants.forEach((participant, index) => {
       let photoEntry = '';
-      const identityKey = participantIdentityKey(participant);
-      uniqueParticipants.add(identityKey);
-      const existingPhotoEntry = photoEntryByFile.get(participant.photoFile) || photoEntryByAthlete.get(identityKey) || '';
+      uniqueParticipants.add(participantRosterKey(participant));
+      // 只按完全相同的原始照片文件去重，绝不以身份证、姓名或单位替换他人的照片。
+      const existingPhotoEntry = photoEntryByFile.get(participant.photoFile) || '';
       const photoAlreadyExported = Boolean(existingPhotoEntry);
       if (participant.photoFile && !photoAlreadyExported) {
         const photoPath = path.join(__dirname, '..', 'uploads', 'participant-photos', participant.photoFile);
@@ -266,7 +259,6 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
           photoEntry = 'photos/' + String(photoNumber).padStart(3, '0') + '_' + displayName + extension;
           archive.file(photoPath, { name: photoEntry });
           photoEntryByFile.set(participant.photoFile, photoEntry);
-          photoEntryByAthlete.set(identityKey, photoEntry);
         }
       }
       const photoStatus = photoEntry || existingPhotoEntry || (participant.photoFile ? '\u7167\u7247\u6587\u4ef6\u4e0d\u5b58\u5728' : '\u672a\u4e0a\u4f20');
