@@ -4,6 +4,19 @@ const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 
+// 一位选手可以报名多个项目。优先身份证，其次以姓名、单位、性别和出生日期识别同一人。
+// 项目和备注均不参与去重，避免把同一选手的不同项目当成不同人。
+const participantIdentityKey = (participant) => {
+  const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
+  const idCard = normalize(participant.idCard);
+  if (idCard) return `id:${idCard}`;
+  const birthDateValue = participant.birthDate ? new Date(participant.birthDate) : null;
+  const birthDate = birthDateValue && !Number.isNaN(birthDateValue.getTime()) ? birthDateValue.toISOString().slice(0, 10) : '';
+  const fields = [normalize(participant.name || participant.teamName), normalize(participant.schoolName || participant.teamName), normalize(participant.gender), birthDate];
+  if (fields.some(Boolean)) return `person:${fields.join('|')}`;
+  return `record:${participant._id}`;
+};
+
 /**
  * @desc    获取所有参赛者
  * @route   GET /api/competitions/:competitionId/participants
@@ -59,6 +72,8 @@ exports.getParticipants = async (req, res, next) => {
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const total = await Participant.countDocuments(query);
+    const identityRows = await Participant.find(query).select('name teamName schoolName gender birthDate idCard').lean();
+    const uniqueParticipantTotal = new Set(identityRows.map(participantIdentityKey)).size;
 
     // 执行查询
     const participants = await Participant.find(query)
@@ -184,6 +199,7 @@ exports.getParticipants = async (req, res, next) => {
         grouped: true,
         pagination,
         total,
+        uniqueParticipantTotal,
         data: groups
       });
     }
@@ -193,6 +209,7 @@ exports.getParticipants = async (req, res, next) => {
       count: participants.length,
       pagination,
       total,
+      uniqueParticipantTotal,
       data: participants
     });
   } catch (error) {
@@ -229,9 +246,15 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
     const quote = (value) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
     const csvRows = [['\u5e8f\u53f7', '\u59d3\u540d', '\u6240\u5c5e\u5355\u4f4d', '\u6027\u522b', '\u5e74\u9f84\u7ec4\u522b', '\u53c2\u8d5b\u9879\u76ee', '\u9886\u961f', '\u6559\u7ec3', '\u62a5\u540d\u72b6\u6001', '\u7167\u7247\u6587\u4ef6']];
     let photoNumber = 0;
+    const uniqueParticipants = new Set();
+    const exportedPhotoFiles = new Set();
+    const exportedAthletePhotos = new Set();
     participants.forEach((participant, index) => {
       let photoEntry = '';
-      if (participant.photoFile) {
+      const identityKey = participantIdentityKey(participant);
+      uniqueParticipants.add(identityKey);
+      const photoAlreadyExported = exportedPhotoFiles.has(participant.photoFile) || exportedAthletePhotos.has(identityKey);
+      if (participant.photoFile && !photoAlreadyExported) {
         const photoPath = path.join(__dirname, '..', 'uploads', 'participant-photos', participant.photoFile);
         if (fs.existsSync(photoPath)) {
           photoNumber += 1;
@@ -239,12 +262,15 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
           const displayName = String(participant.name || participant.teamName || ('participant_' + (index + 1))).replace(/[\\/:*?"<>|]/g, '_');
           photoEntry = 'photos/' + String(photoNumber).padStart(3, '0') + '_' + displayName + extension;
           archive.file(photoPath, { name: photoEntry });
+          exportedPhotoFiles.add(participant.photoFile);
+          exportedAthletePhotos.add(identityKey);
         }
       }
-      csvRows.push([index + 1, participant.name || participant.teamName || '', participant.schoolName || '', participant.gender || '', participant.ageGroup || participant.grade || '', participant.event || '', participant.teamLeader || '', participant.coach || '', participant.status || '', photoEntry || '\u672a\u4e0a\u4f20']);
+      const photoStatus = photoEntry || (participant.photoFile && photoAlreadyExported ? '\u7167\u7247\u5df2\u6309\u9009\u624b\u53bb\u91cd\uff08\u89c1 photos \u6587\u4ef6\u5939\uff09' : participant.photoFile ? '\u7167\u7247\u6587\u4ef6\u4e0d\u5b58\u5728' : '\u672a\u4e0a\u4f20');
+      csvRows.push([index + 1, participant.name || participant.teamName || '', participant.schoolName || '', participant.gender || '', participant.ageGroup || participant.grade || '', participant.event || '', participant.teamLeader || '', participant.coach || '', participant.status || '', photoStatus]);
     });
     archive.append('\uFEFF' + csvRows.map((row) => row.map(quote).join(',')).join('\r\n'), { name: '\u62a5\u540d\u8d44\u6599\u6e05\u5355.csv' });
-    archive.append('\u8d5b\u4e8b\uff1a' + competition.name + '\n\u8fd0\u52a8\u5458\u603b\u6570\uff1a' + participants.length + '\n\u5df2\u6253\u5305\u7167\u7247\uff1a' + photoNumber + '\n', { name: 'README.txt' });
+    archive.append('\u8d5b\u4e8b\uff1a' + competition.name + '\n\u62a5\u540d\u9879\u76ee\u8bb0\u5f55\uff1a' + participants.length + '\n\u53bb\u91cd\u540e\u53c2\u8d5b\u9009\u624b\uff1a' + uniqueParticipants.size + '\n\u5df2\u6253\u5305\u552f\u4e00\u7167\u7247\uff1a' + photoNumber + '\n\u8bf4\u660e\uff1a\u62a5\u540d\u8d44\u6599\u6e05\u5355\u4fdd\u7559\u6bcf\u4e2a\u62a5\u540d\u9879\u76ee\uff0c\u7167\u7247\u4ec5\u6309\u9009\u624b\u5bfc\u51fa\u4e00\u4efd\u3002\n', { name: 'README.txt' });
     await archive.finalize();
   } catch (error) { return next(error); }
 };

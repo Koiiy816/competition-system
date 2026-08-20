@@ -100,6 +100,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
+  const [uniqueParticipantCount, setUniqueParticipantCount] = useState(0);
 
   // 对话框状态
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -766,6 +767,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       const response = await participantService.getParticipants(competitionId, params);
       setParticipants(response.data);
       setTotalCount(response.total || 0);
+      setUniqueParticipantCount(response.uniqueParticipantTotal || response.total || 0);
 
       // 如果按项目分组或按单位分组页签打开，刷新分组列表
       const isEventGroupTab = canViewParticipants && tabValue === 1;
@@ -849,15 +851,18 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           const response = await participantService.getParticipants(filters.competitionId, params);
           setParticipants(response.data);
           setTotalCount(response.total || 0);
+          setUniqueParticipantCount(response.uniqueParticipantTotal || response.total || 0);
         } else if (competitions.length > 0) {
           // 获取第一个比赛的参赛者
           const response = await participantService.getParticipants(competitions[0]._id, params);
           setParticipants(response.data);
           setTotalCount(response.total || 0);
+          setUniqueParticipantCount(response.uniqueParticipantTotal || response.total || 0);
           setFilters(prev => ({ ...prev, competitionId: competitions[0]._id }));
         } else {
           setParticipants([]);
           setTotalCount(0);
+          setUniqueParticipantCount(0);
         }
       } catch (error) {
         setError(error.message || '获取参赛者列表失败');
@@ -987,7 +992,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       const blob = await participantService.exportParticipantsWithPhotos(filters.competitionId);
       const url = window.URL.createObjectURL(blob); const link = document.createElement('a');
       link.href = url; link.download = 'registration_photos.zip'; document.body.appendChild(link); link.click(); document.body.removeChild(link); window.URL.revokeObjectURL(url);
-      setSuccessMessage('\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u4e0b\u8f7d\u5df2\u5f00\u59cb');
+      setSuccessMessage('\u62a5\u540d\u8d44\u6599\u548c\u53bb\u91cd\u540e\u7684\u7167\u7247\u4e0b\u8f7d\u5df2\u5f00\u59cb');
     } catch (exportError) { setError(exportError?.message || '\u7167\u7247\u5bfc\u51fa\u5931\u8d25'); } finally { setActionLoading(false); }
   };
 
@@ -1478,7 +1483,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     <Box>
         <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
           <Typography variant="h6" color="primary">
-            当前报名人数: {totalGrouped}
+            当前报名项目数: {totalGrouped}
           </Typography>
         </Box>
         {groupedParticipants.map((group) => (
@@ -1776,7 +1781,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
             <Typography variant="h6" color="primary">
-              当前报名人数: {totalCount}
+              报名项目数: {totalCount}　｜　去重后参赛选手数: {uniqueParticipantCount}
             </Typography>
           </Box>
           {/* 搜索和过滤 */}
