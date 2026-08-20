@@ -4,8 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 
-// 一位选手可以报名多个项目。优先身份证，其次以姓名、单位、性别和出生日期识别同一人。
-// 项目和备注均不参与去重，避免把同一选手的不同项目当成不同人。
+// 一位选手可以报名多个项目。优先身份证；没有身份证时，只有出生日期或同一张照片可作为可靠的去重依据。
+// 不会仅按姓名、单位、性别合并，避免同名同单位选手被误算成一个人。
 const participantIdentityKey = (participant) => {
   const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
   const idCard = normalize(participant.idCard);
@@ -13,7 +13,9 @@ const participantIdentityKey = (participant) => {
   const birthDateValue = participant.birthDate ? new Date(participant.birthDate) : null;
   const birthDate = birthDateValue && !Number.isNaN(birthDateValue.getTime()) ? birthDateValue.toISOString().slice(0, 10) : '';
   const fields = [normalize(participant.name || participant.teamName), normalize(participant.schoolName || participant.teamName), normalize(participant.gender), birthDate];
-  if (fields.some(Boolean)) return `person:${fields.join('|')}`;
+  if (birthDate) return `person:${fields.join('|')}`;
+  const photoFile = normalize(participant.photoFile);
+  if (photoFile) return `photo:${photoFile}`;
   return `record:${participant._id}`;
 };
 
@@ -72,7 +74,7 @@ exports.getParticipants = async (req, res, next) => {
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const total = await Participant.countDocuments(query);
-    const identityRows = await Participant.find(query).select('name teamName schoolName gender birthDate idCard').lean();
+    const identityRows = await Participant.find(query).select('name teamName schoolName gender birthDate idCard photoFile').lean();
     const uniqueParticipantTotal = new Set(identityRows.map(participantIdentityKey)).size;
 
     // 执行查询
