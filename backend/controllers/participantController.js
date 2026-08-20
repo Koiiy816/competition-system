@@ -245,12 +245,14 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
     const csvRows = [['\u5e8f\u53f7', '\u59d3\u540d', '\u6240\u5c5e\u5355\u4f4d', '\u6027\u522b', '\u5e74\u9f84\u7ec4\u522b', '\u53c2\u8d5b\u9879\u76ee', '\u9886\u961f', '\u6559\u7ec3', '\u62a5\u540d\u72b6\u6001', '\u7167\u7247\u6587\u4ef6']];
     let photoNumber = 0;
     const uniqueParticipants = new Set();
-    const photoEntryByFile = new Map();
+    // 同一选手可报名多个项目，系统可能为每条项目记录保存不同的照片文件名。
+    // 导出照片按选手名册身分（姓名＋单位＋性别）去重，与页面显示的选手数一致。
+    const photoEntryByParticipant = new Map();
     participants.forEach((participant, index) => {
       let photoEntry = '';
-      uniqueParticipants.add(participantRosterKey(participant));
-      // 只按完全相同的原始照片文件去重，绝不以身份证、姓名或单位替换他人的照片。
-      const existingPhotoEntry = photoEntryByFile.get(participant.photoFile) || '';
+      const rosterKey = participantRosterKey(participant);
+      uniqueParticipants.add(rosterKey);
+      const existingPhotoEntry = photoEntryByParticipant.get(rosterKey) || '';
       const photoAlreadyExported = Boolean(existingPhotoEntry);
       if (participant.photoFile && !photoAlreadyExported) {
         const photoPath = path.join(__dirname, '..', 'uploads', 'participant-photos', participant.photoFile);
@@ -260,14 +262,14 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
           const displayName = String(participant.name || participant.teamName || ('participant_' + (index + 1))).replace(/[\\/:*?"<>|]/g, '_');
           photoEntry = 'photos/' + String(photoNumber).padStart(3, '0') + '_' + displayName + extension;
           archive.file(photoPath, { name: photoEntry });
-          photoEntryByFile.set(participant.photoFile, photoEntry);
+          photoEntryByParticipant.set(rosterKey, photoEntry);
         }
       }
       const photoStatus = photoEntry || existingPhotoEntry || (participant.photoFile ? '\u7167\u7247\u6587\u4ef6\u4e0d\u5b58\u5728' : '\u672a\u4e0a\u4f20');
       csvRows.push([index + 1, participant.name || participant.teamName || '', participant.schoolName || '', participant.gender || '', participant.ageGroup || participant.grade || '', participant.event || '', participant.teamLeader || '', participant.coach || '', participant.status || '', photoStatus]);
     });
     archive.append('\uFEFF' + csvRows.map((row) => row.map(quote).join(',')).join('\r\n'), { name: '\u62a5\u540d\u8d44\u6599\u6e05\u5355.csv' });
-    archive.append('\u8d5b\u4e8b\uff1a' + competition.name + '\n\u62a5\u540d\u9879\u76ee\u8bb0\u5f55\uff1a' + participants.length + '\n\u53bb\u91cd\u540e\u53c2\u8d5b\u9009\u624b\uff1a' + uniqueParticipants.size + '\n\u5df2\u6253\u5305\u552f\u4e00\u7167\u7247\uff1a' + photoNumber + '\n\u8bf4\u660e\uff1a\u62a5\u540d\u8d44\u6599\u6e05\u5355\u4fdd\u7559\u6bcf\u4e2a\u62a5\u540d\u9879\u76ee\uff0c\u7167\u7247\u4ec5\u6309\u9009\u624b\u5bfc\u51fa\u4e00\u4efd\u3002\n', { name: 'README.txt' });
+    archive.append('\u8d5b\u4e8b\uff1a' + competition.name + '\n\u62a5\u540d\u9879\u76ee\u8bb0\u5f55\uff1a' + participants.length + '\n\u53bb\u91cd\u540e\u53c2\u8d5b\u9009\u624b\uff1a' + uniqueParticipants.size + '\n\u5df2\u6253\u5305\u9009\u624b\u7167\u7247\uff1a' + photoNumber + '\n\u8bf4\u660e\uff1a\u62a5\u540d\u8d44\u6599\u6e05\u5355\u4fdd\u7559\u6bcf\u4e2a\u62a5\u540d\u9879\u76ee\uff0c\u7167\u7247\u6309\u9009\u624b\u8eab\u5206\uff08\u59d3\u540d\uff0b\u5355\u4f4d\uff0b\u6027\u522b\uff09\u4ec5\u5bfc\u51fa\u4e00\u4efd\u3002\n', { name: 'README.txt' });
     await archive.finalize();
   } catch (error) { return next(error); }
 };
