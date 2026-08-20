@@ -991,7 +991,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       setActionLoading(true);
       const blob = await participantService.exportParticipantsWithPhotos(filters.competitionId);
       const url = window.URL.createObjectURL(blob); const link = document.createElement('a');
-      link.href = url; link.download = 'registration_photos.zip'; document.body.appendChild(link); link.click(); document.body.removeChild(link); window.URL.revokeObjectURL(url);
+      link.href = url; link.download = 'registration_photos.zip'; document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      // Chrome 需要時間開始讀取 Blob；立即釋放 URL 會導致大型 ZIP 沒有進入下載清單。
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60 * 1000);
       setSuccessMessage('\u62a5\u540d\u8d44\u6599\u548c\u53bb\u91cd\u540e\u7684\u7167\u7247\u4e0b\u8f7d\u5df2\u5f00\u59cb');
     } catch (exportError) { setError(exportError?.message || '\u7167\u7247\u5bfc\u51fa\u5931\u8d25'); } finally { setActionLoading(false); }
   };
