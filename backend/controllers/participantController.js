@@ -235,7 +235,9 @@ exports.exportParticipantsWithPhotos = async (req, res, next) => {
     if (!competition) return res.status(404).json({ success: false, message: '\u672a\u627e\u5230\u8d5b\u4e8b' });
     const participants = await Participant.find({ competition: competition._id }).sort({ schoolName: 1, name: 1, registrationDate: 1 });
     const safeName = String(competition.name || 'competition').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    // 相片多為已壓縮的 JPG；使用快速壓縮可大幅縮短大型匯出的等待時間，
+    // 不會改動照片內容或 CSV 資料。
+    const archive = archiver('zip', { zlib: { level: 1 } });
     res.attachment(safeName + '_registration_photos.zip');
     archive.on('error', next);
     archive.pipe(res);
