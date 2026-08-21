@@ -1314,7 +1314,61 @@ function participantMatchesExcelSchedule(participant, scheduleItem) {
   );
 }
 
-async function buildExcelSchedulePreview(competitionId, rawItems) {
+function normalizeRosterText(value) {
+  return String(value || '')
+    .replace(/[（(]\\d+(?:人|队)[）)]/g, '')
+    .replace(/[\\s　·・.．、，,()（）【】\\[\\]]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function rosterRowMatchesSchedule(row, scheduleItem) {
+  const rowScheduleName = normalizeRosterText(row.scheduleName);
+  const scheduleName = normalizeRosterText(scheduleItem.name);
+  if (rowScheduleName && rowScheduleName === scheduleName) return true;
+  const parsed = parseExcelScheduleName(scheduleItem.name);
+  const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
+  const rowGender = normalizeExcelScheduleGender(row.gender);
+  const rowEvent = normalizeExcelScheduleEvent(row.event);
+  return Boolean(rowEvent && rowEvent === parsed.event && (!rowGender || rowGender === parsed.gender) && (!rowAge || parsed.ages.includes(rowAge)));
+}
+
+function buildRosterAutoAssignments(participants, matchedIds, items, rawRoster) {
+  const roster = Array.isArray(rawRoster) ? rawRoster.slice(0, 2000) : [];
+  const autoAssignments = {};
+  const assignedIds = new Set();
+  const itemCounts = new Map();
+  const summary = { providedRows: roster.length, autoAssignedEntries: 0, ambiguousRows: 0, unmatchedRows: 0, alreadyMatchedRows: 0 };
+  roster.forEach((row) => {
+    const name = normalizeRosterText(row?.name);
+    if (!name) return;
+    const targets = items.filter((item) => rosterRowMatchesSchedule(row || {}, item));
+    if (targets.length !== 1) { summary.unmatchedRows += 1; return; }
+    const target = targets[0];
+    const rowGender = normalizeExcelScheduleGender(row.gender);
+    const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
+    const rowSchool = normalizeRosterText(row.schoolName);
+    let candidates = participants.filter((participant) => {
+      if (normalizeRosterText(participant.name) !== name) return false;
+      if (rowGender && normalizeExcelScheduleGender(participant.gender) !== rowGender) return false;
+      if (rowAge && String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1] !== rowAge) return false;
+      if (rowSchool && normalizeRosterText(participant.schoolName) !== rowSchool) return false;
+      return true;
+    });
+    const alreadyMatched = candidates.some((participant) => matchedIds.has(participant._id.toString()));
+    candidates = candidates.filter((participant) => !matchedIds.has(participant._id.toString()) && !assignedIds.has(participant._id.toString()));
+    if (candidates.length === 0) { if (alreadyMatched) summary.alreadyMatchedRows += 1; else summary.unmatchedRows += 1; return; }
+    if (candidates.length > 1) { summary.ambiguousRows += 1; return; }
+    const participantId = candidates[0]._id.toString();
+    autoAssignments[participantId] = target.index;
+    assignedIds.add(participantId);
+    itemCounts.set(target.index, (itemCounts.get(target.index) || 0) + 1);
+    summary.autoAssignedEntries += 1;
+  });
+  return { autoAssignments, itemCounts, summary };
+}
+
+async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []) {
   if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 300) {
     const error = new Error('请提供 1 至 300 个有效日程项目');
     error.statusCode = 400;
@@ -1361,6 +1415,8 @@ async function buildExcelSchedulePreview(competitionId, rawItems) {
   });
 
   const matchedIds = new Set(items.flatMap((item) => item.participants.map((participant) => participant.id.toString())));
+  const rosterResult = buildRosterAutoAssignments(participants, matchedIds, items, rawRoster);
+  items.forEach((item) => { item.rosterAutoAssignedCount = rosterResult.itemCounts.get(item.index) || 0; });
   const unmatchedParticipants = participants
     .filter((participant) => !matchedIds.has(participant._id.toString()))
     .map((participant) => ({
@@ -1370,7 +1426,8 @@ async function buildExcelSchedulePreview(competitionId, rawItems) {
       ageGroup: participant.ageGroup || participant.grade || '-',
       gender: normalizeExcelScheduleGender(participant.gender) || '-',
       event: participant.event || '-',
-      status: participant.status
+      status: participant.status,
+      autoScheduleIndex: rosterResult.autoAssignments[participant._id.toString()]
     }));
 
   return {
@@ -1380,9 +1437,11 @@ async function buildExcelSchedulePreview(competitionId, rawItems) {
       participantEntries: participants.length,
       matchedEntries: matchedIds.size,
       unmatchedEntries: unmatchedParticipants.length,
-      approvedUnmatchedEntries: unmatchedParticipants.filter((participant) => participant.status === 'approved').length
+      approvedUnmatchedEntries: unmatchedParticipants.filter((participant) => participant.status === 'approved').length,
+      roster: rosterResult.summary
     },
-    unmatchedParticipants
+    unmatchedParticipants,
+    autoAssignments: rosterResult.autoAssignments
   };
 }
 
@@ -1391,7 +1450,7 @@ exports.previewExcelScheduleImport = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
-    const preview = await buildExcelSchedulePreview(req.params.competitionId, req.body?.items);
+    const preview = await buildExcelSchedulePreview(req.params.competitionId, req.body?.items, req.body?.roster);
     res.status(200).json({ success: true, data: preview });
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });

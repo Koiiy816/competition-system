@@ -49,8 +49,8 @@ const scheduleService = {
     }
   },
 
-  previewExcelScheduleImport: async (competitionId, items) => {
-    const response = await api.post(`/competitions/${competitionId}/schedules/excel-preview`, { items });
+  previewExcelScheduleImport: async (competitionId, items, roster = []) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/excel-preview`, { items, roster });
     return response.data;
   },
 

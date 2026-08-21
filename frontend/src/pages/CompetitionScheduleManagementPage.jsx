@@ -63,6 +63,40 @@ const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
   reader.onerror = () => reject(new Error('读取 Excel 失败'));
   reader.readAsArrayBuffer(file);
 });
+const parseStartOrderExcel = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const workbook = XLSX.read(event.target.result, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      const entries = [];
+      let scheduleName = '';
+      let headers = null;
+      rows.forEach((row) => {
+        const values = row.map((cell) => String(cell || '').trim());
+        const first = values[0] || '';
+        if (/^\d+[、.].*[（(]\d+(?:人|队)[）)]/.test(first)) {
+          scheduleName = first.replace(/^\d+[、.]/, '').trim();
+          headers = null;
+          return;
+        }
+        const nameIndex = values.indexOf('姓名');
+        if (nameIndex >= 0) {
+          headers = { name: nameIndex, gender: values.indexOf('性别'), ageGroup: values.indexOf('组别'), event: values.indexOf('项目'), schoolName: values.indexOf('单位') };
+          return;
+        }
+        if (!scheduleName || !headers || !values[headers.name]) return;
+        entries.push({ scheduleName, name: values[headers.name], gender: headers.gender >= 0 ? values[headers.gender] : '', ageGroup: headers.ageGroup >= 0 ? values[headers.ageGroup] : '', event: headers.event >= 0 ? values[headers.event] : '', schoolName: headers.schoolName >= 0 ? values[headers.schoolName] : '' });
+      });
+      if (!entries.length) throw new Error('未在上场顺序 Excel 中识别到选手名单');
+      resolve(entries);
+    } catch (error) { reject(error); }
+  };
+  reader.onerror = () => reject(new Error('读取上场顺序 Excel 失败'));
+  reader.readAsArrayBuffer(file);
+});
+
 // 提取弹窗组件以避免父组件在输入时重新渲染
 const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSave }) => {
   const [form, setForm] = useState({
@@ -313,6 +347,24 @@ const CompetitionScheduleManagementPage = () => {
       setExcelPreview(null);
       setManualAssignments({});
       setError(err.message || '读取或匹配 Excel 日程失败');
+    } finally {
+      setExcelImportLoading(false);
+    }
+  };
+
+  const handleStartOrderFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !excelScheduleItems.length) return;
+    setExcelImportLoading(true);
+    setError('');
+    try {
+      const roster = await parseStartOrderExcel(file);
+      const response = await scheduleService.previewExcelScheduleImport(id, excelScheduleItems, roster);
+      setExcelPreview(response.data);
+      setManualAssignments(response.data.autoAssignments || {});
+    } catch (err) {
+      setError(err.message || '读取或自动匹配上场顺序 Excel 失败');
     } finally {
       setExcelImportLoading(false);
     }
@@ -902,15 +954,22 @@ const CompetitionScheduleManagementPage = () => {
             选择日程表 Excel
             <input hidden type="file" accept=".xlsx,.xls" onChange={handleExcelScheduleFile} />
           </Button>
+          <Button component="label" variant="outlined" startIcon={<UploadFileIcon />} disabled={!excelPreview || excelImportLoading || excelImporting} sx={{ ml: 1 }}>
+            选择上场顺序名单（可选）
+            <input hidden type="file" accept=".xlsx,.xls" onChange={handleStartOrderFile} />
+          </Button>
           {excelImportLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}><CircularProgress size={20} /><Typography>正在比对系统报名资料…</Typography></Box>}
           {excelPreview && <Box sx={{ mt: 3 }}>
             <Alert severity={excelPreview.summary.approvedUnmatchedEntries ? 'warning' : 'success'} sx={{ mb: 2 }}>
               识别 {excelPreview.summary.scheduleCount} 个日程项目；系统报名 {excelPreview.summary.participantEntries} 笔，已匹配 {excelPreview.summary.matchedEntries} 笔，未匹配 {excelPreview.summary.unmatchedEntries} 笔（其中已通过 {excelPreview.summary.approvedUnmatchedEntries} 笔）。
             </Alert>
+            {excelPreview.summary.roster?.providedRows > 0 && <Alert severity="info" sx={{ mb: 2 }}>
+              已读取上场顺序名单 {excelPreview.summary.roster.providedRows} 笔，自动安排 {excelPreview.summary.roster.autoAssignedEntries} 笔；仍需核对 {excelPreview.summary.roster.ambiguousRows + excelPreview.summary.roster.unmatchedRows} 笔。自动安排可在下方随时修改。
+            </Alert>}
             <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>日程匹配预览</Typography>
             <TableContainer component={Paper} sx={{ maxHeight: 300 }}>
-              <Table size="small" stickyHeader><TableHead><TableRow><TableCell>日程项目</TableCell><TableCell>场地／时段</TableCell><TableCell align="right">匹配</TableCell><TableCell align="right">已通过</TableCell><TableCell align="right">待审核</TableCell></TableRow></TableHead>
-                <TableBody>{excelPreview.items.map((item) => <TableRow key={`${item.index}-${item.name}`}><TableCell>{item.name}</TableCell><TableCell>{item.court}／{item.timeSlot}</TableCell><TableCell align="right">{item.matchedCount}</TableCell><TableCell align="right">{item.approvedCount}</TableCell><TableCell align="right">{item.pendingCount}</TableCell></TableRow>)}</TableBody>
+              <Table size="small" stickyHeader><TableHead><TableRow><TableCell>日程项目</TableCell><TableCell>场地／时段</TableCell><TableCell align="right">匹配</TableCell><TableCell align="right">名单自动安排</TableCell><TableCell align="right">已通过</TableCell><TableCell align="right">待审核</TableCell></TableRow></TableHead>
+                <TableBody>{excelPreview.items.map((item) => <TableRow key={`${item.index}-${item.name}`}><TableCell>{item.name}</TableCell><TableCell>{item.court}／{item.timeSlot}</TableCell><TableCell align="right">{item.matchedCount}</TableCell><TableCell align="right">{item.rosterAutoAssignedCount || 0}</TableCell><TableCell align="right">{item.approvedCount}</TableCell><TableCell align="right">{item.pendingCount}</TableCell></TableRow>)}</TableBody>
               </Table>
             </TableContainer>
             {excelPreview.unmatchedParticipants.length > 0 && <Box sx={{ mt: 2 }}>
@@ -921,7 +980,7 @@ const CompetitionScheduleManagementPage = () => {
                   <TableHead><TableRow><TableCell>选手</TableCell><TableCell>单位／状态</TableCell><TableCell>手动加入日程（可选）</TableCell></TableRow></TableHead>
                   <TableBody>{excelPreview.unmatchedParticipants.map((participant) => <TableRow key={participant.id}>
                     <TableCell>{`${participant.name}｜${participant.gender} ${participant.ageGroup}｜${participant.event}`}</TableCell>
-                    <TableCell>{`${participant.schoolName}｜${participant.status}`}</TableCell>
+                    <TableCell>{`${participant.schoolName}｜${participant.status}${participant.autoScheduleIndex !== undefined ? '｜已按名单自动选择' : ''}`}</TableCell>
                     <TableCell sx={{ minWidth: 320 }}><TextField select size="small" fullWidth value={manualAssignments[participant.id] ?? ''} onChange={(event) => setManualAssignments((current) => ({ ...current, [participant.id]: event.target.value }))}>
                       <MenuItem value="">暂不安排</MenuItem>
                       {excelPreview.items.map((item) => <MenuItem key={item.index} value={item.index}>{`${item.court}／${item.timeSlot}｜${item.name}`}</MenuItem>)}
