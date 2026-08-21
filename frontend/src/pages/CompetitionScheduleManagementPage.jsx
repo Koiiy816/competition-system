@@ -130,6 +130,7 @@ const parseStartOrderExcel = (file) => new Promise((resolve, reject) => {
 // 提取弹窗组件以避免父组件在输入时重新渲染
 const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSave }) => {
   const [form, setForm] = useState({
+    name: '',
     scheduleDate: '',
     timeSlot: '上午',
     exactTime: '',
@@ -144,12 +145,19 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>分配赛程时间和场地</DialogTitle>
+      <DialogTitle>编辑比赛项目</DialogTitle>
       <DialogContent>
         <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-            正在排程: {schedule?.name} ({schedule?.participants?.length || 0}人)
+            已编排选手: {schedule?.participants?.length || 0} 人（修改项目资料不会改变选手名单）
           </Typography>
+          <TextField
+            label="比赛项目名称"
+            required
+            fullWidth
+            value={form.name || ''}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+          />
           <TextField
             label="日期 (例如 2026-06-05 或 6月5日)"
             fullWidth
@@ -183,7 +191,7 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
       </DialogContent>
       <DialogActions sx={{ p: 2, pt: 0 }}>
         <Button onClick={onClose} color="inherit">取消</Button>
-        <Button onClick={() => onSave(form)} variant="contained" color="primary">保存排程</Button>
+        <Button onClick={() => onSave(form)} variant="contained" color="primary">保存修改</Button>
       </DialogActions>
     </Dialog>
   );
@@ -226,7 +234,7 @@ const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpen
                 variant="outlined" 
                 onClick={(e) => onOpenAssignDialog(schedule, e)}
               >
-                排程
+                编辑
               </Button>
             )}
             {isAdminOrOrganizer && (
@@ -727,6 +735,7 @@ const CompetitionScheduleManagementPage = () => {
     e.stopPropagation(); // 阻止卡片点击跳转
     setCurrentSchedule(schedule);
     setAssignForm({
+      name: schedule.name || '',
       scheduleDate: schedule.scheduleDate || (competition?.startDate ? competition.startDate.split('T')[0] : ''),
       timeSlot: schedule.timeSlot || '上午',
       exactTime: schedule.exactTime || '',
@@ -742,8 +751,12 @@ const CompetitionScheduleManagementPage = () => {
 
   const handleAssignSave = useCallback(async (formValues) => {
     try {
+      if (!formValues.name?.trim()) {
+        setError('请输入比赛项目名称');
+        return;
+      }
       await scheduleService.updateSchedule(id, currentSchedule._id, formValues);
-      setSuccess('赛程分配已保存');
+      setSuccess('比赛项目已修改');
       handleCloseAssignDialog();
       fetchData(); // 重新加载数据
     } catch (err) {
