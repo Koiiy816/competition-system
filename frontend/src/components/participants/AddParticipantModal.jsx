@@ -233,7 +233,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.gender) newErrors.gender = '请选择性别';
     if (!formData.grade) newErrors.grade = '请选择年龄组别';
     if (!formData.event) newErrors.event = '请选择比赛项目';
-    if (competition?.participantRequirements?.requirePhoto && !editData && !selectedPhoto) newErrors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
+    // 管理员可不上传照片；上传入口仍保留，之后可补传。
     
     if (formData.idCard && !/^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(formData.idCard)) {
       newErrors.idCard = '身份证格式不正确';
@@ -286,7 +286,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const availableEvents = getAvailableEvents();
-  const photoRequired = Boolean(competition?.participantRequirements?.requirePhoto);
+  const photoRequired = false;
 
   return (
     <Dialog open={open} onClose={!submitting ? onClose : null} maxWidth="md" fullWidth>
@@ -523,7 +523,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
             {!editData && (
               <Grid item xs={12}>
                 <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>
-                  <Typography variant="subtitle2">{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoRequired ? ' *' : ''}</Typography>
+                  <Typography variant="subtitle2">{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoRequired ? ' *' : '（管理员可稍后补传）'}</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 10MB\u3002'}</Typography>
                   <input accept="image/jpeg,image/png" id="admin-participant-photo" type="file" style={{ display: 'none' }} onChange={handlePhotoChange} />
                   <label htmlFor="admin-participant-photo"><Button component="span" variant="outlined">{'\u4e0a\u4f20\u7167\u7247'}</Button></label>
