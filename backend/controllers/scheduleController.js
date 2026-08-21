@@ -1618,6 +1618,75 @@ async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []
   };
 }
 
+async function buildCollectiveRosterPreview(competitionId, rawRoster) {
+  const roster = Array.isArray(rawRoster) ? rawRoster.slice(0, 2000) : [];
+  if (!roster.length) {
+    const error = new Error('未在集体项目 Excel 中识别到队员名单');
+    error.statusCode = 400;
+    throw error;
+  }
+  const [participants, schedules] = await Promise.all([
+    Participant.find({ competition: competitionId, isVirtualTeam: { $ne: true }, status: { $ne: 'rejected' } }).select('name schoolName event manualEventGroup ageGroup grade gender status isTest'),
+    Schedule.find({ competition: competitionId }).select('_id name participants')
+  ]);
+  const collectiveSchedules = schedules.filter((schedule) => String(schedule.name || '').includes('集体'));
+  if (!collectiveSchedules.length) {
+    const error = new Error('当前比赛没有名称包含“集体”的既有赛程项目，请先建立集体项目再导入名单');
+    error.statusCode = 400;
+    throw error;
+  }
+  const items = collectiveSchedules.map((schedule, index) => ({ index, scheduleId: schedule._id.toString(), name: schedule.name }));
+  const rosterResult = buildRosterAssignments(participants, items, roster);
+  const recognizedNames = new Set();
+  roster.forEach((row) => {
+    const matches = items.filter((item) => rosterRowMatchesSchedule(row || {}, item));
+    if (matches.length === 1) recognizedNames.add(normalizeRosterText(row.scheduleName));
+  });
+  const sourceProjectNames = [...new Set(roster.map((row) => String(row?.scheduleName || '').trim()).filter(Boolean))];
+  return {
+    items: items.map((item) => {
+      const memberIds = rosterResult.participantIdsBySchedule.get(item.index) || [];
+      const rosterTeams = [...(rosterResult.rosterTeamsBySchedule.get(item.index)?.values() || [])];
+      return { scheduleId: item.scheduleId, name: item.name, matchedCount: memberIds.length, teamCount: rosterTeams.length, rosterTeams: rosterTeams.map((team) => ({ teamName: team.teamName, memberIds: team.memberIds, memberCount: team.memberIds.length })) };
+    }),
+    summary: { sourceProjectCount: sourceProjectNames.length, matchedProjectCount: recognizedNames.size, providedRows: rosterResult.summary.providedRows, matchedMembers: rosterResult.summary.autoAssignedEntries, unmatchedMembers: rosterResult.summary.unmatchedRows + rosterResult.summary.ambiguousRows, unmatchedProjectNames: sourceProjectNames.filter((name) => !recognizedNames.has(normalizeRosterText(name))) }
+  };
+}
+
+exports.previewCollectiveRosterImport = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    const preview = await buildCollectiveRosterPreview(req.params.competitionId, req.body?.roster);
+    res.status(200).json({ success: true, data: preview });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    next(error);
+  }
+};
+
+exports.importCollectiveRoster = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    const preview = await buildCollectiveRosterPreview(req.params.competitionId, req.body?.roster);
+    const targets = preview.items.filter((item) => item.teamCount > 0 && item.matchedCount > 0);
+    if (!targets.length) return res.status(400).json({ success: false, message: '没有可导入的集体队伍；请先核对项目名称、单位和队员姓名' });
+    for (const item of targets) {
+      const virtualTeamIds = [];
+      for (const team of item.rosterTeams) {
+        if (!team.memberIds.length) continue;
+        const virtualTeam = await Participant.create({ competition: req.params.competitionId, name: team.teamName, teamName: team.teamName, schoolName: team.teamName, event: item.name, ageGroup: '集体项目', gender: 'mixed', type: 'team', isVirtualTeam: true, teamMembers: team.memberIds, status: 'approved' });
+        virtualTeamIds.push(virtualTeam._id);
+      }
+      await Schedule.findByIdAndUpdate(item.scheduleId, { $set: { participants: virtualTeamIds } });
+    }
+    res.status(201).json({ success: true, message: `已更新 ${targets.length} 个集体项目、${targets.reduce((sum, item) => sum + item.teamCount, 0)} 支队伍；原有虚拟队伍记录已保留，不会删除`, data: preview.summary });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    next(error);
+  }
+};
 /** 预览 Excel 日程与当前报名数据；只读，不写入数据库。 */
 exports.previewExcelScheduleImport = async (req, res, next) => {
   try {

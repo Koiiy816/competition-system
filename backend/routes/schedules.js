@@ -34,6 +34,10 @@ router.get(
 router.post('/excel-preview', auth, authorize('admin', 'chief_referee'), scheduleController.previewExcelScheduleImport);
 router.post('/import-excel', auth, authorize('admin', 'chief_referee'), scheduleController.importExcelSchedule);
 
+// 集体项目名单先预览，确认后仅更新对应集体赛程的队伍名单。
+router.post('/collective-roster-preview', auth, authorize('admin', 'chief_referee'), scheduleController.previewCollectiveRosterImport);
+router.post('/import-collective-roster', auth, authorize('admin', 'chief_referee'), scheduleController.importCollectiveRoster);
+
 // @route   PUT api/competitions/:competitionId/schedules/bulk/order
 // @desc    批量更新赛程排序
 // @access  私有/管理员、主裁

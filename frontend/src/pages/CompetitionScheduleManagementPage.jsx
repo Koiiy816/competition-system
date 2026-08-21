@@ -340,6 +340,11 @@ const CompetitionScheduleManagementPage = () => {
   const [excelPreview, setExcelPreview] = useState(null);
   const [manualAssignments, setManualAssignments] = useState({});
   const [startOrderRoster, setStartOrderRoster] = useState([]);
+  const [collectiveImportOpen, setCollectiveImportOpen] = useState(false);
+  const [collectiveImportLoading, setCollectiveImportLoading] = useState(false);
+  const [collectiveImporting, setCollectiveImporting] = useState(false);
+  const [collectiveRoster, setCollectiveRoster] = useState([]);
+  const [collectivePreview, setCollectivePreview] = useState(null);
   const [unassignedDialogOpen, setUnassignedDialogOpen] = useState(false);
   const [unassignedLoading, setUnassignedLoading] = useState(false);
   const [unassignedParticipants, setUnassignedParticipants] = useState([]);
@@ -443,6 +448,45 @@ const CompetitionScheduleManagementPage = () => {
       setError(err.message || '导入 Excel 日程失败');
     } finally {
       setExcelImporting(false);
+    }
+  };
+  const handleCollectiveRosterFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setCollectiveImportLoading(true);
+    setCollectivePreview(null);
+    setCollectiveRoster([]);
+    setError('');
+    setSuccess('');
+    try {
+      const roster = await parseStartOrderExcel(file);
+      const response = await scheduleService.previewCollectiveRosterImport(id, roster);
+      setCollectiveRoster(roster);
+      setCollectivePreview(response.data);
+    } catch (err) {
+      setError(err.message || '读取或匹配集体项目 Excel 失败');
+    } finally {
+      setCollectiveImportLoading(false);
+    }
+  };
+
+  const handleConfirmCollectiveRosterImport = async () => {
+    if (!collectiveRoster.length || !collectivePreview) return;
+    if (!window.confirm('确认后将按 Excel 的队伍与队员名单更新已存在的集体赛程。不会删除原始报名资料或照片，是否继续？')) return;
+    setCollectiveImporting(true);
+    setError('');
+    try {
+      const response = await scheduleService.importCollectiveRoster(id, collectiveRoster);
+      setSuccess(response.message || '集体项目名单已导入');
+      setCollectiveImportOpen(false);
+      setCollectivePreview(null);
+      setCollectiveRoster([]);
+      await fetchData();
+    } catch (err) {
+      setError(err.message || '导入集体项目名单失败');
+    } finally {
+      setCollectiveImporting(false);
     }
   };
   const handleGenerateStartList = async () => {
@@ -970,6 +1014,16 @@ const CompetitionScheduleManagementPage = () => {
             {isAdminOrOrganizer && (
               <Button
                 variant="outlined"
+                color="secondary"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setCollectiveImportOpen(true)}
+              >
+                导入集体项目（Excel）
+              </Button>
+            )}
+            {isAdminOrOrganizer && (
+              <Button
+                variant="outlined"
                 color="primary"
                 startIcon={<PreviewIcon />}
                 onClick={handlePreviewGroups}
@@ -1371,6 +1425,38 @@ const CompetitionScheduleManagementPage = () => {
             </Box>}          </Box>}
         </DialogContent>
         <DialogActions><Button onClick={() => setExcelImportOpen(false)} disabled={excelImporting}>取消</Button><Button variant="contained" onClick={handleConfirmExcelImport} disabled={!excelPreview || excelImporting}>{excelImporting ? '导入中…' : '确认导入赛程'}</Button></DialogActions>
+      </Dialog>
+      <Dialog open={collectiveImportOpen} onClose={() => !collectiveImporting && setCollectiveImportOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>导入集体项目名单（Excel）</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            请选择集体项目上场名单 Excel。系统只会匹配现有名称含「集体」的赛程，先显示预览；确认后按每个单位建立队伍并写入对应赛程，不会修改个人报名资料或照片。
+          </Alert>
+          <Button component="label" variant="contained" startIcon={<UploadFileIcon />} disabled={collectiveImportLoading || collectiveImporting}>
+            选择集体项目 Excel
+            <input hidden type="file" accept=".xlsx,.xls" onChange={handleCollectiveRosterFile} />
+          </Button>
+          {collectiveImportLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}><CircularProgress size={20} /><Typography>正在匹配集体赛程与队员名单…</Typography></Box>}
+          {collectivePreview && <Box sx={{ mt: 3 }}>
+            <Alert severity={collectivePreview.summary.unmatchedMembers ? 'warning' : 'success'} sx={{ mb: 2 }}>
+              Excel 识别 {collectivePreview.summary.sourceProjectCount} 个集体项目、{collectivePreview.summary.providedRows} 名队员；匹配 {collectivePreview.summary.matchedProjectCount} 个现有赛程、{collectivePreview.summary.matchedMembers} 名队员，待核对 {collectivePreview.summary.unmatchedMembers} 名。
+            </Alert>
+            {collectivePreview.summary.unmatchedProjectNames?.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}>未找到对应集体赛程：{collectivePreview.summary.unmatchedProjectNames.join('、')}</Alert>}
+            <TableContainer component={Paper} sx={{ maxHeight: 420 }}>
+              <Table size="small" stickyHeader>
+                <TableHead><TableRow><TableCell>现有集体赛程</TableCell><TableCell align="right">匹配队伍</TableCell><TableCell align="right">匹配队员</TableCell><TableCell>队伍／单位</TableCell></TableRow></TableHead>
+                <TableBody>{collectivePreview.items.map((item) => <TableRow key={item.scheduleId}>
+                  <TableCell>{item.name}</TableCell><TableCell align="right">{item.teamCount}</TableCell><TableCell align="right">{item.matchedCount}</TableCell>
+                  <TableCell>{item.rosterTeams.length ? item.rosterTeams.map((team) => `${team.teamName}（${team.memberCount}人）`).join('；') : '—'}</TableCell>
+                </TableRow>)}</TableBody>
+              </Table>
+            </TableContainer>
+          </Box>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCollectiveImportOpen(false)} disabled={collectiveImporting}>取消</Button>
+          <Button variant="contained" onClick={handleConfirmCollectiveRosterImport} disabled={!collectivePreview || collectiveImporting}>{collectiveImporting ? '导入中…' : '确认导入集体名单'}</Button>
+        </DialogActions>
       </Dialog>
       {/* 分配赛程弹窗 */}
       <AssignScheduleDialog

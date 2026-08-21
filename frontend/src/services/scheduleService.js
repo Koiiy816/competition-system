@@ -58,6 +58,16 @@ const scheduleService = {
     const response = await api.post(`/competitions/${competitionId}/schedules/import-excel`, { items, assignments, roster });
     return response.data;
   },
+
+  previewCollectiveRosterImport: async (competitionId, roster) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/collective-roster-preview`, { roster });
+    return response.data;
+  },
+
+  importCollectiveRoster: async (competitionId, roster) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/import-collective-roster`, { roster });
+    return response.data;
+  },
   /**
    * 获取单个赛程详情
    * @param {string} competitionId - 比赛ID
