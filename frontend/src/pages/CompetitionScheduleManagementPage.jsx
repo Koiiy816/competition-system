@@ -12,6 +12,8 @@ import ShuffleIcon from '@mui/icons-material/Shuffle';
 import SyncIcon from '@mui/icons-material/Sync';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import { jsPDF } from 'jspdf';
 import SaveIcon from '@mui/icons-material/Save';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
@@ -333,6 +335,8 @@ const CompetitionScheduleManagementPage = () => {
   const [unassignedParticipants, setUnassignedParticipants] = useState([]);
   const [unassignedSummary, setUnassignedSummary] = useState(null);
   const [unassignedSearch, setUnassignedSearch] = useState('');
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfExportProgress, setPdfExportProgress] = useState({ current: 0, total: 0 });
 
   useEffect(() => {
     fetchData();
@@ -526,6 +530,55 @@ const CompetitionScheduleManagementPage = () => {
   const handlePrint = () => {
     window.print();
   };
+  const handleExportPdf = async () => {
+    if (!schedules.length || exportingPdf) return;
+    setExportingPdf(true);
+    setError('');
+    setSuccess('');
+    const exportContainer = document.createElement('div');
+    Object.assign(exportContainer.style, { position: 'fixed', left: '-10000px', top: '0', width: '794px', zIndex: '-1', background: '#fff' });
+    document.body.appendChild(exportContainer);
+
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const escapeHtml = (value) => String(value || '-').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+      const orderedSchedules = [...schedules].sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.court || '').localeCompare(String(b.court || ''), 'zh-CN') || (a.order || 0) - (b.order || 0));
+      const pages = orderedSchedules.flatMap((schedule) => {
+        const entries = (schedule.participants || []).map((participant) => ({
+          name: participant.isVirtualTeam && participant.teamMembers?.length ? participant.teamMembers.map((member) => member.name).join('、') : (participant.name || participant.user?.name || '-'),
+          schoolName: participant.schoolName || participant.teamName || participant.user?.schoolName || '-'
+        }));
+        const chunks = [];
+        for (let index = 0; index < Math.max(entries.length, 1); index += 22) chunks.push({ schedule, entries: entries.slice(index, index + 22), page: Math.floor(index / 22) + 1, pageCount: Math.ceil(Math.max(entries.length, 1) / 22) });
+        return chunks;
+      });
+      setPdfExportProgress({ current: 0, total: pages.length });
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      for (let index = 0; index < pages.length; index += 1) {
+        const { schedule, entries, page, pageCount } = pages[index];
+        const pageElement = document.createElement('section');
+        pageElement.style.cssText = 'width:794px;min-height:1123px;box-sizing:border-box;padding:56px 54px;background:#fff;color:#111;font-family:"Microsoft YaHei","SimSun",sans-serif;';
+        const rows = entries.length ? entries.map((entry, entryIndex) => `<tr><td>${(page - 1) * 22 + entryIndex + 1}</td><td>${escapeHtml(entry.name)}</td><td>${escapeHtml(entry.schoolName)}</td></tr>`).join('') : '<tr><td colspan="3" style="text-align:center">本项目暂未安排选手</td></tr>';
+        pageElement.innerHTML = `<h1 style="font-size:22px;text-align:center;margin:0 0 14px">${escapeHtml(competition?.name || '比赛')} - 出场顺序</h1><h2 style="font-size:18px;margin:0 0 10px;line-height:1.5">${escapeHtml(schedule.name)}${pageCount > 1 ? `（第 ${page}/${pageCount} 页）` : ''}</h2><p style="font-size:13px;margin:0 0 18px;color:#444">${escapeHtml(schedule.scheduleDate)}　${escapeHtml(schedule.timeSlot)}　${escapeHtml(schedule.court)}　共 ${schedule.participants?.length || 0} 人</p><table style="width:100%;border-collapse:collapse;font-size:15px"><thead><tr style="background:#f3f5f7"><th style="width:70px">序号</th><th>姓名</th><th>代表单位</th></tr></thead><tbody>${rows}</tbody></table><style>th,td{border:1px solid #777;padding:9px 10px;text-align:left;vertical-align:top;line-height:1.45;word-break:break-word}th{text-align:center}</style>`;
+        exportContainer.appendChild(pageElement);
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const canvas = await html2canvas(pageElement, { scale: 1, backgroundColor: '#ffffff', logging: false, useCORS: true });
+        if (index > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.82), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+        exportContainer.removeChild(pageElement);
+        setPdfExportProgress({ current: index + 1, total: pages.length });
+      }
+      pdf.save(`${String(competition?.name || '比赛').replace(/[\\/:*?"<>|]/g, '_')}-出场顺序.pdf`);
+      setSuccess('PDF 已生成并开始下载。');
+    } catch (err) {
+      console.error('PDF 导出失败:', err);
+      setError('PDF 导出失败，请重试。');
+    } finally {
+      exportContainer.remove();
+      setExportingPdf(false);
+      setPdfExportProgress({ current: 0, total: 0 });
+    }
+  };
 
   const handleOpenAssignDialog = useCallback((schedule, e) => {
     e.stopPropagation(); // 阻止卡片点击跳转
@@ -710,7 +763,18 @@ const CompetitionScheduleManagementPage = () => {
                 startIcon={<PrintIcon />}
                 onClick={handlePrint}
               >
-                打印/导出PDF
+                打印
+              </Button>
+            )}
+            {schedules.length > 0 && (
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<PictureAsPdfIcon />}
+                onClick={handleExportPdf}
+                disabled={exportingPdf}
+              >
+                {exportingPdf ? `导出 PDF（${pdfExportProgress.current}/${pdfExportProgress.total}）` : '导出 PDF'}
               </Button>
             )}
 
