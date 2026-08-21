@@ -12,9 +12,7 @@ import ShuffleIcon from '@mui/icons-material/Shuffle';
 import SyncIcon from '@mui/icons-material/Sync';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
-import { jsPDF } from 'jspdf';
 import SaveIcon from '@mui/icons-material/Save';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
@@ -351,8 +349,6 @@ const CompetitionScheduleManagementPage = () => {
   const [unassignedParticipants, setUnassignedParticipants] = useState([]);
   const [unassignedSummary, setUnassignedSummary] = useState(null);
   const [unassignedSearch, setUnassignedSearch] = useState('');
-  const [exportingPdf, setExportingPdf] = useState(false);
-  const [pdfExportProgress, setPdfExportProgress] = useState({ current: 0, total: 0 });
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [projectCandidatesLoading, setProjectCandidatesLoading] = useState(false);
   const [projectCreating, setProjectCreating] = useState(false);
@@ -676,56 +672,129 @@ const CompetitionScheduleManagementPage = () => {
   const handlePrint = () => {
     window.print();
   };
-  const handleExportPdf = async () => {
-    if (!schedules.length || exportingPdf) return;
-    setExportingPdf(true);
+  const handleExportStartOrderExcel = () => {
+    const orderedSchedules = [...schedules]
+      .filter((schedule) => schedule.scheduleDate && schedule.timeSlot && schedule.court)
+      .sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.timeSlot || '').localeCompare(String(b.timeSlot || ''), 'zh-CN') || String(a.court || '').localeCompare(String(b.court || ''), 'zh-CN') || (a.order || 0) - (b.order || 0));
+    if (!orderedSchedules.length) {
+      setError('暂无已排程的出场顺序可导出。');
+      return;
+    }
+
     setError('');
     setSuccess('');
-    const exportContainer = document.createElement('div');
-    Object.assign(exportContainer.style, { position: 'fixed', left: '-10000px', top: '0', width: '794px', zIndex: '-1', background: '#fff' });
-    document.body.appendChild(exportContainer);
-
     try {
-      const { default: html2canvas } = await import('html2canvas');
-      const escapeHtml = (value) => String(value || '-').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
-      const orderedSchedules = [...schedules].sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.court || '').localeCompare(String(b.court || ''), 'zh-CN') || (a.order || 0) - (b.order || 0));
-      const pages = orderedSchedules.flatMap((schedule) => {
-        const entries = (schedule.participants || []).map((participant) => ({
-          name: participant.isVirtualTeam && participant.teamMembers?.length ? participant.teamMembers.map((member) => member.name).join('、') : (participant.name || participant.user?.name || '-'),
-          schoolName: participant.schoolName || participant.teamName || participant.user?.schoolName || '-'
-        }));
-        const chunks = [];
-        for (let index = 0; index < Math.max(entries.length, 1); index += 22) chunks.push({ schedule, entries: entries.slice(index, index + 22), page: Math.floor(index / 22) + 1, pageCount: Math.ceil(Math.max(entries.length, 1) / 22) });
-        return chunks;
+      const workbook = XLSX.utils.book_new();
+      const rows = [];
+      const merges = [];
+      const rowHeights = [];
+      const rowTypes = [];
+      const baseStyle = {
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        font: { name: '宋体', sz: 10 },
+        border: {
+          top: { style: 'thin', color: { rgb: '808080' } },
+          bottom: { style: 'thin', color: { rgb: '808080' } },
+          left: { style: 'thin', color: { rgb: '808080' } },
+          right: { style: 'thin', color: { rgb: '808080' } }
+        }
+      };
+      const titleStyle = { ...baseStyle, font: { name: '黑体', sz: 18, bold: true }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true } };
+      const subtitleStyle = { ...baseStyle, font: { name: '黑体', sz: 14, bold: true } };
+      const sectionStyle = { ...baseStyle, font: { name: '黑体', sz: 12, bold: true } };
+      const eventStyle = { ...baseStyle, font: { name: '宋体', sz: 12, bold: true }, alignment: { horizontal: 'left', vertical: 'center', wrapText: true } };
+      const headerStyle = { ...baseStyle, font: { name: '宋体', sz: 10, bold: true } };
+      const appendMergedRow = (value, type, height = 25) => {
+        const rowIndex = rows.length;
+        rows.push([value, '', '', '', '', '']);
+        merges.push({ s: { r: rowIndex, c: 0 }, e: { r: rowIndex, c: 5 } });
+        rowHeights.push({ hpt: height });
+        rowTypes.push(type);
+      };
+      const appendTableRow = (values, type = 'body') => {
+        rows.push(values);
+        rowHeights.push({ hpt: 25 });
+        rowTypes.push(type);
+      };
+      const formatDate = (value) => String(value || '').replace(/T.*$/, '');
+      const getEventName = (schedule) => String(schedule.name || '').replace(/[（(]\d+(?:人|队)[）)]\s*$/, '').trim() || '-';
+      const isTeamParticipant = (participant) => participant.isVirtualTeam || participant.type === 'team' || ['集体', '集体项目', '混合集体'].includes(String(participant.ageGroup || ''));
+      const isCollectiveSchedule = (schedule) => /集体/.test(String(schedule.name || '')) || (schedule.participants || []).some(isTeamParticipant);
+      const getCountLabel = (schedule) => `${(schedule.participants || []).length}${isCollectiveSchedule(schedule) ? '队' : '人'}`;
+      const participantRow = (participant, schedule, index) => {
+        const isTeam = isTeamParticipant(participant);
+        const teamMembers = participant.teamMembers || [];
+        const teamName = participant.teamName || participant.schoolName || participant.name || participant.user?.name || '-';
+        return [
+          index + 1,
+          isTeam ? teamName : (participant.name || participant.user?.name || '-'),
+          isTeam ? '集体' : (participant.gender || participant.user?.gender || '-'),
+          isTeam ? '集体' : (participant.ageGroup || participant.user?.ageGroup || '-'),
+          isTeam ? `${getEventName(schedule)}${teamMembers.length ? `（${teamMembers.length}人）` : ''}` : (participant.event || getEventName(schedule)),
+          participant.schoolName || participant.teamName || participant.user?.schoolName || '-'
+        ];
+      };
+
+      appendMergedRow(competition?.name || '比赛', 'title', 55);
+      appendMergedRow('上场秩序', 'subtitle', 25);
+      const dates = [...new Set(orderedSchedules.map((schedule) => formatDate(schedule.scheduleDate)))];
+      const slots = ['上午', '下午', '晚上'];
+      let itemNumber = 0;
+      dates.forEach((date) => {
+        appendMergedRow(date, 'section', 25);
+        slots.forEach((timeSlot) => {
+          const slotSchedules = orderedSchedules.filter((schedule) => formatDate(schedule.scheduleDate) === date && schedule.timeSlot === timeSlot);
+          if (!slotSchedules.length) return;
+          const exactTime = slotSchedules.find((schedule) => schedule.exactTime)?.exactTime || '';
+          appendMergedRow(`${timeSlot}${exactTime ? exactTime : ''}`, 'section', 25);
+          const courts = [...new Set(slotSchedules.map((schedule) => schedule.court))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
+          courts.forEach((court) => {
+            appendMergedRow(court, 'section', 25);
+            slotSchedules.filter((schedule) => schedule.court === court).forEach((schedule) => {
+              itemNumber += 1;
+              const displayName = String(schedule.name || '未命名项目');
+              const eventTitle = /[（(]\d+(?:人|队)[）)]\s*$/.test(displayName)
+                ? displayName
+                : `${displayName}（${getCountLabel(schedule)}）`;
+              appendMergedRow(`${itemNumber}、${eventTitle}`, 'event', 25);
+              appendTableRow(['序号', '姓名', '性别', '组别', '项目', '单位'], 'header');
+              const participants = schedule.participants || [];
+              if (participants.length) {
+                participants.forEach((participant, participantIndex) => appendTableRow(participantRow(participant, schedule, participantIndex)));
+              } else {
+                appendTableRow(['-', '暂无已编排选手', '', '', getEventName(schedule), '']);
+              }
+              appendTableRow(['', '', '', '', '', ''], 'blank');
+            });
+          });
+        });
       });
-      setPdfExportProgress({ current: 0, total: pages.length });
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
-      for (let index = 0; index < pages.length; index += 1) {
-        const { schedule, entries, page, pageCount } = pages[index];
-        const pageElement = document.createElement('section');
-        pageElement.style.cssText = 'width:794px;min-height:1123px;box-sizing:border-box;padding:56px 54px;background:#fff;color:#111;font-family:"Microsoft YaHei","SimSun",sans-serif;';
-        const rows = entries.length ? entries.map((entry, entryIndex) => `<tr><td>${(page - 1) * 22 + entryIndex + 1}</td><td>${escapeHtml(entry.name)}</td><td>${escapeHtml(entry.schoolName)}</td></tr>`).join('') : '<tr><td colspan="3" style="text-align:center">本项目暂未安排选手</td></tr>';
-        pageElement.innerHTML = `<h1 style="font-size:22px;text-align:center;margin:0 0 14px">${escapeHtml(competition?.name || '比赛')} - 出场顺序</h1><h2 style="font-size:18px;margin:0 0 10px;line-height:1.5">${escapeHtml(schedule.name)}${pageCount > 1 ? `（第 ${page}/${pageCount} 页）` : ''}</h2><p style="font-size:13px;margin:0 0 18px;color:#444">${escapeHtml(schedule.scheduleDate)}　${escapeHtml(schedule.timeSlot)}　${escapeHtml(schedule.court)}　共 ${schedule.participants?.length || 0} 人</p><table style="width:100%;border-collapse:collapse;font-size:15px"><thead><tr style="background:#f3f5f7"><th style="width:70px">序号</th><th>姓名</th><th>代表单位</th></tr></thead><tbody>${rows}</tbody></table><style>th,td{border:1px solid #777;padding:9px 10px;text-align:left;vertical-align:top;line-height:1.45;word-break:break-word}th{text-align:center}</style>`;
-        exportContainer.appendChild(pageElement);
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        const canvas = await html2canvas(pageElement, { scale: 1, backgroundColor: '#ffffff', logging: false, useCORS: true });
-        if (index > 0) pdf.addPage();
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.82), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-        exportContainer.removeChild(pageElement);
-        setPdfExportProgress({ current: index + 1, total: pages.length });
-      }
-      pdf.save(`${String(competition?.name || '比赛').replace(/[\\/:*?"<>|]/g, '_')}-出场顺序.pdf`);
-      setSuccess('PDF 已生成并开始下载。');
+
+      const worksheet = XLSX.utils.aoa_to_sheet(rows);
+      worksheet['!merges'] = merges;
+      worksheet['!cols'] = [{ wch: 5 }, { wch: 17 }, { wch: 5 }, { wch: 7 }, { wch: 20 }, { wch: 40 }];
+      worksheet['!rows'] = rowHeights;
+      worksheet['!pageSetup'] = { orientation: 'portrait', paperSize: '9', fitToWidth: 1, fitToHeight: 0 };
+      worksheet['!margins'] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+      rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+        const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+        if (!worksheet[address]) worksheet[address] = { t: 's', v: '' };
+        const type = rowTypes[rowIndex];
+        worksheet[address].s = type === 'title' ? titleStyle
+          : type === 'subtitle' ? subtitleStyle
+            : type === 'section' ? sectionStyle
+              : type === 'event' ? eventStyle
+                : type === 'header' ? headerStyle
+                  : baseStyle;
+      }));
+      XLSX.utils.book_append_sheet(workbook, worksheet, '上场顺序');
+      XLSX.writeFile(workbook, `${String(competition?.name || '比赛').replace(/[\\/:*?"<>|]/g, '_')}-上场顺序.xlsx`, { compression: true });
+      setSuccess('出场顺序 Excel 已生成并开始下载。');
     } catch (err) {
-      console.error('PDF 导出失败:', err);
-      setError('PDF 导出失败，请重试。');
-    } finally {
-      exportContainer.remove();
-      setExportingPdf(false);
-      setPdfExportProgress({ current: 0, total: 0 });
+      console.error('出场顺序 Excel 导出失败:', err);
+      setError('出场顺序 Excel 导出失败，请重试。');
     }
   };
-
   const handleExportScheduleExcel = () => {
     const assigned = schedules
       .filter((schedule) => schedule.scheduleDate && schedule.timeSlot && schedule.court)
@@ -1005,13 +1074,10 @@ const CompetitionScheduleManagementPage = () => {
               <Button
                 variant="outlined"
                 color="secondary"
-                startIcon={tabValue === 1 ? <FileDownloadIcon /> : <PictureAsPdfIcon />}
-                onClick={tabValue === 1 ? handleExportScheduleExcel : handleExportPdf}
-                disabled={exportingPdf}
+                startIcon={<FileDownloadIcon />}
+                onClick={tabValue === 1 ? handleExportScheduleExcel : handleExportStartOrderExcel}
               >
-                {exportingPdf
-                  ? `导出 PDF（${pdfExportProgress.current}/${pdfExportProgress.total}）`
-                  : tabValue === 1 ? '导出日程 Excel' : '导出出场顺序 PDF'}
+                {tabValue === 1 ? '导出日程 Excel' : '导出出场顺序 Excel'}
               </Button>
             )}
 
