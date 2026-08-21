@@ -548,7 +548,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           '身份证号': p.idCard || '-',
           '年龄组别': p.ageGroup || p.grade || '-',
           '比赛项目': p.event || '-',
-          '项目详情': p.additionalInfo?.eventDetail || '-',
+          // 旧报名资料将具体套路写在备注；新报名资料使用 eventDetail。
+          // 导出时优先保留备注，确保传统拳术／器械的具体套路不会遗漏。
+          '项目详情': p.additionalInfo?.notes || p.additionalInfo?.eventDetail || '-',
           '代表单位': p.schoolName || '-',
           '领队': p.teamLeader || '-',
           '领队电话': p.leaderPhone || '-',
