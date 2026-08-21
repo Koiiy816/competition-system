@@ -110,6 +110,32 @@ exports.generateStartList = async (req, res, next) => {
       });
     }
 
+    // 已有日程（尤其是 Excel 导入的日程）时，只在每个原有项目内随机出场顺序，绝不重建项目。
+    const existingSchedules = await Schedule.find({ competition: competitionId });
+    if (existingSchedules.length > 0) {
+      const participantIds = existingSchedules.flatMap((schedule) => schedule.participants.map((participant) => participant.toString()));
+      const participantRecords = await Participant.find({ _id: { $in: participantIds } }).select('_id isTest');
+      const isTestById = new Map(participantRecords.map((participant) => [participant._id.toString(), participant.isTest]));
+      const shuffle = (items) => {
+        const result = [...items];
+        for (let index = result.length - 1; index > 0; index -= 1) {
+          const randomIndex = Math.floor(Math.random() * (index + 1));
+          [result[index], result[randomIndex]] = [result[randomIndex], result[index]];
+        }
+        return result;
+      };
+      await Promise.all(existingSchedules.map(async (schedule) => {
+        const normal = schedule.participants.filter((participant) => !isTestById.get(participant.toString()));
+        const test = schedule.participants.filter((participant) => isTestById.get(participant.toString()));
+        schedule.participants = [...shuffle(normal), ...shuffle(test)];
+        await schedule.save();
+      }));
+      return res.status(200).json({
+        success: true,
+        message: `已在 ${existingSchedules.length} 个现有日程项目内随机生成出场顺序，项目、场地和合并组别均保持不变。`
+      });
+    }
+
     // 如果是强制覆盖，顺便清理掉所有历史遗留的废弃虚拟队伍，保持数据库干净
     if (req.query.overwrite === 'true') {
       await Participant.deleteMany({ competition: competitionId, isVirtualTeam: true });

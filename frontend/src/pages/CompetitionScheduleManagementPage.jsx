@@ -347,8 +347,8 @@ const CompetitionScheduleManagementPage = () => {
     setSuccess('');
     
     try {
-      await scheduleService.generateStartList(id);
-      setSuccess('出场顺序已成功生成');
+      const response = await scheduleService.generateStartList(id);
+      setSuccess(response.message || '出场顺序已成功生成');
       // 重新加载数据
       const schedRes = await scheduleService.getSchedules(id, { limit: 1000 });
       setSchedules(schedRes.data);
@@ -668,7 +668,7 @@ const CompetitionScheduleManagementPage = () => {
                 onClick={handleGenerateStartList}
                 disabled={generating}
               >
-                {generating ? '生成中...' : '随机生成出场顺序'}
+                {generating ? '生成中...' : (schedules.length > 0 ? '随机已导入项目顺序' : '随机生成出场顺序')}
               </Button>
             )}
           </Box>
