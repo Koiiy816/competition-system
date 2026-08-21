@@ -1338,6 +1338,7 @@ function buildRosterAssignments(participants, items, rawRoster) {
   const participantIdsBySchedule = new Map();
   const rosterScheduleIndexes = new Set();
   const assignedIds = new Set();
+  const rosterTeamsBySchedule = new Map();
   const summary = { providedRows: roster.length, autoAssignedEntries: 0, ambiguousRows: 0, unmatchedRows: 0, alreadyMatchedRows: 0 };
 
   roster.forEach((row) => {
@@ -1350,25 +1351,39 @@ function buildRosterAssignments(participants, items, rawRoster) {
     const rowGender = normalizeExcelScheduleGender(row.gender);
     const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
     const rowSchool = normalizeRosterText(row.schoolName);
-    const basicCandidates = participants.filter((participant) => {
-      if (normalizeRosterText(participant.name) !== name) return false;
-      if (rowGender && normalizeExcelScheduleGender(participant.gender) !== rowGender) return false;
-      if (rowAge && String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1] !== rowAge) return false;
-      return !assignedIds.has(participant._id.toString());
-    });
-    const schoolCandidates = rowSchool ? basicCandidates.filter((participant) => normalizeRosterText(participant.schoolName) === rowSchool) : [];
-    const candidates = schoolCandidates.length > 0 ? schoolCandidates : basicCandidates;
+    const rowEvent = normalizeExcelScheduleEvent(row.event);
+    const parsedTarget = parseExcelScheduleName(target.name);
+    const candidates = participants.filter((participant) => normalizeRosterText(participant.name) === name && !assignedIds.has(participant._id.toString()));
     if (candidates.length === 0) { summary.unmatchedRows += 1; return; }
-    if (candidates.length > 1) { summary.ambiguousRows += 1; return; }
-    const participant = candidates[0];
+    const scored = candidates.map((participant) => {
+      const participantAge = String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1];
+      const participantEvents = [participant.event, participant.manualEventGroup].filter(Boolean).map(normalizeExcelScheduleEvent);
+      let score = 0;
+      if (rowSchool && normalizeRosterText(participant.schoolName) === rowSchool) score += 8;
+      if (rowGender && normalizeExcelScheduleGender(participant.gender) === rowGender) score += 4;
+      if (rowAge && participantAge === rowAge) score += 4;
+      if (rowEvent && participantEvents.includes(rowEvent)) score += 6;
+      if (participantEvents.includes(parsedTarget.event)) score += 5;
+      return { participant, score };
+    });
+    const highestScore = Math.max(...scored.map((candidate) => candidate.score));
+    const best = scored.filter((candidate) => candidate.score === highestScore);
+    if (best.length > 1) { summary.ambiguousRows += 1; return; }
+    const participant = best[0].participant;
     const participantId = participant._id.toString();
     assignedIds.add(participantId);
     if (!participantIdsBySchedule.has(target.index)) participantIdsBySchedule.set(target.index, []);
     participantIdsBySchedule.get(target.index).push(participantId);
+    if (row.teamKey) {
+      if (!rosterTeamsBySchedule.has(target.index)) rosterTeamsBySchedule.set(target.index, new Map());
+      const teams = rosterTeamsBySchedule.get(target.index);
+      if (!teams.has(row.teamKey)) teams.set(row.teamKey, { teamName: row.teamName || row.schoolName || participant.schoolName || '未填写代表单位', memberIds: [] });
+      teams.get(row.teamKey).memberIds.push(participantId);
+    }
     summary.autoAssignedEntries += 1;
   });
 
-  return { participantIdsBySchedule, rosterScheduleIndexes, summary };
+  return { participantIdsBySchedule, rosterScheduleIndexes, rosterTeamsBySchedule, summary };
 }
 
 async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []) {
@@ -1428,6 +1443,7 @@ async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []
       item.approvedCount = matches.filter((participant) => participant.status === 'approved').length;
       item.pendingCount = matches.filter((participant) => participant.status === 'pending').length;
       item.rosterAutoAssignedCount = matches.length;
+      item.rosterTeams = [...(rosterResult.rosterTeamsBySchedule.get(item.index)?.values() || [])];
     });
   }
   const matchedIds = new Set(items.flatMap((item) => item.participants.map((participant) => participant.id.toString())));
@@ -1508,17 +1524,26 @@ exports.importExcelSchedule = async (req, res, next) => {
       let participantIds = matches.map((participant) => participant._id);
 
       if (isCollective) {
+        const rosterTeams = Array.isArray(item.rosterTeams) ? item.rosterTeams : [];
         const teamsBySchool = new Map();
-        matches.forEach((participant) => {
-          const schoolName = participant.schoolName || '未填写代表单位';
-          if (!teamsBySchool.has(schoolName)) teamsBySchool.set(schoolName, []);
-          teamsBySchool.get(schoolName).push(participant);
-        });
+        if (rosterTeams.length > 0) {
+          rosterTeams.forEach((team, index) => {
+            const members = matches.filter((participant) => team.memberIds.includes(participant._id.toString()));
+            if (members.length > 0) teamsBySchool.set(`roster-${index}`, { schoolName: team.teamName || members[0].schoolName || '未填写代表单位', members });
+          });
+        } else {
+          matches.forEach((participant) => {
+            const schoolName = participant.schoolName || '未填写代表单位';
+            if (!teamsBySchool.has(schoolName)) teamsBySchool.set(schoolName, { schoolName, members: [] });
+            teamsBySchool.get(schoolName).members.push(participant);
+          });
+        }
         participantIds = [];
-        for (const [schoolName, members] of teamsBySchool.entries()) {
+        for (const { schoolName, members } of teamsBySchool.values()) {
           const virtualTeam = await Participant.create({
             competition: competitionId,
             name: schoolName,
+            teamName: schoolName,
             schoolName,
             event: '集体项目',
             ageGroup: '混合集体',

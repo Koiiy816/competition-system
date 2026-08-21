@@ -73,21 +73,46 @@ const parseStartOrderExcel = (file) => new Promise((resolve, reject) => {
       const entries = [];
       let scheduleName = '';
       let headers = null;
+      let currentTeam = null;
       rows.forEach((row) => {
         const values = row.map((cell) => String(cell || '').trim());
         const first = values[0] || '';
         if (/^\d+[、.].*[（(]\d+(?:人|队)[）)]/.test(first)) {
           scheduleName = first.replace(/^\d+[、.]/, '').trim();
           headers = null;
+          currentTeam = null;
           return;
         }
         const nameIndex = values.indexOf('姓名');
         if (nameIndex >= 0) {
-          headers = { name: nameIndex, gender: values.indexOf('性别'), ageGroup: values.indexOf('组别'), event: values.indexOf('项目'), schoolName: values.indexOf('单位') };
+          headers = {
+            name: nameIndex,
+            gender: values.indexOf('性别'),
+            ageGroup: values.indexOf('组别'),
+            event: values.indexOf('项目'),
+            schoolName: values.indexOf('单位'),
+            teamTable: values.includes('人数') && values.includes('单位')
+          };
+          currentTeam = null;
           return;
         }
         if (!scheduleName || !headers || !values[headers.name]) return;
-        entries.push({ scheduleName, name: values[headers.name], gender: headers.gender >= 0 ? values[headers.gender] : '', ageGroup: headers.ageGroup >= 0 ? values[headers.ageGroup] : '', event: headers.event >= 0 ? values[headers.event] : '', schoolName: headers.schoolName >= 0 ? values[headers.schoolName] : '' });
+        if (headers.teamTable && values[0] && values[headers.schoolName]) {
+          currentTeam = {
+            key: `${scheduleName}|${values[0]}|${values[headers.schoolName]}`,
+            name: values[headers.schoolName]
+          };
+        }
+        entries.push({
+          scheduleName,
+          name: values[headers.name],
+          gender: headers.gender >= 0 ? values[headers.gender] : '',
+          ageGroup: headers.ageGroup >= 0 ? values[headers.ageGroup] : '',
+          event: headers.event >= 0 ? values[headers.event] : '',
+          schoolName: headers.teamTable ? (currentTeam?.name || '') : (headers.schoolName >= 0 ? values[headers.schoolName] : ''),
+          teamKey: currentTeam?.key || '',
+          teamName: currentTeam?.name || ''
+        });
       });
       if (!entries.length) throw new Error('未在上场顺序 Excel 中识别到选手名单');
       resolve(entries);
