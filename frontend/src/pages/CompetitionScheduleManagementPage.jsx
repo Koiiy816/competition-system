@@ -5,7 +5,7 @@ import {
   CircularProgress, Alert, List, ListItem, ListItemText,
   Divider, Chip, Container, Table, TableBody, TableCell, 
   TableContainer, TableHead, TableRow, Tabs, Tab,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, IconButton
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, IconButton, Checkbox
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ShuffleIcon from '@mui/icons-material/Shuffle';
@@ -22,8 +22,10 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import * as XLSX from 'xlsx';
 import PreviewIcon from '@mui/icons-material/Preview';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
+import participantService from '../services/participantService';
 import { useAuth } from '../contexts/AuthContext';
 
 const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
@@ -337,6 +339,13 @@ const CompetitionScheduleManagementPage = () => {
   const [unassignedSearch, setUnassignedSearch] = useState('');
   const [exportingPdf, setExportingPdf] = useState(false);
   const [pdfExportProgress, setPdfExportProgress] = useState({ current: 0, total: 0 });
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [projectCandidatesLoading, setProjectCandidatesLoading] = useState(false);
+  const [projectCreating, setProjectCreating] = useState(false);
+  const [projectCandidates, setProjectCandidates] = useState([]);
+  const [projectCandidateSearch, setProjectCandidateSearch] = useState('');
+  const [selectedProjectParticipantIds, setSelectedProjectParticipantIds] = useState([]);
+  const [newProject, setNewProject] = useState({ name: '', scheduleDate: '', timeSlot: '上午', exactTime: '', court: '一号场地' });
 
   useEffect(() => {
     fetchData();
@@ -503,6 +512,76 @@ const CompetitionScheduleManagementPage = () => {
 
   const filteredUnassignedParticipants = unassignedParticipants.filter((participant) => {
     const keyword = unassignedSearch.trim().toLowerCase();
+    if (!keyword) return true;
+    return [participant.name, participant.schoolName, participant.ageGroup, participant.event]
+      .some((value) => String(value || '').toLowerCase().includes(keyword));
+  });
+  const handleOpenCreateProject = async () => {
+    setCreateProjectOpen(true);
+    setProjectCandidatesLoading(true);
+    setProjectCandidateSearch('');
+    setSelectedProjectParticipantIds([]);
+    setNewProject({
+      name: '',
+      scheduleDate: competition?.startDate ? competition.startDate.split('T')[0] : '',
+      timeSlot: '上午',
+      exactTime: '',
+      court: '一号场地'
+    });
+    try {
+      const response = await participantService.getParticipants(id, { limit: 1000 });
+      setProjectCandidates((response.data || []).filter((participant) => !participant.isVirtualTeam && participant.status !== 'rejected'));
+    } catch (err) {
+      setCreateProjectOpen(false);
+      setError(err.message || '读取参赛选手失败');
+    } finally {
+      setProjectCandidatesLoading(false);
+    }
+  };
+
+  const handleCreateProject = async () => {
+    if (!newProject.name.trim()) {
+      setError('请填写比赛项目名称');
+      return;
+    }
+    if (!newProject.scheduleDate) {
+      setError('请填写比赛日期');
+      return;
+    }
+    if (!selectedProjectParticipantIds.length) {
+      setError('请至少选择一名选手');
+      return;
+    }
+
+    setProjectCreating(true);
+    setError('');
+    try {
+      const date = newProject.scheduleDate;
+      const response = await scheduleService.createSchedule(id, {
+        name: newProject.name.trim(),
+        participants: selectedProjectParticipantIds,
+        scheduleDate: date,
+        timeSlot: newProject.timeSlot,
+        exactTime: newProject.exactTime,
+        court: newProject.court,
+        startTime: `${date}T08:00:00`,
+        endTime: `${date}T18:00:00`,
+        location: newProject.court || '待定',
+        type: 'other',
+        status: 'scheduled'
+      });
+      setCreateProjectOpen(false);
+      setSuccess(`已建立「${response.data?.name || newProject.name.trim()}」，并加入 ${selectedProjectParticipantIds.length} 名选手。`);
+      await fetchData();
+    } catch (err) {
+      setError(err.message || '建立比赛项目失败');
+    } finally {
+      setProjectCreating(false);
+    }
+  };
+
+  const filteredProjectCandidates = projectCandidates.filter((participant) => {
+    const keyword = projectCandidateSearch.trim().toLowerCase();
     if (!keyword) return true;
     return [participant.name, participant.schoolName, participant.ageGroup, participant.event]
       .some((value) => String(value || '').toLowerCase().includes(keyword));
@@ -793,6 +872,15 @@ const CompetitionScheduleManagementPage = () => {
             {isAdminOrOrganizer && (
               <Button
                 variant="contained"
+                color="primary"
+                startIcon={<AddCircleOutlineIcon />}
+                onClick={handleOpenCreateProject}
+              >
+                新建比赛项目
+              </Button>
+            )}            {isAdminOrOrganizer && (
+              <Button
+                variant="contained"
                 color="secondary"
                 startIcon={<UploadFileIcon />}
                 onClick={() => setExcelImportOpen(true)}
@@ -1076,6 +1164,33 @@ const CompetitionScheduleManagementPage = () => {
         )}
       </Box>
 
+      <Dialog open={createProjectOpen} onClose={() => !projectCreating && setCreateProjectOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>新建比赛项目</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            仅会建立一个新赛程并加入你勾选的已报名选手，不会修改原始报名资料或照片。
+          </Alert>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2, mb: 2 }}>
+            <TextField label="比赛项目名称" required fullWidth sx={{ gridColumn: '1 / -1' }} value={newProject.name} onChange={(event) => setNewProject((current) => ({ ...current, name: event.target.value }))} />
+            <TextField label="比赛日期" required type="date" InputLabelProps={{ shrink: true }} value={newProject.scheduleDate} onChange={(event) => setNewProject((current) => ({ ...current, scheduleDate: event.target.value }))} />
+            <TextField select label="时间段" value={newProject.timeSlot} onChange={(event) => setNewProject((current) => ({ ...current, timeSlot: event.target.value }))}>
+              <MenuItem value="上午">上午</MenuItem><MenuItem value="下午">下午</MenuItem><MenuItem value="晚上">晚上</MenuItem>
+            </TextField>
+            <TextField label="场地" value={newProject.court} onChange={(event) => setNewProject((current) => ({ ...current, court: event.target.value }))} />
+            <TextField label="具体时间（可选）" value={newProject.exactTime} onChange={(event) => setNewProject((current) => ({ ...current, exactTime: event.target.value }))} />
+          </Box>
+          <TextField fullWidth label="搜索姓名、代表单位、组别或报名项目" value={projectCandidateSearch} onChange={(event) => setProjectCandidateSearch(event.target.value)} sx={{ mb: 1 }} />
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>已选择 {selectedProjectParticipantIds.length} 名选手</Typography>
+          {projectCandidatesLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box> : (
+            <TableContainer sx={{ maxHeight: 380, border: 1, borderColor: 'divider' }}>
+              <Table stickyHeader size="small"><TableHead><TableRow><TableCell padding="checkbox" /><TableCell>姓名</TableCell><TableCell>代表单位</TableCell><TableCell>组别</TableCell><TableCell>报名项目</TableCell></TableRow></TableHead>
+                <TableBody>{filteredProjectCandidates.map((participant) => (<TableRow key={participant._id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelectedProjectParticipantIds((current) => current.includes(participant._id) ? current.filter((participantId) => participantId !== participant._id) : [...current, participant._id])}><TableCell padding="checkbox"><Checkbox checked={selectedProjectParticipantIds.includes(participant._id)} onClick={(event) => event.stopPropagation()} onChange={() => setSelectedProjectParticipantIds((current) => current.includes(participant._id) ? current.filter((participantId) => participantId !== participant._id) : [...current, participant._id])} /></TableCell><TableCell>{participant.name || '-'}</TableCell><TableCell>{participant.schoolName || '-'}</TableCell><TableCell>{participant.ageGroup || '-'}</TableCell><TableCell>{participant.event || '-'}</TableCell></TableRow>))}{!projectCandidatesLoading && filteredProjectCandidates.length === 0 && <TableRow><TableCell colSpan={5} align="center">没有符合条件的选手</TableCell></TableRow>}</TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions><Button disabled={projectCreating} onClick={() => setCreateProjectOpen(false)}>取消</Button><Button variant="contained" disabled={projectCreating || !selectedProjectParticipantIds.length} onClick={handleCreateProject}>{projectCreating ? '建立中…' : `建立并加入 ${selectedProjectParticipantIds.length} 名选手`}</Button></DialogActions>
+      </Dialog>
       <Dialog open={unassignedDialogOpen} onClose={() => setUnassignedDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>未编排选手查核</DialogTitle>
         <DialogContent dividers>
