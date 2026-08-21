@@ -1316,8 +1316,8 @@ function participantMatchesExcelSchedule(participant, scheduleItem) {
 
 function normalizeRosterText(value) {
   return String(value || '')
-    .replace(/[（(]\\d+(?:人|队)[）)]/g, '')
-    .replace(/[\\s　·・.．、，,()（）【】\\[\\]]/g, '')
+    .replace(/[（(]\d+(?:人|队)[）)]/g, '')
+    .replace(/[\s　·・.．、，,()（）【】\[\]]/g, '')
     .trim()
     .toLowerCase();
 }
@@ -1350,13 +1350,14 @@ function buildRosterAssignments(participants, items, rawRoster) {
     const rowGender = normalizeExcelScheduleGender(row.gender);
     const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
     const rowSchool = normalizeRosterText(row.schoolName);
-    const candidates = participants.filter((participant) => {
+    const basicCandidates = participants.filter((participant) => {
       if (normalizeRosterText(participant.name) !== name) return false;
       if (rowGender && normalizeExcelScheduleGender(participant.gender) !== rowGender) return false;
       if (rowAge && String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1] !== rowAge) return false;
-      if (rowSchool && normalizeRosterText(participant.schoolName) !== rowSchool) return false;
-      return true;
-    }).filter((participant) => !assignedIds.has(participant._id.toString()));
+      return !assignedIds.has(participant._id.toString());
+    });
+    const schoolCandidates = rowSchool ? basicCandidates.filter((participant) => normalizeRosterText(participant.schoolName) === rowSchool) : [];
+    const candidates = schoolCandidates.length > 0 ? schoolCandidates : basicCandidates;
     if (candidates.length === 0) { summary.unmatchedRows += 1; return; }
     if (candidates.length > 1) { summary.ambiguousRows += 1; return; }
     const participant = candidates[0];
