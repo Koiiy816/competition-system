@@ -681,6 +681,51 @@ exports.createSchedule = async (req, res, next) => {
         message: '没有权限为此比赛创建赛程'
       });
     }
+    // 集体项目以虚拟队伍保存到赛程中；只引用现有报名选手，不改动其报名资料或照片。
+    if (Array.isArray(req.body.collectiveTeams)) {
+      const requestedIds = [...new Set(req.body.collectiveTeams.flatMap((team) => Array.isArray(team?.memberIds) ? team.memberIds : []).filter(Boolean).map(String))];
+      if (!requestedIds.length) {
+        return res.status(400).json({ success: false, message: '请至少为一支集体队伍选择一名已报名选手' });
+      }
+      const members = await Participant.find({
+        _id: { $in: requestedIds },
+        competition: req.params.competitionId,
+        isVirtualTeam: { $ne: true },
+        status: { $ne: 'rejected' }
+      }).select('_id name schoolName isTest');
+      const memberById = new Map(members.map((member) => [member._id.toString(), member]));
+      const virtualTeamIds = [];
+
+      for (const rawTeam of req.body.collectiveTeams) {
+        const memberIds = [...new Set((rawTeam?.memberIds || []).map(String))].filter((memberId) => memberById.has(memberId));
+        if (!memberIds.length) continue;
+        const teamMembers = memberIds.map((memberId) => memberById.get(memberId));
+        const teamName = String(rawTeam?.teamName || teamMembers[0]?.schoolName || '未填写代表单位').trim();
+        const virtualTeam = await Participant.create({
+          competition: req.params.competitionId,
+          name: teamName,
+          teamName,
+          schoolName: teamName,
+          event: req.body.name,
+          ageGroup: '集体项目',
+          gender: 'mixed',
+          type: 'team',
+          isVirtualTeam: true,
+          teamMembers: memberIds,
+          status: 'approved',
+          isTest: teamMembers.some((member) => member.isTest),
+          additionalInfo: { source: 'manual-collective-schedule', createdBy: req.user.id }
+        });
+        virtualTeamIds.push(virtualTeam._id);
+      }
+
+      if (!virtualTeamIds.length) {
+        return res.status(400).json({ success: false, message: '所选选手无法建立集体队伍，请重新选择已报名选手' });
+      }
+      req.body.participants = virtualTeamIds;
+    }
+    delete req.body.collectiveTeams;
+    delete req.body.eventMode;
 
     // 创建赛程
     const schedule = await Schedule.create(req.body);

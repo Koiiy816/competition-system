@@ -359,7 +359,7 @@ const CompetitionScheduleManagementPage = () => {
   const [projectCandidates, setProjectCandidates] = useState([]);
   const [projectCandidateSearch, setProjectCandidateSearch] = useState('');
   const [selectedProjectParticipantIds, setSelectedProjectParticipantIds] = useState([]);
-  const [newProject, setNewProject] = useState({ name: '', scheduleDate: '', timeSlot: '上午', exactTime: '', court: '一号场地' });
+  const [newProject, setNewProject] = useState({ name: '', scheduleDate: '', timeSlot: '上午', exactTime: '', court: '一号场地', eventMode: 'individual' });
 
   useEffect(() => {
     fetchData();
@@ -579,7 +579,8 @@ const CompetitionScheduleManagementPage = () => {
       scheduleDate: competition?.startDate ? competition.startDate.split('T')[0] : '',
       timeSlot: '上午',
       exactTime: '',
-      court: '一号场地'
+      court: '一号场地',
+      eventMode: 'individual'
     });
     try {
       const response = await participantService.getParticipants(id, { limit: 1000 });
@@ -602,7 +603,7 @@ const CompetitionScheduleManagementPage = () => {
       return;
     }
     if (!selectedProjectParticipantIds.length) {
-      setError('请至少选择一名选手');
+      setError(newProject.eventMode === 'collective' ? '请至少选择一名集体项目队员' : '请至少选择一名选手');
       return;
     }
 
@@ -610,9 +611,20 @@ const CompetitionScheduleManagementPage = () => {
     setError('');
     try {
       const date = newProject.scheduleDate;
+      const selectedMembers = projectCandidates.filter((participant) => selectedProjectParticipantIds.includes(participant._id));
+      const collectiveTeams = newProject.eventMode === 'collective'
+        ? Object.values(selectedMembers.reduce((groups, participant) => {
+          const teamName = String(participant.schoolName || '未填写代表单位').trim() || '未填写代表单位';
+          if (!groups[teamName]) groups[teamName] = { teamName, memberIds: [] };
+          groups[teamName].memberIds.push(participant._id);
+          return groups;
+        }, {}))
+        : undefined;
       const response = await scheduleService.createSchedule(id, {
         name: newProject.name.trim(),
-        participants: selectedProjectParticipantIds,
+        participants: newProject.eventMode === 'collective' ? [] : selectedProjectParticipantIds,
+        collectiveTeams,
+        eventMode: newProject.eventMode,
         scheduleDate: date,
         timeSlot: newProject.timeSlot,
         exactTime: newProject.exactTime,
@@ -624,7 +636,9 @@ const CompetitionScheduleManagementPage = () => {
         status: 'scheduled'
       });
       setCreateProjectOpen(false);
-      setSuccess(`已建立「${response.data?.name || newProject.name.trim()}」，并加入 ${selectedProjectParticipantIds.length} 名选手。`);
+      setSuccess(newProject.eventMode === 'collective'
+        ? `已建立「${response.data?.name || newProject.name.trim()}」，并按代表单位组成 ${collectiveTeams.length} 支集体队伍、加入 ${selectedProjectParticipantIds.length} 名队员。`
+        : `已建立「${response.data?.name || newProject.name.trim()}」，并加入 ${selectedProjectParticipantIds.length} 名选手。`);
       await fetchData();
     } catch (err) {
       setError(err.message || '建立比赛项目失败');
@@ -1322,10 +1336,13 @@ const CompetitionScheduleManagementPage = () => {
         <DialogTitle>新建比赛项目</DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            仅会建立一个新赛程并加入你勾选的已报名选手，不会修改原始报名资料或照片。
+            个人项目会直接加入所选选手；集体项目会按「代表单位」自动组成队伍后加入赛程。两种方式都不会修改原始报名资料或照片。
           </Alert>
           <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2, mb: 2 }}>
-            <TextField label="比赛项目名称" required fullWidth sx={{ gridColumn: '1 / -1' }} value={newProject.name} onChange={(event) => setNewProject((current) => ({ ...current, name: event.target.value }))} />
+            <TextField select label="项目类型" value={newProject.eventMode} onChange={(event) => setNewProject((current) => ({ ...current, eventMode: event.target.value }))}>
+              <MenuItem value="individual">个人项目</MenuItem><MenuItem value="collective">集体项目（按代表单位成队）</MenuItem>
+            </TextField>
+            <TextField label="比赛项目名称" required fullWidth value={newProject.name} onChange={(event) => setNewProject((current) => ({ ...current, name: event.target.value }))} />
             <TextField label="比赛日期" required type="date" InputLabelProps={{ shrink: true }} value={newProject.scheduleDate} onChange={(event) => setNewProject((current) => ({ ...current, scheduleDate: event.target.value }))} />
             <TextField select label="时间段" value={newProject.timeSlot} onChange={(event) => setNewProject((current) => ({ ...current, timeSlot: event.target.value }))}>
               <MenuItem value="上午">上午</MenuItem><MenuItem value="下午">下午</MenuItem><MenuItem value="晚上">晚上</MenuItem>
@@ -1334,7 +1351,8 @@ const CompetitionScheduleManagementPage = () => {
             <TextField label="具体时间（可选）" value={newProject.exactTime} onChange={(event) => setNewProject((current) => ({ ...current, exactTime: event.target.value }))} />
           </Box>
           <TextField fullWidth label="搜索姓名、代表单位、组别或报名项目" value={projectCandidateSearch} onChange={(event) => setProjectCandidateSearch(event.target.value)} sx={{ mb: 1 }} />
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>已选择 {selectedProjectParticipantIds.length} 名选手</Typography>
+          {newProject.eventMode === 'collective' && <Alert severity="info" sx={{ mb: 1 }}>同一代表单位的勾选队员会自动组成一支队伍；如需分成多支队伍，请分别建立项目或使用集体项目 Excel。</Alert>}
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>已选择 {selectedProjectParticipantIds.length} 名{newProject.eventMode === 'collective' ? '队员' : '选手'}</Typography>
           {projectCandidatesLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box> : (
             <TableContainer sx={{ maxHeight: 380, border: 1, borderColor: 'divider' }}>
               <Table stickyHeader size="small"><TableHead><TableRow><TableCell padding="checkbox" /><TableCell>姓名</TableCell><TableCell>代表单位</TableCell><TableCell>组别</TableCell><TableCell>报名项目</TableCell></TableRow></TableHead>
@@ -1343,7 +1361,7 @@ const CompetitionScheduleManagementPage = () => {
             </TableContainer>
           )}
         </DialogContent>
-        <DialogActions><Button disabled={projectCreating} onClick={() => setCreateProjectOpen(false)}>取消</Button><Button variant="contained" disabled={projectCreating || !selectedProjectParticipantIds.length} onClick={handleCreateProject}>{projectCreating ? '建立中…' : `建立并加入 ${selectedProjectParticipantIds.length} 名选手`}</Button></DialogActions>
+        <DialogActions><Button disabled={projectCreating} onClick={() => setCreateProjectOpen(false)}>取消</Button><Button variant="contained" disabled={projectCreating || !selectedProjectParticipantIds.length} onClick={handleCreateProject}>{projectCreating ? '建立中…' : newProject.eventMode === 'collective' ? `建立集体项目并加入 ${selectedProjectParticipantIds.length} 名队员` : `建立并加入 ${selectedProjectParticipantIds.length} 名选手`}</Button></DialogActions>
       </Dialog>
       <Dialog open={unassignedDialogOpen} onClose={() => setUnassignedDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>未编排选手查核</DialogTitle>
