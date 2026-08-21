@@ -1484,7 +1484,7 @@ function buildRosterAssignments(participants, items, rawRoster) {
   const rosterScheduleIndexes = new Set();
   const assignedIds = new Set();
   const rosterTeamsBySchedule = new Map();
-  const summary = { providedRows: roster.length, autoAssignedEntries: 0, ambiguousRows: 0, unmatchedRows: 0, alreadyMatchedRows: 0 };
+  const summary = { providedRows: roster.length, autoAssignedEntries: 0, virtualImportEntries: 0, ambiguousRows: 0, unmatchedRows: 0, alreadyMatchedRows: 0 };
 
   roster.forEach((row) => {
     const name = normalizeRosterText(row?.name);
@@ -1498,8 +1498,28 @@ function buildRosterAssignments(participants, items, rawRoster) {
     const rowSchool = normalizeRosterText(row.schoolName);
     const rowEvent = normalizeExcelScheduleEvent(row.event);
     const parsedTarget = parseExcelScheduleName(target.name);
+    const teamKey = String(row.teamKey || `${target.index}|${row.teamName || row.schoolName || '未填写代表单位'}`).trim();
+    if (!rosterTeamsBySchedule.has(target.index)) rosterTeamsBySchedule.set(target.index, new Map());
+    const teams = rosterTeamsBySchedule.get(target.index);
+    if (!teams.has(teamKey)) teams.set(teamKey, {
+      teamName: String(row.teamName || row.schoolName || '未填写代表单位').trim(),
+      memberIds: [],
+      externalMembers: []
+    });
+    const team = teams.get(teamKey);
+    const externalMember = {
+      name: String(row.name || '').trim(),
+      schoolName: String(row.schoolName || team.teamName || '').trim(),
+      ageGroup: rowAge ? `U${rowAge}` : String(row.ageGroup || '').trim(),
+      gender: rowGender || 'mixed',
+      event: String(row.event || target.name || '').trim()
+    };
     const candidates = participants.filter((participant) => normalizeRosterText(participant.name) === name && !assignedIds.has(participant._id.toString()));
-    if (candidates.length === 0) { summary.unmatchedRows += 1; return; }
+    if (candidates.length === 0) {
+      team.externalMembers.push(externalMember);
+      summary.virtualImportEntries += 1;
+      return;
+    }
     const scored = candidates.map((participant) => {
       const participantAge = String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1];
       const participantEvents = [participant.event, participant.manualEventGroup].filter(Boolean).map(normalizeExcelScheduleEvent);
@@ -1513,24 +1533,23 @@ function buildRosterAssignments(participants, items, rawRoster) {
     });
     const highestScore = Math.max(...scored.map((candidate) => candidate.score));
     const best = scored.filter((candidate) => candidate.score === highestScore);
-    if (best.length > 1) { summary.ambiguousRows += 1; return; }
+    if (best.length > 1) {
+      team.externalMembers.push(externalMember);
+      summary.ambiguousRows += 1;
+      summary.virtualImportEntries += 1;
+      return;
+    }
     const participant = best[0].participant;
     const participantId = participant._id.toString();
     assignedIds.add(participantId);
     if (!participantIdsBySchedule.has(target.index)) participantIdsBySchedule.set(target.index, []);
     participantIdsBySchedule.get(target.index).push(participantId);
-    if (row.teamKey) {
-      if (!rosterTeamsBySchedule.has(target.index)) rosterTeamsBySchedule.set(target.index, new Map());
-      const teams = rosterTeamsBySchedule.get(target.index);
-      if (!teams.has(row.teamKey)) teams.set(row.teamKey, { teamName: row.teamName || row.schoolName || participant.schoolName || '未填写代表单位', memberIds: [] });
-      teams.get(row.teamKey).memberIds.push(participantId);
-    }
+    team.memberIds.push(participantId);
     summary.autoAssignedEntries += 1;
   });
 
   return { participantIdsBySchedule, rosterScheduleIndexes, rosterTeamsBySchedule, summary };
 }
-
 async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []) {
   if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 300) {
     const error = new Error('请提供 1 至 300 个有效日程项目');
@@ -1660,8 +1679,10 @@ async function buildCollectiveRosterPreview(competitionId, rawRoster) {
         willCreate: item.willCreate,
         ambiguous: item.ambiguous,
         matchedCount: memberIds.length,
+        directImportMemberCount: rosterTeams.reduce((sum, team) => sum + (team.externalMembers || []).length, 0),
+        importableMemberCount: rosterTeams.reduce((sum, team) => sum + team.memberIds.length + (team.externalMembers || []).length, 0),
         teamCount: rosterTeams.length,
-        rosterTeams: rosterTeams.map((team) => ({ teamName: team.teamName, memberIds: team.memberIds, memberCount: team.memberIds.length }))
+        rosterTeams: rosterTeams.map((team) => ({ teamName: team.teamName, memberIds: team.memberIds, externalMembers: team.externalMembers || [], memberCount: team.memberIds.length + (team.externalMembers || []).length, matchedMemberCount: team.memberIds.length, directImportMemberCount: (team.externalMembers || []).length }))
       };
     }),
     summary: {
@@ -1670,7 +1691,9 @@ async function buildCollectiveRosterPreview(competitionId, rawRoster) {
       newProjectCount: items.filter((item) => item.willCreate).length,
       providedRows: rosterResult.summary.providedRows,
       matchedMembers: rosterResult.summary.autoAssignedEntries,
-      unmatchedMembers: rosterResult.summary.unmatchedRows + rosterResult.summary.ambiguousRows,
+      directImportMembers: rosterResult.summary.virtualImportEntries,
+      unmatchedMembers: rosterResult.summary.unmatchedRows,
+      ambiguousMembers: rosterResult.summary.ambiguousRows,
       ambiguousProjectNames
     }
   };
@@ -1703,14 +1726,33 @@ exports.importCollectiveRoster = async (req, res, next) => {
     if (preview.summary.ambiguousProjectNames.length) {
       return res.status(400).json({ success: false, message: `存在同名集体赛程，无法安全更新：${preview.summary.ambiguousProjectNames.join('、')}` });
     }
-    const targets = preview.items.filter((item) => item.teamCount > 0 && item.matchedCount > 0);
-    if (!targets.length) return res.status(400).json({ success: false, message: '没有可导入的集体队伍；请核对 Excel 的项目名称、单位和队员姓名是否与系统报名一致' });
+    const targets = preview.items.filter((item) => item.teamCount > 0 && item.importableMemberCount > 0);
+    if (!targets.length) return res.status(400).json({ success: false, message: '没有可导入的集体队伍；请确认 Excel 中每行均有集体项目名称、单位和队员姓名' });
 
     let createdScheduleCount = 0;
+    let createdExcelMemberCount = 0;
     for (const item of targets) {
       const virtualTeamIds = [];
       for (const team of item.rosterTeams) {
-        if (!team.memberIds.length) continue;
+        const memberIds = [...(team.memberIds || [])];
+        for (const member of (team.externalMembers || [])) {
+          const virtualMember = await Participant.create({
+            competition: req.params.competitionId,
+            name: member.name,
+            schoolName: member.schoolName || team.teamName,
+            event: item.name,
+            manualEventGroup: item.name,
+            ageGroup: member.ageGroup || '集体项目',
+            gender: member.gender || 'mixed',
+            type: 'individual',
+            isVirtualTeam: true,
+            status: 'approved',
+            additionalInfo: { source: 'collective-roster-excel', importedAsCollectiveMember: true, sourceTeamName: team.teamName }
+          });
+          memberIds.push(virtualMember._id);
+          createdExcelMemberCount += 1;
+        }
+        if (!memberIds.length) continue;
         const virtualTeam = await Participant.create({
           competition: req.params.competitionId,
           name: team.teamName,
@@ -1721,7 +1763,7 @@ exports.importCollectiveRoster = async (req, res, next) => {
           gender: 'mixed',
           type: 'team',
           isVirtualTeam: true,
-          teamMembers: team.memberIds,
+          teamMembers: memberIds,
           status: 'approved'
         });
         virtualTeamIds.push(virtualTeam._id);
@@ -1749,7 +1791,7 @@ exports.importCollectiveRoster = async (req, res, next) => {
     }
     res.status(201).json({
       success: true,
-      message: `已导入 ${targets.reduce((sum, item) => sum + item.teamCount, 0)} 支集体队伍；更新 ${targets.filter((item) => item.scheduleId).length} 个同名项目，新建 ${createdScheduleCount} 个待编排项目。泛称集体项目和原始报名资料、照片均未改动。`,
+      message: `已导入 ${targets.reduce((sum, item) => sum + item.teamCount, 0)} 支集体队伍；更新 ${targets.filter((item) => item.scheduleId).length} 个同名项目，新建 ${createdScheduleCount} 个待编排项目。其中 ${createdExcelMemberCount} 名为依 Excel 新建的集体成员；原始个人报名资料和照片均未改动。`,
       data: preview.summary
     });
   } catch (error) {

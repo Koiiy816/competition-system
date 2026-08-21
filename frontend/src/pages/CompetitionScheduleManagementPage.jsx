@@ -1459,15 +1459,15 @@ const CompetitionScheduleManagementPage = () => {
           </Button>
           {collectiveImportLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}><CircularProgress size={20} /><Typography>正在匹配集体赛程与队员名单…</Typography></Box>}
           {collectivePreview && <Box sx={{ mt: 3 }}>
-            <Alert severity={collectivePreview.summary.unmatchedMembers ? 'warning' : 'success'} sx={{ mb: 2 }}>
-              Excel 识别 {collectivePreview.summary.sourceProjectCount} 个集体项目、{collectivePreview.summary.providedRows} 名队员；将更新 {collectivePreview.summary.existingProjectCount} 个同名项目，并新建 {collectivePreview.summary.newProjectCount} 个待编排项目。已匹配 {collectivePreview.summary.matchedMembers} 名队员，待核对 {collectivePreview.summary.unmatchedMembers} 名。
+            <Alert severity={collectivePreview.summary.unmatchedMembers || collectivePreview.summary.ambiguousMembers ? 'warning' : 'success'} sx={{ mb: 2 }}>
+              Excel 识别 {collectivePreview.summary.sourceProjectCount} 个集体项目、{collectivePreview.summary.providedRows} 名队员；将更新 {collectivePreview.summary.existingProjectCount} 个同名项目，并新建 {collectivePreview.summary.newProjectCount} 个待编排项目。已匹配系统报名 {collectivePreview.summary.matchedMembers} 名，另有 {collectivePreview.summary.directImportMembers || 0} 名将按 Excel 直接建立为集体成员；无法识别项目归属 {collectivePreview.summary.unmatchedMembers} 名。
             </Alert>
             {collectivePreview.summary.ambiguousProjectNames?.length > 0 && <Alert severity="error" sx={{ mb: 2 }}>发现重复的同名集体赛程，请先处理后再导入：{collectivePreview.summary.ambiguousProjectNames.join('、')}</Alert>}
             <TableContainer component={Paper} sx={{ maxHeight: 420 }}>
               <Table size="small" stickyHeader>
-                <TableHead><TableRow><TableCell>集体项目</TableCell><TableCell>处理方式</TableCell><TableCell align="right">匹配队伍</TableCell><TableCell align="right">匹配队员</TableCell><TableCell>队伍／单位</TableCell></TableRow></TableHead>
+                <TableHead><TableRow><TableCell>集体项目</TableCell><TableCell>处理方式</TableCell><TableCell align="right">队伍</TableCell><TableCell align="right">系统匹配</TableCell><TableCell align="right">Excel 直接导入</TableCell><TableCell>队伍／单位</TableCell></TableRow></TableHead>
                 <TableBody>{collectivePreview.items.map((item) => <TableRow key={item.scheduleId || item.name}>
-                  <TableCell>{item.name}</TableCell><TableCell>{item.ambiguous ? '需先处理重复项目' : item.willCreate ? '新建待编排' : '更新同名项目'}</TableCell><TableCell align="right">{item.teamCount}</TableCell><TableCell align="right">{item.matchedCount}</TableCell>
+                  <TableCell>{item.name}</TableCell><TableCell>{item.ambiguous ? '需先处理重复项目' : item.willCreate ? '新建待编排' : '更新同名项目'}</TableCell><TableCell align="right">{item.teamCount}</TableCell><TableCell align="right">{item.matchedCount}</TableCell><TableCell align="right">{item.directImportMemberCount || 0}</TableCell>
                   <TableCell>{item.rosterTeams.length ? item.rosterTeams.map((team) => `${team.teamName}（${team.memberCount}人）`).join('；') : '—'}</TableCell>
                 </TableRow>)}</TableBody>
               </Table>
