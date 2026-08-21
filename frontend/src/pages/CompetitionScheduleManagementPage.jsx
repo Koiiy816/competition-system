@@ -739,18 +739,19 @@ const CompetitionScheduleManagementPage = () => {
       appendMergedRow('上场秩序', 'subtitle', 25);
       const dates = [...new Set(orderedSchedules.map((schedule) => formatDate(schedule.scheduleDate)))];
       const slots = ['上午', '下午', '晚上'];
-      let itemNumber = 0;
       dates.forEach((date) => {
         appendMergedRow(date, 'section', 25);
-        slots.forEach((timeSlot) => {
-          const slotSchedules = orderedSchedules.filter((schedule) => formatDate(schedule.scheduleDate) === date && schedule.timeSlot === timeSlot);
-          if (!slotSchedules.length) return;
-          const exactTime = slotSchedules.find((schedule) => schedule.exactTime)?.exactTime || '';
-          appendMergedRow(`${timeSlot}${exactTime ? exactTime : ''}`, 'section', 25);
-          const courts = [...new Set(slotSchedules.map((schedule) => schedule.court))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
-          courts.forEach((court) => {
-            appendMergedRow(court, 'section', 25);
-            slotSchedules.filter((schedule) => schedule.court === court).forEach((schedule) => {
+        const daySchedules = orderedSchedules.filter((schedule) => formatDate(schedule.scheduleDate) === date);
+        const courts = [...new Set(daySchedules.map((schedule) => schedule.court))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
+        courts.forEach((court) => {
+          appendMergedRow(court, 'section', 25);
+          slots.forEach((timeSlot) => {
+            const slotSchedules = daySchedules.filter((schedule) => schedule.court === court && schedule.timeSlot === timeSlot);
+            if (!slotSchedules.length) return;
+            const exactTime = slotSchedules.find((schedule) => schedule.exactTime)?.exactTime || '';
+            appendMergedRow(`${timeSlot}${exactTime ? exactTime : ''}`, 'section', 25);
+            let itemNumber = 0;
+            slotSchedules.forEach((schedule) => {
               itemNumber += 1;
               const displayName = String(schedule.name || '未命名项目');
               const eventTitle = /[（(]\d+(?:人|队)[）)]\s*$/.test(displayName)
