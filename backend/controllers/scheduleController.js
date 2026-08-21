@@ -1625,32 +1625,62 @@ async function buildCollectiveRosterPreview(competitionId, rawRoster) {
     error.statusCode = 400;
     throw error;
   }
+
   const [participants, schedules] = await Promise.all([
     Participant.find({ competition: competitionId, isVirtualTeam: { $ne: true }, status: { $ne: 'rejected' } }).select('name schoolName event manualEventGroup ageGroup grade gender status isTest'),
     Schedule.find({ competition: competitionId }).select('_id name participants')
   ]);
-  const collectiveSchedules = schedules.filter((schedule) => String(schedule.name || '').includes('集体'));
-  if (!collectiveSchedules.length) {
-    const error = new Error('当前比赛没有名称包含“集体”的既有赛程项目，请先建立集体项目再导入名单');
+  const sourceProjectNames = [...new Set(roster.map((row) => String(row?.scheduleName || '').trim()).filter(Boolean))];
+  if (!sourceProjectNames.length) {
+    const error = new Error('Excel 中缺少集体项目名称，无法判断每支队伍应归入哪个项目');
     error.statusCode = 400;
     throw error;
   }
-  const items = collectiveSchedules.map((schedule, index) => ({ index, scheduleId: schedule._id.toString(), name: schedule.name }));
-  const rosterResult = buildRosterAssignments(participants, items, roster);
-  const recognizedNames = new Set();
-  roster.forEach((row) => {
-    const matches = items.filter((item) => rosterRowMatchesSchedule(row || {}, item));
-    if (matches.length === 1) recognizedNames.add(normalizeRosterText(row.scheduleName));
+
+  const items = sourceProjectNames.map((name, index) => {
+    const sameNameSchedules = schedules.filter((schedule) => normalizeRosterText(schedule.name) === normalizeRosterText(name));
+    return {
+      index,
+      name,
+      scheduleId: sameNameSchedules.length === 1 ? sameNameSchedules[0]._id.toString() : null,
+      willCreate: sameNameSchedules.length === 0,
+      ambiguous: sameNameSchedules.length > 1
+    };
   });
-  const sourceProjectNames = [...new Set(roster.map((row) => String(row?.scheduleName || '').trim()).filter(Boolean))];
+  const rosterResult = buildRosterAssignments(participants, items, roster);
+  const ambiguousProjectNames = items.filter((item) => item.ambiguous).map((item) => item.name);
+
   return {
     items: items.map((item) => {
       const memberIds = rosterResult.participantIdsBySchedule.get(item.index) || [];
       const rosterTeams = [...(rosterResult.rosterTeamsBySchedule.get(item.index)?.values() || [])];
-      return { scheduleId: item.scheduleId, name: item.name, matchedCount: memberIds.length, teamCount: rosterTeams.length, rosterTeams: rosterTeams.map((team) => ({ teamName: team.teamName, memberIds: team.memberIds, memberCount: team.memberIds.length })) };
+      return {
+        scheduleId: item.scheduleId,
+        name: item.name,
+        willCreate: item.willCreate,
+        ambiguous: item.ambiguous,
+        matchedCount: memberIds.length,
+        teamCount: rosterTeams.length,
+        rosterTeams: rosterTeams.map((team) => ({ teamName: team.teamName, memberIds: team.memberIds, memberCount: team.memberIds.length }))
+      };
     }),
-    summary: { sourceProjectCount: sourceProjectNames.length, matchedProjectCount: recognizedNames.size, providedRows: rosterResult.summary.providedRows, matchedMembers: rosterResult.summary.autoAssignedEntries, unmatchedMembers: rosterResult.summary.unmatchedRows + rosterResult.summary.ambiguousRows, unmatchedProjectNames: sourceProjectNames.filter((name) => !recognizedNames.has(normalizeRosterText(name))) }
+    summary: {
+      sourceProjectCount: sourceProjectNames.length,
+      existingProjectCount: items.filter((item) => item.scheduleId).length,
+      newProjectCount: items.filter((item) => item.willCreate).length,
+      providedRows: rosterResult.summary.providedRows,
+      matchedMembers: rosterResult.summary.autoAssignedEntries,
+      unmatchedMembers: rosterResult.summary.unmatchedRows + rosterResult.summary.ambiguousRows,
+      ambiguousProjectNames
+    }
   };
+}
+
+function collectivePendingScheduleTimes(competition) {
+  const start = new Date(competition.startDate || Date.now());
+  if (Number.isNaN(start.getTime())) return { startTime: new Date(), endTime: new Date(Date.now() + 60 * 60 * 1000) };
+  start.setHours(9, 0, 0, 0);
+  return { startTime: start, endTime: new Date(start.getTime() + 60 * 60 * 1000) };
 }
 
 exports.previewCollectiveRosterImport = async (req, res, next) => {
@@ -1670,18 +1700,58 @@ exports.importCollectiveRoster = async (req, res, next) => {
     const competition = await Competition.findById(req.params.competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
     const preview = await buildCollectiveRosterPreview(req.params.competitionId, req.body?.roster);
+    if (preview.summary.ambiguousProjectNames.length) {
+      return res.status(400).json({ success: false, message: `存在同名集体赛程，无法安全更新：${preview.summary.ambiguousProjectNames.join('、')}` });
+    }
     const targets = preview.items.filter((item) => item.teamCount > 0 && item.matchedCount > 0);
-    if (!targets.length) return res.status(400).json({ success: false, message: '没有可导入的集体队伍；请先核对项目名称、单位和队员姓名' });
+    if (!targets.length) return res.status(400).json({ success: false, message: '没有可导入的集体队伍；请核对 Excel 的项目名称、单位和队员姓名是否与系统报名一致' });
+
+    let createdScheduleCount = 0;
     for (const item of targets) {
       const virtualTeamIds = [];
       for (const team of item.rosterTeams) {
         if (!team.memberIds.length) continue;
-        const virtualTeam = await Participant.create({ competition: req.params.competitionId, name: team.teamName, teamName: team.teamName, schoolName: team.teamName, event: item.name, ageGroup: '集体项目', gender: 'mixed', type: 'team', isVirtualTeam: true, teamMembers: team.memberIds, status: 'approved' });
+        const virtualTeam = await Participant.create({
+          competition: req.params.competitionId,
+          name: team.teamName,
+          teamName: team.teamName,
+          schoolName: team.teamName,
+          event: item.name,
+          ageGroup: '集体项目',
+          gender: 'mixed',
+          type: 'team',
+          isVirtualTeam: true,
+          teamMembers: team.memberIds,
+          status: 'approved'
+        });
         virtualTeamIds.push(virtualTeam._id);
       }
-      await Schedule.findByIdAndUpdate(item.scheduleId, { $set: { participants: virtualTeamIds } });
+      if (item.scheduleId) {
+        await Schedule.findByIdAndUpdate(item.scheduleId, { $set: { participants: virtualTeamIds } });
+      } else {
+        const times = collectivePendingScheduleTimes(competition);
+        await Schedule.create({
+          competition: req.params.competitionId,
+          name: item.name,
+          description: '由集体项目名单 Excel 导入；请管理员再编排日期、场地和时段。',
+          type: 'other',
+          startTime: times.startTime,
+          endTime: times.endTime,
+          location: '待编排',
+          scheduleDate: '',
+          timeSlot: '',
+          exactTime: '',
+          court: '',
+          participants: virtualTeamIds
+        });
+        createdScheduleCount += 1;
+      }
     }
-    res.status(201).json({ success: true, message: `已更新 ${targets.length} 个集体项目、${targets.reduce((sum, item) => sum + item.teamCount, 0)} 支队伍；原有虚拟队伍记录已保留，不会删除`, data: preview.summary });
+    res.status(201).json({
+      success: true,
+      message: `已导入 ${targets.reduce((sum, item) => sum + item.teamCount, 0)} 支集体队伍；更新 ${targets.filter((item) => item.scheduleId).length} 个同名项目，新建 ${createdScheduleCount} 个待编排项目。泛称集体项目和原始报名资料、照片均未改动。`,
+      data: preview.summary
+    });
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
     next(error);

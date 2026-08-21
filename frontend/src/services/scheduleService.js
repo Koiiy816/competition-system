@@ -60,13 +60,21 @@ const scheduleService = {
   },
 
   previewCollectiveRosterImport: async (competitionId, roster) => {
-    const response = await api.post(`/competitions/${competitionId}/schedules/collective-roster-preview`, { roster });
-    return response.data;
+    try {
+      const response = await api.post(`/competitions/${competitionId}/schedules/collective-roster-preview`, { roster });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '读取集体项目名单失败，请稍后重试' };
+    }
   },
 
   importCollectiveRoster: async (competitionId, roster) => {
-    const response = await api.post(`/competitions/${competitionId}/schedules/import-collective-roster`, { roster });
-    return response.data;
+    try {
+      const response = await api.post(`/competitions/${competitionId}/schedules/import-collective-roster`, { roster });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '导入集体项目名单失败，请稍后重试' };
+    }
   },
   /**
    * 获取单个赛程详情

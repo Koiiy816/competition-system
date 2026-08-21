@@ -474,7 +474,7 @@ const CompetitionScheduleManagementPage = () => {
 
   const handleConfirmCollectiveRosterImport = async () => {
     if (!collectiveRoster.length || !collectivePreview) return;
-    if (!window.confirm('确认后将按 Excel 的队伍与队员名单更新已存在的集体赛程。不会删除原始报名资料或照片，是否继续？')) return;
+    if (!window.confirm('确认后，Excel 中同名的集体项目会更新；没有同名项目时会新建“待编排”项目。泛称集体项目、原始报名资料和照片均不会被改动，是否继续？')) return;
     setCollectiveImporting(true);
     setError('');
     try {
@@ -1417,7 +1417,7 @@ const CompetitionScheduleManagementPage = () => {
         <DialogTitle>导入集体项目名单（Excel）</DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            请选择集体项目上场名单 Excel。系统只会匹配现有名称含「集体」的赛程，先显示预览；确认后按每个单位建立队伍并写入对应赛程，不会修改个人报名资料或照片。
+            请选择集体项目上场名单 Excel。系统会按 Excel 中的完整项目名称精确匹配：同名项目更新；没有同名项目时新建“待编排”项目。不会把多组别塞进泛称集体项目，也不会修改个人报名资料或照片。
           </Alert>
           <Button component="label" variant="contained" startIcon={<UploadFileIcon />} disabled={collectiveImportLoading || collectiveImporting}>
             选择集体项目 Excel
@@ -1426,14 +1426,14 @@ const CompetitionScheduleManagementPage = () => {
           {collectiveImportLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}><CircularProgress size={20} /><Typography>正在匹配集体赛程与队员名单…</Typography></Box>}
           {collectivePreview && <Box sx={{ mt: 3 }}>
             <Alert severity={collectivePreview.summary.unmatchedMembers ? 'warning' : 'success'} sx={{ mb: 2 }}>
-              Excel 识别 {collectivePreview.summary.sourceProjectCount} 个集体项目、{collectivePreview.summary.providedRows} 名队员；匹配 {collectivePreview.summary.matchedProjectCount} 个现有赛程、{collectivePreview.summary.matchedMembers} 名队员，待核对 {collectivePreview.summary.unmatchedMembers} 名。
+              Excel 识别 {collectivePreview.summary.sourceProjectCount} 个集体项目、{collectivePreview.summary.providedRows} 名队员；将更新 {collectivePreview.summary.existingProjectCount} 个同名项目，并新建 {collectivePreview.summary.newProjectCount} 个待编排项目。已匹配 {collectivePreview.summary.matchedMembers} 名队员，待核对 {collectivePreview.summary.unmatchedMembers} 名。
             </Alert>
-            {collectivePreview.summary.unmatchedProjectNames?.length > 0 && <Alert severity="warning" sx={{ mb: 2 }}>未找到对应集体赛程：{collectivePreview.summary.unmatchedProjectNames.join('、')}</Alert>}
+            {collectivePreview.summary.ambiguousProjectNames?.length > 0 && <Alert severity="error" sx={{ mb: 2 }}>发现重复的同名集体赛程，请先处理后再导入：{collectivePreview.summary.ambiguousProjectNames.join('、')}</Alert>}
             <TableContainer component={Paper} sx={{ maxHeight: 420 }}>
               <Table size="small" stickyHeader>
-                <TableHead><TableRow><TableCell>现有集体赛程</TableCell><TableCell align="right">匹配队伍</TableCell><TableCell align="right">匹配队员</TableCell><TableCell>队伍／单位</TableCell></TableRow></TableHead>
-                <TableBody>{collectivePreview.items.map((item) => <TableRow key={item.scheduleId}>
-                  <TableCell>{item.name}</TableCell><TableCell align="right">{item.teamCount}</TableCell><TableCell align="right">{item.matchedCount}</TableCell>
+                <TableHead><TableRow><TableCell>集体项目</TableCell><TableCell>处理方式</TableCell><TableCell align="right">匹配队伍</TableCell><TableCell align="right">匹配队员</TableCell><TableCell>队伍／单位</TableCell></TableRow></TableHead>
+                <TableBody>{collectivePreview.items.map((item) => <TableRow key={item.scheduleId || item.name}>
+                  <TableCell>{item.name}</TableCell><TableCell>{item.ambiguous ? '需先处理重复项目' : item.willCreate ? '新建待编排' : '更新同名项目'}</TableCell><TableCell align="right">{item.teamCount}</TableCell><TableCell align="right">{item.matchedCount}</TableCell>
                   <TableCell>{item.rosterTeams.length ? item.rosterTeams.map((team) => `${team.teamName}（${team.memberCount}人）`).join('；') : '—'}</TableCell>
                 </TableRow>)}</TableBody>
               </Table>
