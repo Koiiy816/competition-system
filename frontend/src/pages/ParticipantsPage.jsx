@@ -530,8 +530,26 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         throw new Error('没有可导出的数据');
       }
 
+      // 先按代表单位升序排列，再按比赛项目排列，让同一单位的项目连续显示。
+      // 保留原始索引作为最后的排序依据，确保相同单位及项目内的顺序稳定。
+      const sortedData = allData
+        .map((participant, index) => ({ participant, index }))
+        .sort((a, b) => {
+          const schoolComparison = (a.participant.schoolName || '').localeCompare(
+            b.participant.schoolName || '',
+            'zh-CN'
+          );
+          if (schoolComparison !== 0) return schoolComparison;
+
+          const eventComparison = (a.participant.event || '').localeCompare(
+            b.participant.event || '',
+            'zh-CN'
+          );
+          return eventComparison !== 0 ? eventComparison : a.index - b.index;
+        });
+
       // 将数据格式化为 Excel 需要的格式
-      const exportData = allData.map((p, index) => {
+      const exportData = sortedData.map(({ participant: p }, index) => {
         let genderStr = p.gender;
         if (genderStr === 'male') genderStr = '男';
         if (genderStr === 'female') genderStr = '女';
