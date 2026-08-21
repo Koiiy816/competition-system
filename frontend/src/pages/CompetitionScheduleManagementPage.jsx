@@ -202,7 +202,7 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
 const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpenAssignDialog, onDeleteSchedule }) => {
   const navigate = useNavigate();
   
-  const isGroupEvent = (schedule.participants?.length > 0 && schedule.participants[0].isVirtualTeam) || (schedule.name && schedule.name.includes('集体'));
+  const isGroupEvent = (schedule.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(schedule.name || '').includes('集体');
   const participantCountText = isGroupEvent 
     ? `${schedule.participants.length}队` 
     : `${schedule.participants.length}人`;
@@ -1283,8 +1283,8 @@ const CompetitionScheduleManagementPage = () => {
                                                       {s.name}
                                                     </Typography>
                                                     <Typography variant="caption" color="textSecondary">
-                                                      {s.participants?.length > 0 && s.participants[0].isVirtualTeam 
-                                                        ? `${s.participants.length}队 ${s.participants.reduce((acc, p) => acc + (p.teamMembers ? p.teamMembers.length : 0), 0)}人` 
+                                                      {((s.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(s.name || '').includes('集体'))
+                                                        ? `${s.participants?.length || 0}队`
                                                         : `${s.participants?.length || 0}人`}
                                                     </Typography>
                                                   </Box>
@@ -1592,16 +1592,11 @@ const CompetitionScheduleManagementPage = () => {
             </Typography>
 
             {groupSchedules.map((schedule, sIndex) => {
-              const isGroupEvent = (schedule.participants?.length > 0 && schedule.participants[0].isVirtualTeam) || (schedule.name && schedule.name.includes('集体'));
+              const isGroupEvent = (schedule.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(schedule.name || '').includes('集体');
               
-              let participantCount = `${schedule.participants?.length || 0}人`;
-              if (isGroupEvent) {
-                const hasTeamMembers = schedule.participants[0]?.teamMembers;
-                participantCount = `${schedule.participants.length}队`;
-                if (hasTeamMembers) {
-                  participantCount += ` ${schedule.participants.reduce((acc, p) => acc + (p.teamMembers ? p.teamMembers.length : 0), 0)}人`;
-                }
-              }
+              const participantCount = isGroupEvent
+                ? `${schedule.participants?.length || 0}队`
+                : `${schedule.participants?.length || 0}人`;
 
               return (
                 <Box key={schedule._id} sx={{ mb: 2 }}>
