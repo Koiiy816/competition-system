@@ -266,6 +266,7 @@ const CompetitionScheduleManagementPage = () => {
   const [excelImporting, setExcelImporting] = useState(false);
   const [excelScheduleItems, setExcelScheduleItems] = useState([]);
   const [excelPreview, setExcelPreview] = useState(null);
+  const [manualAssignments, setManualAssignments] = useState({});
 
   useEffect(() => {
     fetchData();
@@ -300,6 +301,7 @@ const CompetitionScheduleManagementPage = () => {
     if (!file) return;
     setExcelImportLoading(true);
     setExcelPreview(null);
+    setManualAssignments({});
     setError('');
     try {
       const items = await parseScheduleExcel(file);
@@ -309,6 +311,7 @@ const CompetitionScheduleManagementPage = () => {
     } catch (err) {
       setExcelScheduleItems([]);
       setExcelPreview(null);
+      setManualAssignments({});
       setError(err.message || '读取或匹配 Excel 日程失败');
     } finally {
       setExcelImportLoading(false);
@@ -321,11 +324,12 @@ const CompetitionScheduleManagementPage = () => {
     setExcelImporting(true);
     setError('');
     try {
-      const response = await scheduleService.importExcelSchedule(id, excelScheduleItems);
+      const response = await scheduleService.importExcelSchedule(id, excelScheduleItems, manualAssignments);
       setSuccess(response.message || 'Excel 日程已导入');
       setExcelImportOpen(false);
       setExcelPreview(null);
       setExcelScheduleItems([]);
+      setManualAssignments({});
       await fetchData();
     } catch (err) {
       setError(err.message || '导入 Excel 日程失败');
@@ -909,8 +913,23 @@ const CompetitionScheduleManagementPage = () => {
                 <TableBody>{excelPreview.items.map((item) => <TableRow key={`${item.index}-${item.name}`}><TableCell>{item.name}</TableCell><TableCell>{item.court}／{item.timeSlot}</TableCell><TableCell align="right">{item.matchedCount}</TableCell><TableCell align="right">{item.approvedCount}</TableCell><TableCell align="right">{item.pendingCount}</TableCell></TableRow>)}</TableBody>
               </Table>
             </TableContainer>
-            {excelPreview.unmatchedParticipants.length > 0 && <Box sx={{ mt: 2 }}><Typography variant="subtitle2" color="warning.main">未排入日程的选手（最多显示 50 笔）</Typography><List dense>{excelPreview.unmatchedParticipants.slice(0, 50).map((participant) => <ListItem key={participant.id}><ListItemText primary={`${participant.name}｜${participant.gender} ${participant.ageGroup}｜${participant.event}`} secondary={`${participant.schoolName}｜${participant.status}`} /></ListItem>)}</List></Box>}
-          </Box>}
+            {excelPreview.unmatchedParticipants.length > 0 && <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle2" color="warning.main" sx={{ mb: 1 }}>未排入日程的选手：请选择要手动加入的日程项目</Typography>
+              <Alert severity="info" sx={{ mb: 1 }}>手动安排只影响本次导入的赛程归属，不会修改选手的原始报名项目或照片。</Alert>
+              <TableContainer component={Paper} sx={{ maxHeight: 360 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead><TableRow><TableCell>选手</TableCell><TableCell>单位／状态</TableCell><TableCell>手动加入日程（可选）</TableCell></TableRow></TableHead>
+                  <TableBody>{excelPreview.unmatchedParticipants.map((participant) => <TableRow key={participant.id}>
+                    <TableCell>{`${participant.name}｜${participant.gender} ${participant.ageGroup}｜${participant.event}`}</TableCell>
+                    <TableCell>{`${participant.schoolName}｜${participant.status}`}</TableCell>
+                    <TableCell sx={{ minWidth: 320 }}><TextField select size="small" fullWidth value={manualAssignments[participant.id] ?? ''} onChange={(event) => setManualAssignments((current) => ({ ...current, [participant.id]: event.target.value }))}>
+                      <MenuItem value="">暂不安排</MenuItem>
+                      {excelPreview.items.map((item) => <MenuItem key={item.index} value={item.index}>{`${item.court}／${item.timeSlot}｜${item.name}`}</MenuItem>)}
+                    </TextField></TableCell>
+                  </TableRow>)}</TableBody>
+                </Table>
+              </TableContainer>
+            </Box>}          </Box>}
         </DialogContent>
         <DialogActions><Button onClick={() => setExcelImportOpen(false)} disabled={excelImporting}>取消</Button><Button variant="contained" onClick={handleConfirmExcelImport} disabled={!excelPreview || excelImporting}>{excelImporting ? '导入中…' : '确认导入赛程'}</Button></DialogActions>
       </Dialog>

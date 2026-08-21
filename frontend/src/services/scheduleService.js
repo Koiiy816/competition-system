@@ -54,8 +54,8 @@ const scheduleService = {
     return response.data;
   },
 
-  importExcelSchedule: async (competitionId, items) => {
-    const response = await api.post(`/competitions/${competitionId}/schedules/import-excel`, { items });
+  importExcelSchedule: async (competitionId, items, assignments = {}) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/import-excel`, { items, assignments });
     return response.data;
   },
   /**

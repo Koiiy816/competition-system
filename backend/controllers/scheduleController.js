@@ -1388,11 +1388,24 @@ exports.importExcelSchedule = async (req, res, next) => {
       isVirtualTeam: { $ne: true },
       status: { $ne: 'rejected' }
     });
+    const unmatchedIds = new Set(preview.unmatchedParticipants.map((participant) => participant.id.toString()));
+    const participantsById = new Map(sourceParticipants.map((participant) => [participant._id.toString(), participant]));
+    const manualParticipantsBySchedule = new Map();
+    for (const [participantId, rawIndex] of Object.entries(req.body?.assignments || {})) {
+      const scheduleIndex = Number(rawIndex);
+      if (!unmatchedIds.has(participantId) || !participantsById.has(participantId) || !preview.items.some((item) => item.index === scheduleIndex)) {
+        return res.status(400).json({ success: false, message: '手动安排数据已失效，请重新上传并预览日程表。' });
+      }
+      if (!manualParticipantsBySchedule.has(scheduleIndex)) manualParticipantsBySchedule.set(scheduleIndex, new Set());
+      manualParticipantsBySchedule.get(scheduleIndex).add(participantId);
+    }
+
     const schedulesToCreate = [];
 
     for (const item of preview.items) {
       const parsed = parseExcelScheduleName(item.name);
-      const matches = sourceParticipants.filter((participant) => participantMatchesExcelSchedule(participant, item));
+      const manualParticipantIds = manualParticipantsBySchedule.get(item.index) || new Set();
+      const matches = sourceParticipants.filter((participant) => participantMatchesExcelSchedule(participant, item) || manualParticipantIds.has(participant._id.toString()));
       const isCollective = parsed.event.includes('集体');
       let participantIds = matches.map((participant) => participant._id);
 
