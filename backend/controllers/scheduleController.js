@@ -1333,39 +1333,41 @@ function rosterRowMatchesSchedule(row, scheduleItem) {
   return Boolean(rowEvent && rowEvent === parsed.event && (!rowGender || rowGender === parsed.gender) && (!rowAge || parsed.ages.includes(rowAge)));
 }
 
-function buildRosterAutoAssignments(participants, matchedIds, items, rawRoster) {
+function buildRosterAssignments(participants, items, rawRoster) {
   const roster = Array.isArray(rawRoster) ? rawRoster.slice(0, 2000) : [];
-  const autoAssignments = {};
+  const participantIdsBySchedule = new Map();
+  const rosterScheduleIndexes = new Set();
   const assignedIds = new Set();
-  const itemCounts = new Map();
   const summary = { providedRows: roster.length, autoAssignedEntries: 0, ambiguousRows: 0, unmatchedRows: 0, alreadyMatchedRows: 0 };
+
   roster.forEach((row) => {
     const name = normalizeRosterText(row?.name);
     if (!name) return;
     const targets = items.filter((item) => rosterRowMatchesSchedule(row || {}, item));
     if (targets.length !== 1) { summary.unmatchedRows += 1; return; }
     const target = targets[0];
+    rosterScheduleIndexes.add(target.index);
     const rowGender = normalizeExcelScheduleGender(row.gender);
     const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
     const rowSchool = normalizeRosterText(row.schoolName);
-    let candidates = participants.filter((participant) => {
+    const candidates = participants.filter((participant) => {
       if (normalizeRosterText(participant.name) !== name) return false;
       if (rowGender && normalizeExcelScheduleGender(participant.gender) !== rowGender) return false;
       if (rowAge && String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1] !== rowAge) return false;
       if (rowSchool && normalizeRosterText(participant.schoolName) !== rowSchool) return false;
       return true;
-    });
-    const alreadyMatched = candidates.some((participant) => matchedIds.has(participant._id.toString()));
-    candidates = candidates.filter((participant) => !matchedIds.has(participant._id.toString()) && !assignedIds.has(participant._id.toString()));
-    if (candidates.length === 0) { if (alreadyMatched) summary.alreadyMatchedRows += 1; else summary.unmatchedRows += 1; return; }
+    }).filter((participant) => !assignedIds.has(participant._id.toString()));
+    if (candidates.length === 0) { summary.unmatchedRows += 1; return; }
     if (candidates.length > 1) { summary.ambiguousRows += 1; return; }
-    const participantId = candidates[0]._id.toString();
-    autoAssignments[participantId] = target.index;
+    const participant = candidates[0];
+    const participantId = participant._id.toString();
     assignedIds.add(participantId);
-    itemCounts.set(target.index, (itemCounts.get(target.index) || 0) + 1);
+    if (!participantIdsBySchedule.has(target.index)) participantIdsBySchedule.set(target.index, []);
+    participantIdsBySchedule.get(target.index).push(participantId);
     summary.autoAssignedEntries += 1;
   });
-  return { autoAssignments, itemCounts, summary };
+
+  return { participantIdsBySchedule, rosterScheduleIndexes, summary };
 }
 
 async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []) {
@@ -1414,9 +1416,20 @@ async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []
     };
   });
 
+  const rosterResult = buildRosterAssignments(participants, items, rawRoster);
+  if (rosterResult.summary.providedRows > 0) {
+    items.forEach((item) => {
+      if (!rosterResult.rosterScheduleIndexes.has(item.index)) return;
+      const ids = new Set(rosterResult.participantIdsBySchedule.get(item.index) || []);
+      const matches = participants.filter((participant) => ids.has(participant._id.toString()));
+      item.participants = matches.map((participant) => ({ id: participant._id, name: participant.name, schoolName: participant.schoolName || '-', status: participant.status }));
+      item.matchedCount = matches.length;
+      item.approvedCount = matches.filter((participant) => participant.status === 'approved').length;
+      item.pendingCount = matches.filter((participant) => participant.status === 'pending').length;
+      item.rosterAutoAssignedCount = matches.length;
+    });
+  }
   const matchedIds = new Set(items.flatMap((item) => item.participants.map((participant) => participant.id.toString())));
-  const rosterResult = buildRosterAutoAssignments(participants, matchedIds, items, rawRoster);
-  items.forEach((item) => { item.rosterAutoAssignedCount = rosterResult.itemCounts.get(item.index) || 0; });
   const unmatchedParticipants = participants
     .filter((participant) => !matchedIds.has(participant._id.toString()))
     .map((participant) => ({
@@ -1426,8 +1439,7 @@ async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []
       ageGroup: participant.ageGroup || participant.grade || '-',
       gender: normalizeExcelScheduleGender(participant.gender) || '-',
       event: participant.event || '-',
-      status: participant.status,
-      autoScheduleIndex: rosterResult.autoAssignments[participant._id.toString()]
+      status: participant.status
     }));
 
   return {
@@ -1440,8 +1452,7 @@ async function buildExcelSchedulePreview(competitionId, rawItems, rawRoster = []
       approvedUnmatchedEntries: unmatchedParticipants.filter((participant) => participant.status === 'approved').length,
       roster: rosterResult.summary
     },
-    unmatchedParticipants,
-    autoAssignments: rosterResult.autoAssignments
+    unmatchedParticipants
   };
 }
 
@@ -1467,7 +1478,7 @@ exports.importExcelSchedule = async (req, res, next) => {
     const existingCount = await Schedule.countDocuments({ competition: competitionId });
     if (existingCount > 0) return res.status(409).json({ success: false, message: '当前比赛已有赛程。请先确认或清空旧赛程，避免重复导入。' });
 
-    const preview = await buildExcelSchedulePreview(competitionId, req.body?.items);
+    const preview = await buildExcelSchedulePreview(competitionId, req.body?.items, req.body?.roster);
     const sourceParticipants = await Participant.find({
       competition: competitionId,
       isVirtualTeam: { $ne: true },
@@ -1490,7 +1501,8 @@ exports.importExcelSchedule = async (req, res, next) => {
     for (const item of preview.items) {
       const parsed = parseExcelScheduleName(item.name);
       const manualParticipantIds = manualParticipantsBySchedule.get(item.index) || new Set();
-      const matches = sourceParticipants.filter((participant) => participantMatchesExcelSchedule(participant, item) || manualParticipantIds.has(participant._id.toString()));
+      const previewParticipantIds = new Set(item.participants.map((participant) => participant.id.toString()));
+      const matches = sourceParticipants.filter((participant) => previewParticipantIds.has(participant._id.toString()) || manualParticipantIds.has(participant._id.toString()));
       const isCollective = parsed.event.includes('集体');
       let participantIds = matches.map((participant) => participant._id);
 

@@ -301,6 +301,7 @@ const CompetitionScheduleManagementPage = () => {
   const [excelScheduleItems, setExcelScheduleItems] = useState([]);
   const [excelPreview, setExcelPreview] = useState(null);
   const [manualAssignments, setManualAssignments] = useState({});
+  const [startOrderRoster, setStartOrderRoster] = useState([]);
 
   useEffect(() => {
     fetchData();
@@ -336,6 +337,7 @@ const CompetitionScheduleManagementPage = () => {
     setExcelImportLoading(true);
     setExcelPreview(null);
     setManualAssignments({});
+    setStartOrderRoster([]);
     setError('');
     try {
       const items = await parseScheduleExcel(file);
@@ -362,7 +364,8 @@ const CompetitionScheduleManagementPage = () => {
       const roster = await parseStartOrderExcel(file);
       const response = await scheduleService.previewExcelScheduleImport(id, excelScheduleItems, roster);
       setExcelPreview(response.data);
-      setManualAssignments(response.data.autoAssignments || {});
+      setManualAssignments({});
+      setStartOrderRoster(roster);
     } catch (err) {
       setError(err.message || '读取或自动匹配上场顺序 Excel 失败');
     } finally {
@@ -376,12 +379,13 @@ const CompetitionScheduleManagementPage = () => {
     setExcelImporting(true);
     setError('');
     try {
-      const response = await scheduleService.importExcelSchedule(id, excelScheduleItems, manualAssignments);
+      const response = await scheduleService.importExcelSchedule(id, excelScheduleItems, manualAssignments, startOrderRoster);
       setSuccess(response.message || 'Excel 日程已导入');
       setExcelImportOpen(false);
       setExcelPreview(null);
       setExcelScheduleItems([]);
       setManualAssignments({});
+      setStartOrderRoster([]);
       await fetchData();
     } catch (err) {
       setError(err.message || '导入 Excel 日程失败');
@@ -980,7 +984,7 @@ const CompetitionScheduleManagementPage = () => {
                   <TableHead><TableRow><TableCell>选手</TableCell><TableCell>单位／状态</TableCell><TableCell>手动加入日程（可选）</TableCell></TableRow></TableHead>
                   <TableBody>{excelPreview.unmatchedParticipants.map((participant) => <TableRow key={participant.id}>
                     <TableCell>{`${participant.name}｜${participant.gender} ${participant.ageGroup}｜${participant.event}`}</TableCell>
-                    <TableCell>{`${participant.schoolName}｜${participant.status}${participant.autoScheduleIndex !== undefined ? '｜已按名单自动选择' : ''}`}</TableCell>
+                    <TableCell>{`${participant.schoolName}｜${participant.status}`}</TableCell>
                     <TableCell sx={{ minWidth: 320 }}><TextField select size="small" fullWidth value={manualAssignments[participant.id] ?? ''} onChange={(event) => setManualAssignments((current) => ({ ...current, [participant.id]: event.target.value }))}>
                       <MenuItem value="">暂不安排</MenuItem>
                       {excelPreview.items.map((item) => <MenuItem key={item.index} value={item.index}>{`${item.court}／${item.timeSlot}｜${item.name}`}</MenuItem>)}
