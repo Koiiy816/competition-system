@@ -204,6 +204,9 @@ const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpen
   const participantCountText = isGroupEvent 
     ? `${schedule.participants.length}队` 
     : `${schedule.participants.length}人`;
+  const getTeamMemberNames = (participant) => (participant.teamMembers || [])
+    .map((member) => member.name || member.user?.name)
+    .filter(Boolean);
 
   return (
     <Card 
@@ -264,35 +267,39 @@ const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpen
         <Divider sx={{ mb: 2 }} />
         
         <List dense sx={{ maxHeight: 400, overflowY: 'auto' }}>
-          {schedule.participants.map((p, index) => (
-            <React.Fragment key={p._id || index}>
-              <ListItem alignItems="flex-start">
-                <ListItemText
-                  primary={
-                    <Typography variant="subtitle1" component="span">
-                      <Box component="span" sx={{ fontWeight: 'bold', mr: 1, minWidth: '24px', display: 'inline-block' }}>
-                        {index + 1}.
-                      </Box>
-                      {p.name || (p.user && p.user.name) || '未知选手'}
-                    </Typography>
-                  }
-                  secondary={
-                    <React.Fragment>
-                      <Typography
-                        component="span"
-                        variant="body2"
-                        color="text.primary"
-                      >
-                        {p.schoolName || (p.user && p.user.schoolName) || ''}
+          {schedule.participants.map((p, index) => {
+            const isTeam = p.isVirtualTeam || p.type === 'team';
+            const teamMemberNames = getTeamMemberNames(p);
+            const teamName = p.teamName || p.schoolName || p.name || '未命名队伍';
+            const displayName = isTeam && teamMemberNames.length
+              ? teamMemberNames.join('、')
+              : (p.name || (p.user && p.user.name) || '未知选手');
+            const displayUnit = isTeam
+              ? `队伍：${teamName}`
+              : (p.schoolName || (p.user && p.user.schoolName) || '');
+            return (
+              <React.Fragment key={p._id || index}>
+                <ListItem alignItems="flex-start">
+                  <ListItemText
+                    primary={
+                      <Typography variant="subtitle1" component="span">
+                        <Box component="span" sx={{ fontWeight: 'bold', mr: 1, minWidth: '24px', display: 'inline-block' }}>
+                          {index + 1}.
+                        </Box>
+                        {displayName}
                       </Typography>
-                      {p.teamName && ` - ${p.teamName}`}
-                    </React.Fragment>
-                  }
-                />
-              </ListItem>
-              {index < schedule.participants.length - 1 && <Divider component="li" />}
-            </React.Fragment>
-          ))}
+                    }
+                    secondary={
+                      <Typography component="span" variant="body2" color="text.primary">
+                        {displayUnit}
+                      </Typography>
+                    }
+                  />
+                </ListItem>
+                {index < schedule.participants.length - 1 && <Divider component="li" />}
+              </React.Fragment>
+            );
+          })}
         </List>
       </CardContent>
     </Card>
@@ -711,9 +718,9 @@ const CompetitionScheduleManagementPage = () => {
         rowHeights.push({ hpt: height });
         rowTypes.push(type);
       };
-      const appendTableRow = (values, type = 'body') => {
+      const appendTableRow = (values, type = 'body', height = 25) => {
         rows.push(values);
-        rowHeights.push({ hpt: 25 });
+        rowHeights.push({ hpt: height });
         rowTypes.push(type);
       };
       const formatDate = (value) => String(value || '').replace(/T.*$/, '');
@@ -733,16 +740,19 @@ const CompetitionScheduleManagementPage = () => {
       const isTeamParticipant = (participant) => participant.isVirtualTeam || participant.type === 'team' || ['集体', '集体项目', '混合集体'].includes(String(participant.ageGroup || ''));
       const isCollectiveSchedule = (schedule) => /集体/.test(String(schedule.name || '')) || (schedule.participants || []).some(isTeamParticipant);
       const getCountLabel = (schedule) => `${(schedule.participants || []).length}${isCollectiveSchedule(schedule) ? '队' : '人'}`;
+      const getTeamMemberNames = (participant) => (participant.teamMembers || [])
+        .map((member) => member.name || member.user?.name)
+        .filter(Boolean);
       const participantRow = (participant, schedule, index) => {
         const isTeam = isTeamParticipant(participant);
-        const teamMembers = participant.teamMembers || [];
+        const teamMemberNames = getTeamMemberNames(participant);
         const teamName = participant.teamName || participant.schoolName || participant.name || participant.user?.name || '-';
         return [
           index + 1,
-          isTeam ? teamName : (participant.name || participant.user?.name || '-'),
+          isTeam ? (teamMemberNames.join('、') || teamName) : (participant.name || participant.user?.name || '-'),
           isTeam ? '集体' : formatGender(participant.gender || participant.user?.gender),
           isTeam ? '集体' : (participant.ageGroup || participant.user?.ageGroup || '-'),
-          isTeam ? `${getEventName(schedule)}${teamMembers.length ? `（${teamMembers.length}人）` : ''}` : (participant.event || getEventName(schedule)),
+          isTeam ? `${getEventName(schedule)}${teamMemberNames.length ? `（${teamMemberNames.length}人）` : ''}` : (participant.event || getEventName(schedule)),
           participant.schoolName || participant.teamName || participant.user?.schoolName || '-'
         ];
       };
@@ -773,7 +783,11 @@ const CompetitionScheduleManagementPage = () => {
               appendTableRow(['序号', '姓名', '性别', '组别', '项目', '单位'], 'header');
               const participants = schedule.participants || [];
               if (participants.length) {
-                participants.forEach((participant, participantIndex) => appendTableRow(participantRow(participant, schedule, participantIndex)));
+                participants.forEach((participant, participantIndex) => appendTableRow(
+                  participantRow(participant, schedule, participantIndex),
+                  'body',
+                  isTeamParticipant(participant) ? 42 : 25
+                ));
               } else {
                 appendTableRow(['-', '暂无已编排选手', '', '', getEventName(schedule), '']);
               }
