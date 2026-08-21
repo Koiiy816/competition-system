@@ -1387,3 +1387,203 @@ exports.appendNewParticipants = async (req, res) => {
     res.status(500).json({ success: false, error: '追加新参赛者失败' });
   }
 };
+
+function normalizeExcelScheduleEvent(value) {
+  const event = String(value || '').replace(/（.*?）/g, '').trim();
+  return ({ '棍': '棍术', '刀': '刀术', '剑': '剑术' })[event] || event;
+}
+
+function normalizeExcelScheduleGender(value) {
+  if (value === 'male' || value === '男') return '男';
+  if (value === 'female' || value === '女') return '女';
+  return '';
+}
+
+function parseExcelScheduleName(name) {
+  const displayName = String(name || '').trim();
+  const cleanName = displayName.replace(/（.*?）/g, '');
+  const gender = cleanName.startsWith('女子') ? '女' : cleanName.startsWith('男子') ? '男' : '';
+  const ages = [...cleanName.matchAll(/U(\d+)/g)].map((match) => match[1]);
+  const event = cleanName
+    .replace(/^(男子|女子)/, '')
+    .replace(/U\d+(?:[-/]U\d+)*组?/g, '')
+    .trim();
+  return { displayName, gender, ages, event: normalizeExcelScheduleEvent(event) };
+}
+
+function participantMatchesExcelSchedule(participant, scheduleItem) {
+  const parsed = parseExcelScheduleName(scheduleItem.name);
+  const participantAge = String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1];
+  const participantGender = normalizeExcelScheduleGender(participant.gender);
+  const events = [participant.event, participant.manualEventGroup]
+    .filter(Boolean)
+    .map(normalizeExcelScheduleEvent);
+  const isCollective = parsed.event.includes('集体') || events.some((event) => event.includes('集体'));
+
+  if (isCollective) return events.some((event) => event.includes('集体'));
+  return Boolean(
+    parsed.gender === participantGender
+    && parsed.ages.includes(participantAge)
+    && events.includes(parsed.event)
+  );
+}
+
+async function buildExcelSchedulePreview(competitionId, rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length === 0 || rawItems.length > 300) {
+    const error = new Error('请提供 1 至 300 个有效日程项目');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const participants = await Participant.find({
+    competition: competitionId,
+    isVirtualTeam: { $ne: true },
+    status: { $ne: 'rejected' }
+  }).select('name schoolName event manualEventGroup ageGroup grade gender status isTest');
+
+  const items = rawItems.map((raw, index) => {
+    const name = String(raw?.name || '').trim();
+    const scheduleDate = String(raw?.scheduleDate || '').trim();
+    const court = String(raw?.court || '').trim();
+    const timeSlot = String(raw?.timeSlot || '').trim();
+    const exactTime = String(raw?.exactTime || '').trim();
+    if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate) || !court || !timeSlot) {
+      const error = new Error(`第 ${index + 1} 个日程缺少名称、日期、场地或时段`);
+      error.statusCode = 400;
+      throw error;
+    }
+    const matches = participants.filter((participant) => participantMatchesExcelSchedule(participant, { name }));
+    const approvedCount = matches.filter((participant) => participant.status === 'approved').length;
+    const pendingCount = matches.filter((participant) => participant.status === 'pending').length;
+    return {
+      index,
+      name,
+      scheduleDate,
+      court,
+      timeSlot,
+      exactTime,
+      matchedCount: matches.length,
+      approvedCount,
+      pendingCount,
+      participants: matches.map((participant) => ({
+        id: participant._id,
+        name: participant.name,
+        schoolName: participant.schoolName || '-',
+        status: participant.status
+      }))
+    };
+  });
+
+  const matchedIds = new Set(items.flatMap((item) => item.participants.map((participant) => participant.id.toString())));
+  const unmatchedParticipants = participants
+    .filter((participant) => !matchedIds.has(participant._id.toString()))
+    .map((participant) => ({
+      id: participant._id,
+      name: participant.name,
+      schoolName: participant.schoolName || '-',
+      ageGroup: participant.ageGroup || participant.grade || '-',
+      gender: normalizeExcelScheduleGender(participant.gender) || '-',
+      event: participant.event || '-',
+      status: participant.status
+    }));
+
+  return {
+    items,
+    summary: {
+      scheduleCount: items.length,
+      participantEntries: participants.length,
+      matchedEntries: matchedIds.size,
+      unmatchedEntries: unmatchedParticipants.length,
+      approvedUnmatchedEntries: unmatchedParticipants.filter((participant) => participant.status === 'approved').length
+    },
+    unmatchedParticipants
+  };
+}
+
+/** 预览 Excel 日程与当前报名数据；只读，不写入数据库。 */
+exports.previewExcelScheduleImport = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    const preview = await buildExcelSchedulePreview(req.params.competitionId, req.body?.items);
+    res.status(200).json({ success: true, data: preview });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    next(error);
+  }
+};
+
+/** 管理员确认后创建 Excel 日程；已有赛程时拒绝导入，避免重复或覆盖。 */
+exports.importExcelSchedule = async (req, res, next) => {
+  try {
+    const competitionId = req.params.competitionId;
+    const competition = await Competition.findById(competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    const existingCount = await Schedule.countDocuments({ competition: competitionId });
+    if (existingCount > 0) return res.status(409).json({ success: false, message: '当前比赛已有赛程。请先确认或清空旧赛程，避免重复导入。' });
+
+    const preview = await buildExcelSchedulePreview(competitionId, req.body?.items);
+    const sourceParticipants = await Participant.find({
+      competition: competitionId,
+      isVirtualTeam: { $ne: true },
+      status: { $ne: 'rejected' }
+    });
+    const schedulesToCreate = [];
+
+    for (const item of preview.items) {
+      const parsed = parseExcelScheduleName(item.name);
+      const matches = sourceParticipants.filter((participant) => participantMatchesExcelSchedule(participant, item));
+      const isCollective = parsed.event.includes('集体');
+      let participantIds = matches.map((participant) => participant._id);
+
+      if (isCollective) {
+        const teamsBySchool = new Map();
+        matches.forEach((participant) => {
+          const schoolName = participant.schoolName || '未填写代表单位';
+          if (!teamsBySchool.has(schoolName)) teamsBySchool.set(schoolName, []);
+          teamsBySchool.get(schoolName).push(participant);
+        });
+        participantIds = [];
+        for (const [schoolName, members] of teamsBySchool.entries()) {
+          const virtualTeam = await Participant.create({
+            competition: competitionId,
+            name: schoolName,
+            schoolName,
+            event: '集体项目',
+            ageGroup: '混合集体',
+            gender: 'mixed',
+            type: 'team',
+            isVirtualTeam: true,
+            teamMembers: members.map((member) => member._id),
+            status: 'approved'
+          });
+          participantIds.push(virtualTeam._id);
+        }
+      }
+
+      const startHour = item.timeSlot === '下午' ? 14 : item.timeSlot === '晚上' ? 19 : 9;
+      const endHour = item.timeSlot === '下午' ? 17 : item.timeSlot === '晚上' ? 22 : 12;
+      schedulesToCreate.push({
+        competition: competitionId,
+        name: item.name,
+        description: '由 Excel 日程表导入',
+        type: 'other',
+        startTime: new Date(`${item.scheduleDate}T${String(startHour).padStart(2, '0')}:00:00`),
+        endTime: new Date(`${item.scheduleDate}T${String(endHour).padStart(2, '0')}:00:00`),
+        location: item.court,
+        scheduleDate: item.scheduleDate,
+        timeSlot: item.timeSlot,
+        exactTime: item.exactTime,
+        court: item.court,
+        order: item.index,
+        participants: participantIds
+      });
+    }
+
+    const schedules = await Schedule.insertMany(schedulesToCreate);
+    res.status(201).json({ success: true, message: `已导入 ${schedules.length} 个日程项目`, data: { count: schedules.length, preview: preview.summary } });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    next(error);
+  }
+};

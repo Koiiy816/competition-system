@@ -16,11 +16,53 @@ import SaveIcon from '@mui/icons-material/Save';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import DeleteIcon from '@mui/icons-material/Delete';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import * as XLSX from 'xlsx';
 import PreviewIcon from '@mui/icons-material/Preview';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 
+const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    try {
+      const workbook = XLSX.read(event.target.result, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      const rawDate = rows.flatMap((row) => row).find((value) => typeof value === 'number' && value > 40000 && value < 60000);
+      const dateParts = rawDate && XLSX.SSF.parse_date_code(rawDate);
+      if (!dateParts) throw new Error('未能在 Excel 中识别比赛日期');
+      const scheduleDate = `${dateParts.y}-${String(dateParts.m).padStart(2, '0')}-${String(dateParts.d).padStart(2, '0')}`;
+      let court = '';
+      let timeHeaders = ['', ''];
+      const items = [];
+      rows.forEach((row) => {
+        if (String(row[0] || '').includes('场地')) court = String(row[0]).trim();
+        if (String(row[1] || '').includes('午') || String(row[3] || '').includes('午')) {
+          timeHeaders = [String(row[1] || ''), String(row[3] || '')];
+        }
+        [[1, 0], [3, 1]].forEach(([column, timeIndex]) => {
+          const name = String(row[column] || '').trim();
+          if (!court || !/（\d+(人|队)）/.test(name)) return;
+          const header = timeHeaders[timeIndex] || '';
+          const timeSlot = header.includes('下午') ? '下午' : header.includes('晚上') ? '晚上' : '上午';
+          items.push({
+            name,
+            scheduleDate,
+            court,
+            timeSlot,
+            exactTime: header.replace(/^(上午|下午|晚上)/, '').trim()
+          });
+        });
+      });
+      if (!items.length) throw new Error('未在 Excel 中找到日程项目');
+      resolve(items);
+    } catch (error) { reject(error); }
+  };
+  reader.onerror = () => reject(new Error('读取 Excel 失败'));
+  reader.readAsArrayBuffer(file);
+});
 // 提取弹窗组件以避免父组件在输入时重新渲染
 const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSave }) => {
   const [form, setForm] = useState({
@@ -219,6 +261,11 @@ const CompetitionScheduleManagementPage = () => {
   const [groupPreviewOpen, setGroupPreviewOpen] = useState(false);
   const [groupPreviewLoading, setGroupPreviewLoading] = useState(false);
   const [groupPreview, setGroupPreview] = useState([]);
+  const [excelImportOpen, setExcelImportOpen] = useState(false);
+  const [excelImportLoading, setExcelImportLoading] = useState(false);
+  const [excelImporting, setExcelImporting] = useState(false);
+  const [excelScheduleItems, setExcelScheduleItems] = useState([]);
+  const [excelPreview, setExcelPreview] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -247,6 +294,45 @@ const CompetitionScheduleManagementPage = () => {
     }
   };
 
+  const handleExcelScheduleFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setExcelImportLoading(true);
+    setExcelPreview(null);
+    setError('');
+    try {
+      const items = await parseScheduleExcel(file);
+      const response = await scheduleService.previewExcelScheduleImport(id, items);
+      setExcelScheduleItems(items);
+      setExcelPreview(response.data);
+    } catch (err) {
+      setExcelScheduleItems([]);
+      setExcelPreview(null);
+      setError(err.message || '读取或匹配 Excel 日程失败');
+    } finally {
+      setExcelImportLoading(false);
+    }
+  };
+
+  const handleConfirmExcelImport = async () => {
+    if (!excelScheduleItems.length) return;
+    if (!window.confirm('确认创建这些赛程吗？已存在赛程时系统会拒绝导入，避免重复。')) return;
+    setExcelImporting(true);
+    setError('');
+    try {
+      const response = await scheduleService.importExcelSchedule(id, excelScheduleItems);
+      setSuccess(response.message || 'Excel 日程已导入');
+      setExcelImportOpen(false);
+      setExcelPreview(null);
+      setExcelScheduleItems([]);
+      await fetchData();
+    } catch (err) {
+      setError(err.message || '导入 Excel 日程失败');
+    } finally {
+      setExcelImporting(false);
+    }
+  };
   const handleGenerateStartList = async () => {
     if (!window.confirm('确定要重新生成出场顺序吗？这将覆盖现有的排序。')) {
       return;
@@ -527,6 +613,16 @@ const CompetitionScheduleManagementPage = () => {
             
             {isAdminOrOrganizer && (
               <Button
+                variant="contained"
+                color="secondary"
+                startIcon={<UploadFileIcon />}
+                onClick={() => setExcelImportOpen(true)}
+              >
+                导入日程表（Excel）
+              </Button>
+            )}
+            {isAdminOrOrganizer && (
+              <Button
                 variant="outlined"
                 color="primary"
                 startIcon={<PreviewIcon />}
@@ -792,6 +888,32 @@ const CompetitionScheduleManagementPage = () => {
         )}
       </Box>
 
+      <Dialog open={excelImportOpen} onClose={() => !excelImporting && setExcelImportOpen(false)} maxWidth="lg" fullWidth>
+        <DialogTitle>导入日程表（Excel）</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            上传后会按系统当前报名资料进行匹配，只显示预览，不会写入数据库。确认导入时仅创建赛程，不修改报名资料或照片；已有赛程时会拒绝导入以避免重复。
+          </Alert>
+          <Button component="label" variant="contained" startIcon={<UploadFileIcon />} disabled={excelImportLoading || excelImporting}>
+            选择日程表 Excel
+            <input hidden type="file" accept=".xlsx,.xls" onChange={handleExcelScheduleFile} />
+          </Button>
+          {excelImportLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}><CircularProgress size={20} /><Typography>正在比对系统报名资料…</Typography></Box>}
+          {excelPreview && <Box sx={{ mt: 3 }}>
+            <Alert severity={excelPreview.summary.approvedUnmatchedEntries ? 'warning' : 'success'} sx={{ mb: 2 }}>
+              识别 {excelPreview.summary.scheduleCount} 个日程项目；系统报名 {excelPreview.summary.participantEntries} 笔，已匹配 {excelPreview.summary.matchedEntries} 笔，未匹配 {excelPreview.summary.unmatchedEntries} 笔（其中已通过 {excelPreview.summary.approvedUnmatchedEntries} 笔）。
+            </Alert>
+            <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>日程匹配预览</Typography>
+            <TableContainer component={Paper} sx={{ maxHeight: 300 }}>
+              <Table size="small" stickyHeader><TableHead><TableRow><TableCell>日程项目</TableCell><TableCell>场地／时段</TableCell><TableCell align="right">匹配</TableCell><TableCell align="right">已通过</TableCell><TableCell align="right">待审核</TableCell></TableRow></TableHead>
+                <TableBody>{excelPreview.items.map((item) => <TableRow key={`${item.index}-${item.name}`}><TableCell>{item.name}</TableCell><TableCell>{item.court}／{item.timeSlot}</TableCell><TableCell align="right">{item.matchedCount}</TableCell><TableCell align="right">{item.approvedCount}</TableCell><TableCell align="right">{item.pendingCount}</TableCell></TableRow>)}</TableBody>
+              </Table>
+            </TableContainer>
+            {excelPreview.unmatchedParticipants.length > 0 && <Box sx={{ mt: 2 }}><Typography variant="subtitle2" color="warning.main">未排入日程的选手（最多显示 50 笔）</Typography><List dense>{excelPreview.unmatchedParticipants.slice(0, 50).map((participant) => <ListItem key={participant.id}><ListItemText primary={`${participant.name}｜${participant.gender} ${participant.ageGroup}｜${participant.event}`} secondary={`${participant.schoolName}｜${participant.status}`} /></ListItem>)}</List></Box>}
+          </Box>}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setExcelImportOpen(false)} disabled={excelImporting}>取消</Button><Button variant="contained" onClick={handleConfirmExcelImport} disabled={!excelPreview || excelImporting}>{excelImporting ? '导入中…' : '确认导入赛程'}</Button></DialogActions>
+      </Dialog>
       {/* 分配赛程弹窗 */}
       <AssignScheduleDialog
         open={assignDialogOpen}

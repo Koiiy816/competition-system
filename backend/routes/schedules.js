@@ -30,6 +30,10 @@ router.get(
   scheduleController.previewGroups
 );
 
+// Excel 日程先预览匹配结果，管理员确认后才会创建赛程。
+router.post('/excel-preview', auth, authorize('admin', 'chief_referee'), scheduleController.previewExcelScheduleImport);
+router.post('/import-excel', auth, authorize('admin', 'chief_referee'), scheduleController.importExcelSchedule);
+
 // @route   PUT api/competitions/:competitionId/schedules/bulk/order
 // @desc    批量更新赛程排序
 // @access  私有/管理员、主裁

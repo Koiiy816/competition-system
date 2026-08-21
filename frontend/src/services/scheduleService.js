@@ -49,6 +49,15 @@ const scheduleService = {
     }
   },
 
+  previewExcelScheduleImport: async (competitionId, items) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/excel-preview`, { items });
+    return response.data;
+  },
+
+  importExcelSchedule: async (competitionId, items) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/import-excel`, { items });
+    return response.data;
+  },
   /**
    * 获取单个赛程详情
    * @param {string} competitionId - 比赛ID
