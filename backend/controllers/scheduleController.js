@@ -982,227 +982,87 @@ exports.randomizeParticipants = async (req, res, next) => {
 exports.syncNewParticipants = async (req, res, next) => {
   try {
     const { competitionId } = req.params;
-
     const competition = await Competition.findById(competitionId);
-    if (!competition) {
-      return res.status(404).json({ success: false, message: '比赛未找到' });
+    if (!competition) return res.status(404).json({ success: false, message: '比赛未找到' });
+
+    // 同步只允许追加到已存在的日程，绝不自动创建新项目。
+    const schedules = await Schedule.find({ competition: competitionId }).populate({
+      path: 'participants',
+      populate: { path: 'teamMembers', select: 'name schoolName' }
+    });
+    if (schedules.length === 0) {
+      return res.status(400).json({ success: false, message: '当前没有日程。请先使用「导入日程表（Excel）」建立日程，再同步新选手。' });
     }
 
-    // 获取所有审核通过的真实参赛者（排除虚拟队伍）
-    const allParticipants = await Participant.find({ 
+    const participants = await Participant.find({
       competition: competitionId,
       status: 'approved',
       isVirtualTeam: { $ne: true }
     });
-
-    if (allParticipants.length === 0) {
-      return res.status(400).json({ success: false, message: '暂无审核通过的参赛者' });
-    }
-
-    // =========================================================================
-    // 完全复用 generateStartList 的聚合与分组逻辑，确保新人员的归属计算完全一致
-    // =========================================================================
-    const groups = {};
-    const teamGroups = {};
-
-    allParticipants.forEach(p => {
-      let event = p.event || '未知项目';
-      const ageGroup = p.ageGroup || p.grade || '未知组别';
-      const gender = p.gender || 'unknown';
-      const schoolName = p.schoolName || '未知单位';
-      
-      if (event.includes('集体混合')) {
-        event = event.replace('集体混合', '集体项目');
+    const alreadyScheduled = new Set();
+    schedules.forEach((schedule) => schedule.participants.forEach((participant) => {
+      if (participant?.isVirtualTeam) {
+        (participant.teamMembers || []).forEach((member) => alreadyScheduled.add(member._id.toString()));
+      } else if (participant?._id) {
+        alreadyScheduled.add(participant._id.toString());
       }
-      
-      const manualEventGroup = String(p.manualEventGroup || '').trim();
-      const scheduleEvent = manualEventGroup || event;
-      const eventConfig = competition.events?.find(e => e.name === event);
-      const isGroup = (eventConfig && eventConfig.isGroupEvent) || event.includes('集体') || ageGroup.includes('集体');
-      
-      let genderStr = '';
-      if (gender === 'male' || gender === '男') genderStr = '男子';
-      else if (gender === 'female' || gender === '女') genderStr = '女子';
-      
-      let finalAgeGroup = ageGroup;
-      
-      const isForceMixedGroup = event === '集体项目' || event.includes('集体') || event.includes('武术操');
-      if (isForceMixedGroup) {
-         let strippedAgeGroup = ageGroup.replace(/男(子|童)?|女(子|童)?/g, '').trim();
-          if (event.includes('武术操') || event.includes('集体拳')) {
-             strippedAgeGroup = strippedAgeGroup.replace(/U\d+组?\s*/g, '').trim();
-          }
-         if (!strippedAgeGroup.includes('混合')) {
-            finalAgeGroup = strippedAgeGroup ? `混合集体 ${strippedAgeGroup}` : '混合集体';
-         } else {
-            finalAgeGroup = strippedAgeGroup;
-         }
-      } else {
-        if (genderStr && finalAgeGroup && !finalAgeGroup.includes('男') && !finalAgeGroup.includes('女') && !finalAgeGroup.includes('混合')) {
-          finalAgeGroup = `${genderStr}${finalAgeGroup}`;
-        }
-      }
-
-      let key;
-      let normalizedGender = gender;
-      if (gender === '女' || gender === 'female') normalizedGender = 'female';
-      else if (gender === '男' || gender === 'male') normalizedGender = 'male';
-
-      if (finalAgeGroup.includes('混合') || event.includes('混合') || isForceMixedGroup) {
-        key = `${scheduleEvent}|${finalAgeGroup}|mixed`;
-      } else {
-        key = `${scheduleEvent}|${finalAgeGroup}|${normalizedGender}`;
-      }
-      
-      if (isGroup) {
-         if (!teamGroups[key]) teamGroups[key] = {};
-         if (!teamGroups[key][schoolName]) teamGroups[key][schoolName] = []; 
-         teamGroups[key][schoolName].push(p._id);
-      } else {
-        if (!groups[key]) {
-          groups[key] = { event, ageGroup, gender, participants: [] };
-        }
-        groups[key].participants.push(p._id);
-      }
-    });
-
-    for (const key in teamGroups) {
-      const [event, ageGroup, gender] = key.split('|');
-      if (!groups[key]) {
-        groups[key] = { event, ageGroup, gender, participants: [], isGroup: true };
-      } else {
-        groups[key].isGroup = true;
-      }
-      
-      for (const schoolName in teamGroups[key]) {
-        const teamMembersIds = teamGroups[key][schoolName];
-        const teamMembers = allParticipants.filter(p => teamMembersIds.includes(p._id));
-        const combinedNames = teamMembers.map(m => m.name).join('、');
-        
-        // 创建或更新虚拟队伍。如果之前已经有队伍了，这里会自动更新队员名单
-        const virtualTeamParticipant = await Participant.findOneAndUpdate(
-          {
-            competition: competitionId,
-            isVirtualTeam: true,
-            event: event,
-            ageGroup: ageGroup,
-            gender: gender,
-            schoolName: schoolName
-          },
-          {
-            $set: {
-              type: 'team',
-              name: combinedNames,
-              teamName: schoolName,
-              status: 'approved',
-              teamMembers: teamMembersIds,
-              isTest: teamMembers.some(m => m.isTest)
-            },
-            $setOnInsert: {
-              registrationNumber: `VT-${Date.now()}-${Math.floor(Math.random() * 10000)}`
-            }
-          },
-          { new: true, upsert: true }
-        );
-        
-        // 将虚拟队伍的ID作为该集体项目的参赛者
-        allParticipants.push(virtualTeamParticipant);
-        groups[key].participants.push(virtualTeamParticipant._id);
-      }
-    }
-
-    // 获取所有现有赛程
-    const existingSchedules = await Schedule.find({ competition: competitionId }).populate('participants');
+    }));
 
     let appendedCount = 0;
-
-    for (const key in groups) {
-      const group = groups[key];
-      let genderText = '';
-      if (group.gender === 'male') {
-        genderText = '男子';
-      } else if (group.gender === 'female') {
-        genderText = '女子';
-      } else if (group.gender === 'mixed') {
-        genderText = ''; 
-      }
-
-      const expectedScheduleName = `${group.ageGroup} ${genderText} ${group.event}`.replace(/\s+/g, ' ').trim();
-
-      // 寻找匹配的赛程
-      let targetSchedule = existingSchedules.find(s => {
-        const nameMatch = s.name.includes(group.ageGroup) && 
-                          (genderText === '' || s.name.includes(genderText)) && 
-                          s.name.includes(group.event);
-        return nameMatch || s.name === expectedScheduleName;
-      });
-
+    let unmatchedCount = 0;
+    for (const participant of participants) {
+      if (alreadyScheduled.has(participant._id.toString())) continue;
+      const targetSchedule = schedules.find((schedule) => participantMatchesExcelSchedule(participant, { name: schedule.name }));
       if (!targetSchedule) {
-        targetSchedule = await Schedule.create({
-          competition: competitionId,
-          name: expectedScheduleName,
-          type: 'preliminary',
-          startTime: competition.startDate || new Date(),
-          endTime: competition.startDate || new Date(),
-          location: competition.location || '待定',
-          participants: [],
-          status: 'scheduled'
-        });
-        existingSchedules.push(targetSchedule);
+        unmatchedCount += 1;
+        continue;
       }
 
-      const currentParticipants = targetSchedule.participants;
-      let modified = false;
-
-      // 区分正式和测试人员，以便追加时维持顺序
-      const normalIds = [];
-      const testIds = [];
-      const currentIdStrs = [];
-
-      for (const existP of currentParticipants) {
-        if (existP && existP._id) {
-          const idStr = existP._id.toString();
-          currentIdStrs.push(idStr);
-          if (existP.isTest) {
-            testIds.push(existP._id);
-          } else {
-            normalIds.push(existP._id);
+      const parsed = parseExcelScheduleName(targetSchedule.name);
+      if (parsed.event.includes('集体')) {
+        const schoolName = participant.schoolName || '未填写代表单位';
+        let team = targetSchedule.participants.find((item) => item?.isVirtualTeam && item.schoolName === schoolName);
+        if (team) {
+          const memberIds = new Set((team.teamMembers || []).map((member) => member._id.toString()));
+          if (!memberIds.has(participant._id.toString())) {
+            await Participant.findByIdAndUpdate(team._id, { $addToSet: { teamMembers: participant._id } });
+            appendedCount += 1;
           }
+        } else {
+          team = await Participant.create({
+            competition: competitionId,
+            name: schoolName,
+            schoolName,
+            event: '集体项目',
+            ageGroup: '混合集体',
+            gender: 'mixed',
+            type: 'team',
+            isVirtualTeam: true,
+            teamMembers: [participant._id],
+            status: 'approved'
+          });
+          targetSchedule.participants.push(team._id);
+          await targetSchedule.save();
+          appendedCount += 1;
         }
-      }
-
-      for (const pId of group.participants) {
-        if (!currentIdStrs.includes(pId.toString())) {
-          // 需要追加的新人员
-          const pObj = allParticipants.find(p => p._id.toString() === pId.toString());
-          if (pObj && pObj.isTest) {
-            testIds.push(pId);
-          } else {
-            normalIds.push(pId);
-          }
-          modified = true;
-          appendedCount++;
-        }
-      }
-
-      if (modified) {
-        targetSchedule.participants = [...normalIds, ...testIds];
+      } else {
+        targetSchedule.participants.push(participant._id);
         await targetSchedule.save();
+        alreadyScheduled.add(participant._id.toString());
+        appendedCount += 1;
       }
     }
 
     res.status(200).json({
       success: true,
-      message: appendedCount > 0 
-        ? `同步完成，成功将 ${appendedCount} 名新参赛者/队伍追加到对应赛程中。已有的集体项目名单也已自动更新。` 
-        : `同步完成，已有的集体项目名单已自动更新，没有发现需要新追加的独立参赛者/队伍。`
+      message: appendedCount > 0
+        ? `已按已导入的日程规则追加 ${appendedCount} 名新选手；未创建任何新项目。${unmatchedCount ? `另有 ${unmatchedCount} 名选手没有对应日程。` : ''}`
+        : `没有可追加的新选手；未创建任何新项目。${unmatchedCount ? `有 ${unmatchedCount} 名选手没有对应日程。` : ''}`
     });
-
   } catch (error) {
     next(error);
   }
 };
-
 /**
  * @desc    清空比赛的所有赛程
  * @route   DELETE /api/competitions/:competitionId/schedules

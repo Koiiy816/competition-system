@@ -650,9 +650,9 @@ const CompetitionScheduleManagementPage = () => {
                 startIcon={<SyncIcon />}
                 onClick={handleSyncNewParticipants}
                 disabled={syncing}
-                title="将新报名的选手自动追加到对应的现有赛程中，且不会打乱现有的排版顺序"
+                title="仅按已导入 Excel 日程的项目、性别和合并年龄组追加选手；不会创建新项目"
               >
-                {syncing ? '同步中...' : '同步新选手'}
+                {syncing ? '同步中...' : '同步到导入日程'}
               </Button>
             )}
             
