@@ -109,6 +109,7 @@ router.put(
   [
     auth,
     authorize('admin', 'chief_referee'),
+    uploadParticipantPhoto,
     [
       check('name', '姓名是必填项').optional().not().isEmpty(),
       check('idCard', '身份证号是必填项').optional().not().isEmpty(),

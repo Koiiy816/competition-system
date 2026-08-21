@@ -505,6 +505,9 @@ exports.updateParticipant = async (req, res, next) => {
       });
     }
 
+    // 管理员编辑时可选择上传／替换照片；未选择则保留原照片。
+    if (req.file) req.body.photoFile = req.file.filename;
+
     // 不允许更改比赛和用户ID
     delete req.body.competition;
     delete req.body.user;

@@ -265,7 +265,14 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
          submitData.members = [{ name: formData.name }];
       }
       
-      if (editData) {
+      if (editData && selectedPhoto) {
+         const multipartData = new FormData();
+         Object.entries(submitData).forEach(([key, value]) => {
+           if (value !== undefined && value !== null) multipartData.append(key, typeof value === 'object' ? JSON.stringify(value) : value);
+         });
+         multipartData.append('photo', selectedPhoto);
+         await participantService.updateParticipant(competitionId, editData._id, multipartData);
+      } else if (editData) {
          await participantService.updateParticipant(competitionId, editData._id, submitData);
       } else if (selectedPhoto) {
          const multipartData = new FormData();
@@ -520,7 +527,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 helperText="仅供管理员记录，最多 1000 字"
               />
             </Grid>
-            {!editData && (
+            {(
               <Grid item xs={12}>
                 <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>
                   <Typography variant="subtitle2">{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoRequired ? ' *' : '（管理员可稍后补传）'}</Typography>
