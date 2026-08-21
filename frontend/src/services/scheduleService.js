@@ -226,6 +226,15 @@ const scheduleService = {
     return response.data;
   },
 
+  getAvailableParticipants: async (competitionId, scheduleId) => {
+    const response = await api.get(`/competitions/${competitionId}/schedules/${scheduleId}/available-participants`);
+    return response.data;
+  },
+
+  addParticipantsToSchedule: async (competitionId, scheduleId, participantIds) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/${scheduleId}/participants`, { participantIds });
+    return response.data;
+  },
   updateParticipantCheckInStatus: async (competitionId, participantId, status, scheduleId) => {
     try {
       const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/check-in`, {

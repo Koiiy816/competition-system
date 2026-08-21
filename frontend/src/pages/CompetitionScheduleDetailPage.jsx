@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Button, Paper, CircularProgress, Alert, 
   Container, Table, TableBody, TableCell, TableContainer, 
-  TableHead, TableRow, IconButton, Tooltip
+  TableHead, TableRow, IconButton, Tooltip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Checkbox, FormControlLabel, Chip
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -13,6 +13,7 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ShuffleIcon from '@mui/icons-material/Shuffle';
 import SyncIcon from '@mui/icons-material/Sync';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
@@ -32,6 +33,12 @@ const CompetitionScheduleDetailPage = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [nextSchedule, setNextSchedule] = useState(null);
   const [prevSchedule, setPrevSchedule] = useState(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [availableParticipants, setAvailableParticipants] = useState([]);
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [addingParticipants, setAddingParticipants] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -156,6 +163,66 @@ const CompetitionScheduleDetailPage = () => {
     setSuccess('当前名单已随机打乱，点击保存新顺序即可生效');
   };
 
+  const handleOpenAddParticipants = async () => {
+    if (hasChanges) {
+      setError('请先保存当前的顺序调整，再加入选手，避免覆盖尚未保存的排序。');
+      return;
+    }
+
+    setError('');
+    setSuccess('');
+    setParticipantSearch('');
+    setSelectedParticipantIds([]);
+    setAddDialogOpen(true);
+    setLoadingCandidates(true);
+    try {
+      const response = await scheduleService.getAvailableParticipants(id, scheduleId);
+      setAvailableParticipants(response.data || []);
+    } catch (err) {
+      setAddDialogOpen(false);
+      setError(err.message || '读取可加入选手失败，请重试');
+    } finally {
+      setLoadingCandidates(false);
+    }
+  };
+
+  const handleToggleCandidate = (participantId) => {
+    setSelectedParticipantIds((currentIds) => (
+      currentIds.includes(participantId)
+        ? currentIds.filter((id) => id !== participantId)
+        : [...currentIds, participantId]
+    ));
+  };
+
+  const handleAddSelectedParticipants = async () => {
+    if (selectedParticipantIds.length === 0) return;
+
+    setAddingParticipants(true);
+    setError('');
+    try {
+      const response = await scheduleService.addParticipantsToSchedule(id, scheduleId, selectedParticipantIds);
+      if (response.data?.participants) {
+        setParticipants(response.data.participants);
+        setSchedule(response.data);
+      } else {
+        await fetchData();
+      }
+      setAddDialogOpen(false);
+      setHasChanges(false);
+      setSuccess(response.message || `已加入 ${response.addedCount || selectedParticipantIds.length} 名选手到当前赛程`);
+    } catch (err) {
+      setError(err.message || '加入选手失败，请重试');
+    } finally {
+      setAddingParticipants(false);
+    }
+  };
+
+  const filteredAvailableParticipants = availableParticipants.filter((participant) => {
+    const keyword = participantSearch.trim().toLowerCase();
+    if (!keyword) return true;
+    return [participant.name, participant.schoolName, participant.ageGroup, participant.event]
+      .some((value) => String(value || '').toLowerCase().includes(keyword));
+  });
   const handleRemoveParticipant = (participantId, participantName) => {
     if (window.confirm(`确定要将 "${participantName}" 从本赛程中移除吗？\n移除后请记得点击“保存新顺序”。`)) {
       setParticipants(prev => prev.filter(p => p._id !== participantId));
@@ -237,6 +304,15 @@ const CompetitionScheduleDetailPage = () => {
                     sx={{ mr: 2 }}
                   >
                     同步新参赛者
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<PersonAddIcon />}
+                    onClick={handleOpenAddParticipants}
+                    sx={{ mr: 2 }}
+                  >
+                    加入选手
                   </Button>
                   <Button
                     variant="outlined"
@@ -446,6 +522,85 @@ const CompetitionScheduleDetailPage = () => {
           </TableContainer>
         </Box>
       </Box>
+
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => !addingParticipants && setAddDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>加入选手到「{schedule.name}」</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            这里仅将已报名选手加入当前赛程，不会修改其原始报名项目、报名资料或照片。
+          </Alert>
+          <TextField
+            fullWidth
+            autoFocus
+            label="搜索姓名、代表单位、组别或报名项目"
+            value={participantSearch}
+            onChange={(event) => setParticipantSearch(event.target.value)}
+            sx={{ mb: 2 }}
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={filteredAvailableParticipants.length > 0 && filteredAvailableParticipants.every((participant) => selectedParticipantIds.includes(participant._id))}
+                indeterminate={filteredAvailableParticipants.some((participant) => selectedParticipantIds.includes(participant._id)) && !filteredAvailableParticipants.every((participant) => selectedParticipantIds.includes(participant._id))}
+                onChange={(event) => setSelectedParticipantIds((currentIds) => {
+                  const visibleIds = filteredAvailableParticipants.map((participant) => participant._id);
+                  return event.target.checked
+                    ? [...new Set([...currentIds, ...visibleIds])]
+                    : currentIds.filter((participantId) => !visibleIds.includes(participantId));
+                })}
+              />
+            }
+            label={`本次已选择 ${selectedParticipantIds.length} 名；可加入 ${filteredAvailableParticipants.length} 名`}
+          />
+          {loadingCandidates ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box>
+          ) : (
+            <TableContainer sx={{ maxHeight: 420, border: 1, borderColor: 'divider', mt: 1 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox" />
+                    <TableCell>姓名</TableCell>
+                    <TableCell>代表单位</TableCell>
+                    <TableCell>组别</TableCell>
+                    <TableCell>原报名项目</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredAvailableParticipants.map((participant) => (
+                    <TableRow key={participant._id} hover onClick={() => handleToggleCandidate(participant._id)} sx={{ cursor: 'pointer' }}>
+                      <TableCell padding="checkbox">
+                        <Checkbox checked={selectedParticipantIds.includes(participant._id)} onClick={(event) => event.stopPropagation()} onChange={() => handleToggleCandidate(participant._id)} />
+                      </TableCell>
+                      <TableCell>{participant.name || '-'}</TableCell>
+                      <TableCell>{participant.schoolName || '-'}</TableCell>
+                      <TableCell>{participant.ageGroup || '-'}</TableCell>
+                      <TableCell>
+                        {participant.event || '-'}
+                        {participant.isTest && <Chip label="测试" size="small" sx={{ ml: 1 }} />}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!loadingCandidates && filteredAvailableParticipants.length === 0 && (
+                    <TableRow><TableCell colSpan={5} align="center">没有符合条件、且尚未加入本赛程的选手</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddDialogOpen(false)} disabled={addingParticipants}>取消</Button>
+          <Button variant="contained" onClick={handleAddSelectedParticipants} disabled={addingParticipants || selectedParticipantIds.length === 0}>
+            {addingParticipants ? '加入中…' : `加入 ${selectedParticipantIds.length} 名选手`}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };

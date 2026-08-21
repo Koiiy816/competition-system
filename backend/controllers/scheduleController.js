@@ -1133,6 +1133,106 @@ exports.clearAllSchedules = async (req, res, next) => {
   }
 };
 
+// @desc    获取可手动加入当前赛程的已报名选手
+// @route   GET /api/competitions/:competitionId/schedules/:id/available-participants
+// @access  Private/Admin
+exports.getAvailableParticipants = async (req, res, next) => {
+  try {
+    const schedule = await Schedule.findOne({
+      _id: req.params.id,
+      competition: req.params.competitionId
+    }).select('participants');
+
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: '未找到当前比赛的赛程' });
+    }
+
+    const existingIds = schedule.participants.map((participant) => participant.toString());
+    const participants = await Participant.find({
+      competition: req.params.competitionId,
+      isVirtualTeam: { $ne: true },
+      status: { $ne: 'rejected' },
+      _id: { $nin: existingIds }
+    })
+      .select('name schoolName ageGroup event gender status isTest')
+      .sort({ schoolName: 1, name: 1 })
+      .lean();
+
+    res.status(200).json({ success: true, data: participants });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    手动把已报名选手加入当前赛程
+// @route   POST /api/competitions/:competitionId/schedules/:id/participants
+// @access  Private/Admin
+exports.addParticipantsToSchedule = async (req, res, next) => {
+  try {
+    const participantIds = Array.isArray(req.body.participantIds)
+      ? [...new Set(req.body.participantIds.map((id) => String(id)).filter(Boolean))]
+      : [];
+
+    if (participantIds.length === 0) {
+      return res.status(400).json({ success: false, message: '请至少选择一名选手' });
+    }
+
+    const schedule = await Schedule.findOne({
+      _id: req.params.id,
+      competition: req.params.competitionId
+    });
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: '未找到当前比赛的赛程' });
+    }
+
+    const candidates = await Participant.find({
+      _id: { $in: participantIds },
+      competition: req.params.competitionId,
+      isVirtualTeam: { $ne: true },
+      status: { $ne: 'rejected' }
+    }).select('_id isTest');
+
+    const existingIds = new Set(schedule.participants.map((participant) => participant.toString()));
+    const selectedById = new Map(candidates.map((participant) => [participant._id.toString(), participant]));
+    const additions = participantIds
+      .map((participantId) => selectedById.get(participantId))
+      .filter((participant) => participant && !existingIds.has(participant._id.toString()));
+
+    if (additions.length === 0) {
+      return res.status(200).json({
+        success: true,
+        addedCount: 0,
+        message: '所选选手已在当前赛程中，未重复加入'
+      });
+    }
+
+    // 保持测试人员始终在名单末尾；手动加入的正常选手追加在正式名单之后。
+    const currentParticipants = await Participant.find({ _id: { $in: schedule.participants } }).select('_id isTest');
+    const currentById = new Map(currentParticipants.map((participant) => [participant._id.toString(), participant]));
+    const currentNormal = schedule.participants.filter((participantId) => !currentById.get(participantId.toString())?.isTest);
+    const currentTests = schedule.participants.filter((participantId) => currentById.get(participantId.toString())?.isTest);
+    const newNormal = additions.filter((participant) => !participant.isTest).map((participant) => participant._id);
+    const newTests = additions.filter((participant) => participant.isTest).map((participant) => participant._id);
+
+    schedule.participants = [...currentNormal, ...newNormal, ...currentTests, ...newTests];
+    await schedule.save();
+
+    const updatedSchedule = await Schedule.findById(schedule._id).populate({
+      path: 'participants',
+      select: 'user type teamName status name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest',
+      populate: { path: 'user', select: 'name email' }
+    });
+
+    res.status(200).json({
+      success: true,
+      addedCount: additions.length,
+      message: `已加入 ${additions.length} 名选手到当前赛程`,
+      data: updatedSchedule
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 // @desc    将新录入的参赛者追加到指定赛程中
 // @route   POST /api/schedules/:id/append-new
 // @access  Private/Admin

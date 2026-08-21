@@ -147,4 +147,21 @@ router.post(
   scheduleController.appendNewParticipants
 );
 
+// @route   GET api/competitions/:competitionId/schedules/:id/available-participants
+// @desc    获取可手动加入当前赛程的已报名选手
+// @access  私有/管理员、主裁
+router.get(
+  '/:id/available-participants',
+  auth, authorize('admin', 'chief_referee'),
+  scheduleController.getAvailableParticipants
+);
+
+// @route   POST api/competitions/:competitionId/schedules/:id/participants
+// @desc    手动把已报名选手加入当前赛程
+// @access  私有/管理员、主裁
+router.post(
+  '/:id/participants',
+  auth, authorize('admin', 'chief_referee'),
+  scheduleController.addParticipantsToSchedule
+);
 module.exports = router;
