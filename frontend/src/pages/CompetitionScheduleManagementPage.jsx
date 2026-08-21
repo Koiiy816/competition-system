@@ -717,6 +717,18 @@ const CompetitionScheduleManagementPage = () => {
         rowTypes.push(type);
       };
       const formatDate = (value) => String(value || '').replace(/T.*$/, '');
+      const courtSortOrder = (court) => {
+        const match = String(court || '').match(/第\s*([一二三四五六七八九十\d]+)\s*[场場]地/);
+        if (!match) return Number.MAX_SAFE_INTEGER;
+        const chineseNumbers = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+        return /^\d+$/.test(match[1]) ? Number(match[1]) : (chineseNumbers[match[1]] || Number.MAX_SAFE_INTEGER);
+      };
+      const formatGender = (gender) => {
+        const value = String(gender || '').trim().toLowerCase();
+        if (['male', 'm', '男', '男性'].includes(value)) return '男';
+        if (['female', 'f', '女', '女性'].includes(value)) return '女';
+        return String(gender || '-');
+      };
       const getEventName = (schedule) => String(schedule.name || '').replace(/[（(]\d+(?:人|队)[）)]\s*$/, '').trim() || '-';
       const isTeamParticipant = (participant) => participant.isVirtualTeam || participant.type === 'team' || ['集体', '集体项目', '混合集体'].includes(String(participant.ageGroup || ''));
       const isCollectiveSchedule = (schedule) => /集体/.test(String(schedule.name || '')) || (schedule.participants || []).some(isTeamParticipant);
@@ -728,7 +740,7 @@ const CompetitionScheduleManagementPage = () => {
         return [
           index + 1,
           isTeam ? teamName : (participant.name || participant.user?.name || '-'),
-          isTeam ? '集体' : (participant.gender || participant.user?.gender || '-'),
+          isTeam ? '集体' : formatGender(participant.gender || participant.user?.gender),
           isTeam ? '集体' : (participant.ageGroup || participant.user?.ageGroup || '-'),
           isTeam ? `${getEventName(schedule)}${teamMembers.length ? `（${teamMembers.length}人）` : ''}` : (participant.event || getEventName(schedule)),
           participant.schoolName || participant.teamName || participant.user?.schoolName || '-'
@@ -742,7 +754,7 @@ const CompetitionScheduleManagementPage = () => {
       dates.forEach((date) => {
         appendMergedRow(date, 'section', 25);
         const daySchedules = orderedSchedules.filter((schedule) => formatDate(schedule.scheduleDate) === date);
-        const courts = [...new Set(daySchedules.map((schedule) => schedule.court))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
+        const courts = [...new Set(daySchedules.map((schedule) => schedule.court))].sort((a, b) => courtSortOrder(a) - courtSortOrder(b) || String(a).localeCompare(String(b), 'zh-CN'));
         courts.forEach((court) => {
           appendMergedRow(court, 'section', 25);
           slots.forEach((timeSlot) => {
