@@ -715,7 +715,7 @@ const CompetitionScheduleManagementPage = () => {
   const handleExportScheduleExcel = () => {
     const assigned = schedules
       .filter((schedule) => schedule.scheduleDate && schedule.timeSlot && schedule.court)
-      .sort((a, b) => String(a.scheduleDate).localeCompare(String(b.scheduleDate)) || (a.order || 0) - (b.order || 0));
+      .sort((a, b) => String(a.scheduleDate).localeCompare(String(b.scheduleDate)) || String(a.court || '').localeCompare(String(b.court || ''), 'zh-CN') || (a.order || 0) - (b.order || 0));
     if (!assigned.length) {
       setError('暂无已排程的比赛日程可导出。');
       return;
@@ -725,32 +725,67 @@ const CompetitionScheduleManagementPage = () => {
     setSuccess('');
     try {
       const dates = [...new Set(assigned.map((schedule) => schedule.scheduleDate))].sort();
-      const courts = [...new Set(assigned.map((schedule) => schedule.court))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
-      const timeSlots = ['上午', '下午', '晚上'];
       const workbook = XLSX.utils.book_new();
+      const cellStyle = { alignment: { vertical: 'center', horizontal: 'center', wrapText: true }, font: { name: 'Microsoft YaHei', sz: 10 }, border: { top: { style: 'thin', color: { rgb: 'B7C3D0' } }, bottom: { style: 'thin', color: { rgb: 'B7C3D0' } }, left: { style: 'thin', color: { rgb: 'B7C3D0' } }, right: { style: 'thin', color: { rgb: 'B7C3D0' } } } };
+      const titleStyle = { ...cellStyle, font: { name: 'Microsoft YaHei', sz: 16, bold: true } };
+      const headingStyle = { ...cellStyle, font: { name: 'Microsoft YaHei', sz: 11, bold: true }, fill: { fgColor: { rgb: 'EAF2F8' } } };
 
       dates.forEach((date, index) => {
+        const dateSchedules = assigned.filter((schedule) => schedule.scheduleDate === date);
+        const courts = [...new Set(dateSchedules.map((schedule) => schedule.court))]
+          .sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
         const rows = [
           [`${competition?.name || '比赛'} - 比赛日程表`],
-          [date],
-          ['时间段', ...courts]
+          [date]
         ];
-        timeSlots.forEach((timeSlot) => {
-          const cells = courts.map((court) => assigned
-            .filter((schedule) => schedule.scheduleDate === date && schedule.timeSlot === timeSlot && schedule.court === court)
-            .map((schedule) => schedule.name)
-            .join('\n'));
-          if (cells.some(Boolean)) rows.push([timeSlot, ...cells]);
+        const merges = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+          { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } }
+        ];
+        const rowHeights = [{ hpt: 38 }, { hpt: 24 }];
+
+        courts.forEach((court) => {
+          const morning = dateSchedules.filter((schedule) => schedule.court === court && schedule.timeSlot === '上午');
+          const afternoon = dateSchedules.filter((schedule) => schedule.court === court && schedule.timeSlot === '下午');
+          const evening = dateSchedules.filter((schedule) => schedule.court === court && !['上午', '下午'].includes(schedule.timeSlot));
+          const courtHeadingRow = rows.length;
+          rows.push([court]);
+          merges.push({ s: { r: courtHeadingRow, c: 0 }, e: { r: courtHeadingRow, c: 3 } });
+          rowHeights.push({ hpt: 24 });
+          rows.push(['', '上午9:00-12:00', '', '下午14:00-17:00']);
+          rowHeights.push({ hpt: 22 });
+
+          const count = Math.max(morning.length, afternoon.length, 1);
+          for (let itemIndex = 0; itemIndex < count; itemIndex += 1) {
+            rows.push([
+              morning[itemIndex] ? `${itemIndex + 1}、` : '',
+              morning[itemIndex]?.name || '',
+              afternoon[itemIndex] ? `${itemIndex + 1}、` : '',
+              afternoon[itemIndex]?.name || ''
+            ]);
+            rowHeights.push({ hpt: 18 });
+          }
+
+          if (evening.length) {
+            const eveningHeadingRow = rows.length;
+            rows.push([`${court}／其他时段`]);
+            merges.push({ s: { r: eveningHeadingRow, c: 0 }, e: { r: eveningHeadingRow, c: 3 } });
+            rowHeights.push({ hpt: 22 });
+            evening.forEach((schedule, itemIndex) => {
+              rows.push([`${itemIndex + 1}、`, schedule.name, '', schedule.timeSlot || '其他时段']);
+              rowHeights.push({ hpt: 18 });
+            });
+          }
         });
 
         const worksheet = XLSX.utils.aoa_to_sheet(rows);
-        worksheet['!merges'] = [
-          { s: { r: 0, c: 0 }, e: { r: 0, c: courts.length } },
-          { s: { r: 1, c: 0 }, e: { r: 1, c: courts.length } }
-        ];
-        worksheet['!cols'] = [{ wch: 12 }, ...courts.map(() => ({ wch: 46 }))];
-        worksheet['!rows'] = rows.map((row, rowIndex) => ({
-          hpt: rowIndex < 3 ? 24 : Math.max(42, Math.ceil(Math.max(...row.map((cell) => String(cell || '').split('\n').length)) * 19))
+        worksheet['!merges'] = merges;
+        worksheet['!cols'] = [{ wch: 5 }, { wch: 43 }, { wch: 5 }, { wch: 43 }];
+        worksheet['!rows'] = rowHeights;
+        rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+          const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+          if (!worksheet[address]) worksheet[address] = { t: 's', v: '' };
+          worksheet[address].s = rowIndex === 0 ? titleStyle : (rowIndex === 1 || merges.some((merge) => merge.s.r === rowIndex) || (rowIndex > 1 && row[1] === '上午9:00-12:00')) ? headingStyle : cellStyle;
         }));
         XLSX.utils.book_append_sheet(workbook, worksheet, dates.length === 1 ? '比赛日程表' : `日程${index + 1}-${date}`.slice(0, 31));
       });
@@ -761,8 +796,7 @@ const CompetitionScheduleManagementPage = () => {
       console.error('比赛日程 Excel 导出失败:', err);
       setError('比赛日程 Excel 导出失败，请重试。');
     }
-  };
-  const handleOpenAssignDialog = useCallback((schedule, e) => {
+  };  const handleOpenAssignDialog = useCallback((schedule, e) => {
     e.stopPropagation(); // 阻止卡片点击跳转
     setCurrentSchedule(schedule);
     setAssignForm({
