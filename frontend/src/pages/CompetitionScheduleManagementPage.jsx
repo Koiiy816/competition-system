@@ -19,6 +19,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import * as XLSX from 'xlsx';
 import PreviewIcon from '@mui/icons-material/Preview';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
@@ -327,6 +328,11 @@ const CompetitionScheduleManagementPage = () => {
   const [excelPreview, setExcelPreview] = useState(null);
   const [manualAssignments, setManualAssignments] = useState({});
   const [startOrderRoster, setStartOrderRoster] = useState([]);
+  const [unassignedDialogOpen, setUnassignedDialogOpen] = useState(false);
+  const [unassignedLoading, setUnassignedLoading] = useState(false);
+  const [unassignedParticipants, setUnassignedParticipants] = useState([]);
+  const [unassignedSummary, setUnassignedSummary] = useState(null);
+  const [unassignedSearch, setUnassignedSearch] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -473,6 +479,30 @@ const CompetitionScheduleManagementPage = () => {
     }
   };
 
+  const handleOpenUnassignedParticipants = async () => {
+    setUnassignedDialogOpen(true);
+    setUnassignedLoading(true);
+    setUnassignedSearch('');
+    setError('');
+    try {
+      const response = await scheduleService.getUnassignedParticipants(id);
+      setUnassignedParticipants(response.data || []);
+      setUnassignedSummary(response.summary || null);
+    } catch (err) {
+      setUnassignedParticipants([]);
+      setUnassignedSummary(null);
+      setError(err.message || '读取未编排选手失败');
+    } finally {
+      setUnassignedLoading(false);
+    }
+  };
+
+  const filteredUnassignedParticipants = unassignedParticipants.filter((participant) => {
+    const keyword = unassignedSearch.trim().toLowerCase();
+    if (!keyword) return true;
+    return [participant.name, participant.schoolName, participant.ageGroup, participant.event]
+      .some((value) => String(value || '').toLowerCase().includes(keyword));
+  });
   const handleClearAllSchedules = async () => {
     if (!window.confirm('危险操作！这将会彻底删除本比赛下的【所有赛程安排】，且无法恢复。是否继续？')) {
       return;
@@ -717,6 +747,15 @@ const CompetitionScheduleManagementPage = () => {
               </Button>
             )}
             {isAdminOrOrganizer && (
+              <Button
+                variant="outlined"
+                color="warning"
+                startIcon={<PersonSearchIcon />}
+                onClick={handleOpenUnassignedParticipants}
+              >
+                未编排选手
+              </Button>
+            )}            {isAdminOrOrganizer && (
               <Button
                 variant="contained"
                 color="error"
@@ -973,6 +1012,60 @@ const CompetitionScheduleManagementPage = () => {
         )}
       </Box>
 
+      <Dialog open={unassignedDialogOpen} onClose={() => setUnassignedDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>未编排选手查核</DialogTitle>
+        <DialogContent dividers>
+          <Alert severity={unassignedSummary?.unassignedCount ? 'warning' : 'success'} sx={{ mb: 2 }}>
+            {unassignedSummary
+              ? `可编排选手 ${unassignedSummary.totalEligible} 名，已编入赛程 ${unassignedSummary.scheduledCount} 名，尚未编排 ${unassignedSummary.unassignedCount} 名。`
+              : '正在读取目前赛程与报名资料…'}
+          </Alert>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            集体项目会按实际队员核对；此处只显示尚未出现在任何赛程的选手，不会修改报名资料或照片。
+          </Typography>
+          <TextField
+            fullWidth
+            label="搜索姓名、代表单位、组别或报名项目"
+            value={unassignedSearch}
+            onChange={(event) => setUnassignedSearch(event.target.value)}
+            sx={{ mb: 2 }}
+          />
+          {unassignedLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box>
+          ) : (
+            <TableContainer sx={{ maxHeight: 480, border: 1, borderColor: 'divider' }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>姓名</TableCell>
+                    <TableCell>代表单位</TableCell>
+                    <TableCell>组别</TableCell>
+                    <TableCell>报名项目</TableCell>
+                    <TableCell>状态</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredUnassignedParticipants.map((participant) => (
+                    <TableRow key={participant._id}>
+                      <TableCell>{participant.name || '-'}</TableCell>
+                      <TableCell>{participant.schoolName || '-'}</TableCell>
+                      <TableCell>{participant.ageGroup || '-'}</TableCell>
+                      <TableCell>{participant.event || '-'}</TableCell>
+                      <TableCell>{participant.status === 'approved' ? '已通过' : '待审核'}</TableCell>
+                    </TableRow>
+                  ))}
+                  {!unassignedLoading && filteredUnassignedParticipants.length === 0 && (
+                    <TableRow><TableCell colSpan={5} align="center">没有未编排选手</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUnassignedDialogOpen(false)}>关闭</Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={excelImportOpen} onClose={() => !excelImporting && setExcelImportOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>导入日程表（Excel）</DialogTitle>
         <DialogContent dividers>

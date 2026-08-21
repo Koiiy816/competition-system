@@ -1133,6 +1133,51 @@ exports.clearAllSchedules = async (req, res, next) => {
   }
 };
 
+// @desc    查询尚未编入任何赛程的报名选手
+// @route   GET /api/competitions/:competitionId/schedules/unassigned-participants
+// @access  Private/Admin
+exports.getUnassignedParticipants = async (req, res, next) => {
+  try {
+    const schedules = await Schedule.find({ competition: req.params.competitionId }).select('participants').lean();
+    const scheduledEntryIds = schedules.flatMap((schedule) => schedule.participants || []);
+    const scheduledEntries = await Participant.find({ _id: { $in: scheduledEntryIds } })
+      .select('_id isVirtualTeam teamMembers')
+      .lean();
+
+    // 集体项目在赛程中保存的是虚拟队伍，因此必须把其真实队员也视为“已编排”。
+    const scheduledIds = new Set();
+    scheduledEntries.forEach((entry) => {
+      if (entry.isVirtualTeam) {
+        (entry.teamMembers || []).forEach((memberId) => scheduledIds.add(memberId.toString()));
+      } else {
+        scheduledIds.add(entry._id.toString());
+      }
+    });
+
+    const eligibleParticipants = await Participant.find({
+      competition: req.params.competitionId,
+      isVirtualTeam: { $ne: true },
+      status: { $ne: 'rejected' }
+    })
+      .select('name schoolName ageGroup event gender status isTest')
+      .sort({ schoolName: 1, name: 1 })
+      .lean();
+    const unassignedParticipants = eligibleParticipants.filter((participant) => !scheduledIds.has(participant._id.toString()));
+
+    res.status(200).json({
+      success: true,
+      data: unassignedParticipants,
+      summary: {
+        totalEligible: eligibleParticipants.length,
+        scheduledCount: eligibleParticipants.length - unassignedParticipants.length,
+        unassignedCount: unassignedParticipants.length,
+        scheduleCount: schedules.length
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 // @desc    获取可手动加入当前赛程的已报名选手
 // @route   GET /api/competitions/:competitionId/schedules/:id/available-participants
 // @access  Private/Admin

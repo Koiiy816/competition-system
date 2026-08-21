@@ -226,6 +226,10 @@ const scheduleService = {
     return response.data;
   },
 
+  getUnassignedParticipants: async (competitionId) => {
+    const response = await api.get(`/competitions/${competitionId}/schedules/unassigned-participants`);
+    return response.data;
+  },
   getAvailableParticipants: async (competitionId, scheduleId) => {
     const response = await api.get(`/competitions/${competitionId}/schedules/${scheduleId}/available-participants`);
     return response.data;

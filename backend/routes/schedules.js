@@ -43,6 +43,14 @@ router.put(
   scheduleController.updateSchedulesOrder
 );
 
+// @route   GET api/competitions/:competitionId/schedules/unassigned-participants
+// @desc    查询尚未编入任何赛程的报名选手
+// @access  私有/管理员、主裁
+router.get(
+  '/unassigned-participants',
+  auth, authorize('admin', 'chief_referee'),
+  scheduleController.getUnassignedParticipants
+);
 // @route   GET api/competitions/:competitionId/schedules/:id
 // @desc    通过ID获取单个赛程
 // @access  私有/管理员、参赛单位或裁判
@@ -147,6 +155,14 @@ router.post(
   scheduleController.appendNewParticipants
 );
 
+// @route   GET api/competitions/:competitionId/schedules/unassigned-participants
+// @desc    查询尚未编入任何赛程的报名选手
+// @access  私有/管理员、主裁
+router.get(
+  '/unassigned-participants',
+  auth, authorize('admin', 'chief_referee'),
+  scheduleController.getUnassignedParticipants
+);
 // @route   GET api/competitions/:competitionId/schedules/:id/available-participants
 // @desc    获取可手动加入当前赛程的已报名选手
 // @access  私有/管理员、主裁
