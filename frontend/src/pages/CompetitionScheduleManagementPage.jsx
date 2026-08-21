@@ -13,6 +13,7 @@ import SyncIcon from '@mui/icons-material/Sync';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import PrintIcon from '@mui/icons-material/Print';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { jsPDF } from 'jspdf';
 import SaveIcon from '@mui/icons-material/Save';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -711,8 +712,7 @@ const CompetitionScheduleManagementPage = () => {
     }
   };
 
-  const handleExportSchedulePdf = async () => {
-    if (exportingPdf) return;
+  const handleExportScheduleExcel = () => {
     const assigned = schedules
       .filter((schedule) => schedule.scheduleDate && schedule.timeSlot && schedule.court)
       .sort((a, b) => String(a.scheduleDate).localeCompare(String(b.scheduleDate)) || (a.order || 0) - (b.order || 0));
@@ -721,58 +721,45 @@ const CompetitionScheduleManagementPage = () => {
       return;
     }
 
-    setExportingPdf(true);
     setError('');
     setSuccess('');
-    const exportContainer = document.createElement('div');
-    Object.assign(exportContainer.style, { position: 'fixed', left: '-10000px', top: '0', width: '1123px', zIndex: '-1', background: '#fff' });
-    document.body.appendChild(exportContainer);
-
     try {
-      const { default: html2canvas } = await import('html2canvas');
-      const escapeHtml = (value) => String(value || '-').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
       const dates = [...new Set(assigned.map((schedule) => schedule.scheduleDate))].sort();
       const courts = [...new Set(assigned.map((schedule) => schedule.court))].sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
       const timeSlots = ['上午', '下午', '晚上'];
-      setPdfExportProgress({ current: 0, total: dates.length });
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
+      const workbook = XLSX.utils.book_new();
 
-      for (let index = 0; index < dates.length; index += 1) {
-        const date = dates[index];
-        const rows = timeSlots.map((timeSlot) => {
-          const hasSchedules = courts.some((court) => assigned.some((schedule) => schedule.scheduleDate === date && schedule.timeSlot === timeSlot && schedule.court === court));
-          if (!hasSchedules) return '';
-          const cells = courts.map((court) => {
-            const projects = assigned
-              .filter((schedule) => schedule.scheduleDate === date && schedule.timeSlot === timeSlot && schedule.court === court)
-              .map((schedule) => `<div style="padding:8px 6px;border-bottom:1px solid #d6dce5;line-height:1.45">${escapeHtml(schedule.name)}</div>`)
-              .join('');
-            return `<td style="vertical-align:top;padding:0">${projects}</td>`;
-          }).join('');
-          return `<tr><th style="width:78px">${escapeHtml(timeSlot)}</th>${cells}</tr>`;
-        }).filter(Boolean).join('');
+      dates.forEach((date, index) => {
+        const rows = [
+          [`${competition?.name || '比赛'} - 比赛日程表`],
+          [date],
+          ['时间段', ...courts]
+        ];
+        timeSlots.forEach((timeSlot) => {
+          const cells = courts.map((court) => assigned
+            .filter((schedule) => schedule.scheduleDate === date && schedule.timeSlot === timeSlot && schedule.court === court)
+            .map((schedule) => schedule.name)
+            .join('\n'));
+          if (cells.some(Boolean)) rows.push([timeSlot, ...cells]);
+        });
 
-        const pageElement = document.createElement('section');
-        pageElement.style.cssText = 'width:1123px;min-height:794px;box-sizing:border-box;padding:42px 46px;background:#fff;color:#111;font-family:"Microsoft YaHei","SimSun",sans-serif;';
-        pageElement.innerHTML = `<h1 style="font-size:24px;text-align:center;margin:0 0 10px">${escapeHtml(competition?.name || '比赛')} - 比赛日程表</h1><h2 style="font-size:18px;text-align:center;margin:0 0 24px;font-weight:normal">${escapeHtml(date)}</h2><table style="width:100%;border-collapse:collapse;font-size:15px"><thead><tr style="background:#f1f4f8"><th style="width:78px">时间段</th>${courts.map((court) => `<th>${escapeHtml(court)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table><style>th,td{border:1px solid #718096;text-align:center;vertical-align:middle}th{padding:10px 8px;background:#f6f8fa;font-weight:700}</style>`;
-        exportContainer.appendChild(pageElement);
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        const canvas = await html2canvas(pageElement, { scale: 1, backgroundColor: '#ffffff', logging: false, useCORS: true });
-        if (index > 0) pdf.addPage();
-        pdf.addImage(canvas.toDataURL('image/jpeg', 0.86), 'JPEG', 0, 0, 297, 210, undefined, 'FAST');
-        exportContainer.removeChild(pageElement);
-        setPdfExportProgress({ current: index + 1, total: dates.length });
-      }
+        const worksheet = XLSX.utils.aoa_to_sheet(rows);
+        worksheet['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: courts.length } },
+          { s: { r: 1, c: 0 }, e: { r: 1, c: courts.length } }
+        ];
+        worksheet['!cols'] = [{ wch: 12 }, ...courts.map(() => ({ wch: 46 }))];
+        worksheet['!rows'] = rows.map((row, rowIndex) => ({
+          hpt: rowIndex < 3 ? 24 : Math.max(42, Math.ceil(Math.max(...row.map((cell) => String(cell || '').split('\n').length)) * 19))
+        }));
+        XLSX.utils.book_append_sheet(workbook, worksheet, dates.length === 1 ? '比赛日程表' : `日程${index + 1}-${date}`.slice(0, 31));
+      });
 
-      pdf.save(`${String(competition?.name || '比赛').replace(/[\\/:*?"<>|]/g, '_')}-比赛日程表.pdf`);
-      setSuccess('比赛日程 PDF 已生成并开始下载。');
+      XLSX.writeFile(workbook, `${String(competition?.name || '比赛').replace(/[\\/:*?"<>|]/g, '_')}-比赛日程表.xlsx`);
+      setSuccess('可编辑的比赛日程 Excel 已生成并开始下载。');
     } catch (err) {
-      console.error('比赛日程 PDF 导出失败:', err);
-      setError('比赛日程 PDF 导出失败，请重试。');
-    } finally {
-      exportContainer.remove();
-      setExportingPdf(false);
-      setPdfExportProgress({ current: 0, total: 0 });
+      console.error('比赛日程 Excel 导出失败:', err);
+      setError('比赛日程 Excel 导出失败，请重试。');
     }
   };
   const handleOpenAssignDialog = useCallback((schedule, e) => {
@@ -970,13 +957,13 @@ const CompetitionScheduleManagementPage = () => {
               <Button
                 variant="outlined"
                 color="secondary"
-                startIcon={<PictureAsPdfIcon />}
-                onClick={tabValue === 1 ? handleExportSchedulePdf : handleExportPdf}
+                startIcon={tabValue === 1 ? <FileDownloadIcon /> : <PictureAsPdfIcon />}
+                onClick={tabValue === 1 ? handleExportScheduleExcel : handleExportPdf}
                 disabled={exportingPdf}
               >
                 {exportingPdf
                   ? `导出 PDF（${pdfExportProgress.current}/${pdfExportProgress.total}）`
-                  : tabValue === 1 ? '导出日程 PDF' : '导出出场顺序 PDF'}
+                  : tabValue === 1 ? '导出日程 Excel' : '导出出场顺序 PDF'}
               </Button>
             )}
 
