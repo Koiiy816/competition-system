@@ -61,6 +61,18 @@ const ScheduleSchema = new mongoose.Schema({
     enum: [3, 4, 5],
     default: 5
   },
+  scoringMode: {
+    type: String,
+    enum: ['standard', 'diving'],
+    default: 'standard'
+  },
+  divingProgram: [{
+    actionCode: { type: String, trim: true },
+    actionName: { type: String, required: true, trim: true },
+    difficulty: { type: Number, required: true, min: 0 },
+    source: { type: String, enum: ['official', 'custom'], default: 'custom' },
+    notes: { type: String, trim: true }
+  }],
   status: {
     type: String,
     enum: ['scheduled', 'ongoing', 'completed', 'cancelled', 'postponed'],

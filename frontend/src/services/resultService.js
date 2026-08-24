@@ -138,6 +138,16 @@ const resultService = {
    * @param {string} format - 导出格式（csv, excel）
    * @returns {Promise<Blob>} - 返回包含结果数据的Blob对象
    */
+
+  submitDivingScore: async (competitionId, scoreData) => {
+    try {
+      const response = await api.post('/competitions/' + competitionId + '/results/submit-diving', scoreData);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: 'Diving score submission failed' };
+    }
+  },
+
   exportResults: async (competitionId, format = 'csv') => {
     try {
       const response = await api.get(`/competitions/${competitionId}/results/export?format=${format}`, {

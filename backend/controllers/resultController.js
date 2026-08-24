@@ -86,6 +86,75 @@ function getEffectiveCheckInStatus(participant) {
   return 'mixed';
 }
 
+
+function getAllowedJudgeIndex(user) {
+  if (!user?.name) return -1;
+  const match = user.name.match(/\d+/);
+  return match ? (parseInt(match[0], 10) - 1) % 5 : -1;
+}
+function normalizeDivingScores(scores) {
+  const normalized = Array.isArray(scores) ? scores.slice(0, 5) : [];
+  while (normalized.length < 5) normalized.push(null);
+  return normalized.map((score) => {
+    if (score === '' || score === null || score === undefined) return null;
+    const parsed = Number(score);
+    return Number.isFinite(parsed) ? parsed : null;
+  });
+}
+function isCompleteDivingScore(scores) {
+  return scores.length === 5 && scores.every((score) => Number.isFinite(score));
+}
+function calculateDivingDiveScore(scores, difficulty) {
+  if (!isCompleteDivingScore(scores)) return 0;
+  const factor = Number(difficulty);
+  if (!Number.isFinite(factor) || factor < 0) return 0;
+  const total = scores.reduce((sum, score) => sum + score, 0);
+  return Math.round((total - Math.max(...scores) - Math.min(...scores)) * factor * 100) / 100;
+}
+exports.submitDivingScore = async (req, res, next) => {
+  const { scheduleId, participantId, dives } = req.body;
+  if (!scheduleId || !participantId || !Array.isArray(dives)) return res.status(400).json({ success: false, message: 'Missing diving score data' });
+  const lockKey = 'diving_' + scheduleId + '_' + participantId;
+  await acquireLock(lockKey);
+  try {
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount scoringMode divingProgram');
+    if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
+    if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
+    if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
+    const program = schedule.divingProgram || [];
+    if (!program.length || dives.length !== program.length) return res.status(400).json({ success: false, message: 'Diving program and submitted actions do not match' });
+    const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus');
+    if (!participant) return res.status(404).json({ success: false, message: 'Participant not found' });
+    const checkInStatus = getEffectiveCheckInStatus(participant);
+    if (checkInStatus !== 'checked' && checkInStatus !== 'absent') return res.status(400).json({ success: false, message: 'Participant must be checked in before scoring' });
+    const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
+    const allowedIndex = isChiefOrAdmin ? -1 : getAllowedJudgeIndex(req.user);
+    if (!isChiefOrAdmin && (allowedIndex < 0 || allowedIndex >= (schedule.judgeCount || 5))) return res.status(403).json({ success: false, message: 'No assigned judge score column' });
+    let result = await Result.findOne({ schedule: scheduleId, participant: participantId });
+    const previousDives = result?.details?.dives || [];
+    const savedDives = program.map((action, index) => {
+      const submitted = dives[index] || {};
+      let scores = normalizeDivingScores(submitted.scores);
+      if (!isChiefOrAdmin && checkInStatus !== 'absent') {
+        const previous = normalizeDivingScores(previousDives[index]?.scores);
+        previous[allowedIndex] = scores[allowedIndex];
+        scores = previous;
+      }
+      if (checkInStatus === 'absent') scores = [null, null, null, null, null];
+      return { actionCode: action.actionCode || '', actionName: action.actionName, difficulty: action.difficulty, source: action.source || 'custom', scores, score: calculateDivingDiveScore(scores, action.difficulty), completed: isCompleteDivingScore(scores) };
+    });
+    const totalScore = Math.round(savedDives.reduce((sum, dive) => sum + dive.score, 0) * 100) / 100;
+    const allCompleted = savedDives.every((dive) => dive.completed);
+    const resultData = { competition: req.params.competitionId, schedule: scheduleId, participant: participantId, score: checkInStatus === 'absent' ? 0 : totalScore, details: { scoringType: 'diving', dives: savedDives, isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted }, submittedBy: req.user.id, status: isChiefOrAdmin && (checkInStatus === 'absent' || allCompleted) ? 'verified' : 'pending' };
+    result = result ? await Result.findByIdAndUpdate(result._id, resultData, { new: true, runValidators: true }) : await Result.create(resultData);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  } finally {
+    releaseLock(lockKey);
+  }
+};
+
 function calculateFinalScore(scores, deduction, judgeCount) {
   const activeScores = scores.slice(0, judgeCount).filter(score => score > 0);
   if (activeScores.length === 0) return 0;

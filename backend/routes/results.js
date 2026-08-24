@@ -48,6 +48,23 @@ router.post(
   resultController.createResult
 );
 
+
+// @route   POST api/competitions/:competitionId/results/submit-diving
+// @desc    Submit diving scores by action
+router.post(
+  '/submit-diving',
+  [
+    auth,
+    authorize('admin', 'chief_referee', 'referee'),
+    [
+      check('scheduleId', 'Schedule ID is required').not().isEmpty(),
+      check('participantId', 'Participant ID is required').not().isEmpty(),
+      check('dives', 'Diving scores are required').isArray()
+    ]
+  ],
+  resultController.submitDivingScore
+);
+
 // @route   POST api/competitions/:competitionId/results/submit
 // @desc    提交成绩
 // @access  私有/管理员、主裁或裁判
