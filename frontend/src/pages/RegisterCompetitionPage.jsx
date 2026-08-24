@@ -634,6 +634,7 @@ const RegisterCompetitionPage = () => {
     // 验证其他必填字段
     // 这里可以根据比赛的具体要求添加更多验证
     
+    if (!isAdmin && !formData.idCard.trim()) errors.idCard = '\u8bf7\u586b\u5199\u8eab\u4efd\u8bc1\u53f7\u7801';
     if (competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -839,11 +840,12 @@ const RegisterCompetitionPage = () => {
           <TextField
             fullWidth
             label="身份证号码"
+            required={!isAdmin}
             name="idCard"
             value={formData.idCard}
             onChange={handleFormChange}
             error={!!formErrors.idCard}
-            helperText={formErrors.idCard || '比赛时需要验证身份证 (选填)'}
+            helperText={formErrors.idCard || (isAdmin ? '\u7ba1\u7406\u5458\u624b\u52a8\u65b0\u589e\u53ef\u7559\u7a7a' : '\u62a5\u540d\u5fc5\u987b\u586b\u5199\u8eab\u4efd\u8bc1\u53f7\u7801')}
           />
         </Grid>
 
@@ -1108,6 +1110,7 @@ const RegisterCompetitionPage = () => {
           )}
           
           {/* 纸质版报名表上传 */}
+          {competition?.participantRequirements?.requirePhoto && (
           <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
             <Typography variant="subtitle1" gutterBottom>{'\u8fd0\u52a8\u5458\u7167\u7247'}{competition?.participantRequirements?.requirePhoto ? ' *' : ''}</Typography>
             <input accept="image/jpeg,image/png" style={{ display: 'none' }} id="participant-photo-upload" type="file" onChange={handlePhotoSelect} />
@@ -1116,6 +1119,7 @@ const RegisterCompetitionPage = () => {
             {(photoError || formErrors.photo) && <Alert severity="error" sx={{ mt: 1 }}>{photoError || formErrors.photo}</Alert>}
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 10MB\u3002'}</Typography>
           </Paper>
+          )}
           <Box sx={{ mt: 2 }}>
             <Button variant="contained" onClick={addRegistrant} disabled={submitting} sx={{ mr: 2 }}>{'\u52a0\u5165\u62a5\u540d\u540d\u5355\u5e76\u7ee7\u7eed\u6dfb\u52a0'}</Button>
             <Typography variant="caption" color="text.secondary">{'\u6bcf\u4f4d\u8fd0\u52a8\u5458\u586b\u5199\u5b8c\u6210\u540e\u70b9\u51fb\u4e00\u6b21\uff1b\u5355\u4f4d\u3001\u9886\u961f\u548c\u6559\u7ec3\u4fe1\u606f\u4f1a\u4fdd\u7559\u3002'}</Typography>
