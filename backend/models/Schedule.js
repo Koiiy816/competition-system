@@ -66,6 +66,11 @@ const ScheduleSchema = new mongoose.Schema({
     enum: ['standard', 'diving'],
     default: 'standard'
   },
+  divingFormat: {
+    type: String,
+    enum: ['individual', 'synchronized'],
+    default: 'individual'
+  },
   divingProgram: [{
     actionCode: { type: String, trim: true },
     actionName: { type: String, required: true, trim: true },
