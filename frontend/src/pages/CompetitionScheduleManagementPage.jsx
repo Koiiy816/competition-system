@@ -142,6 +142,10 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
     }
   }, [open, initialForm]);
 
+  const updateDive = (index, field, value) => setForm((current) => ({ ...current, divingProgram: (current.divingProgram || []).map((dive, diveIndex) => diveIndex === index ? { ...dive, [field]: value } : dive) }));
+  const addDive = () => setForm((current) => ({ ...current, divingProgram: [...(current.divingProgram || []), { actionCode: '', actionName: '', difficulty: '', source: 'custom', notes: '' }] }));
+  const removeDive = (index) => setForm((current) => ({ ...current, divingProgram: (current.divingProgram || []).filter((_, diveIndex) => diveIndex !== index) }));
+
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>编辑比赛项目</DialogTitle>
@@ -186,6 +190,8 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
             value={form.court}
             onChange={(e) => setForm({ ...form, court: e.target.value })}
           />
+          <TextField select label="计分方式" fullWidth value={form.scoringMode || 'standard'} onChange={(e) => setForm({ ...form, scoringMode: e.target.value, divingFormat: e.target.value === 'diving' ? (form.divingFormat || 'individual') : 'individual', divingProgram: e.target.value === 'diving' ? (form.divingProgram || []) : [] })}><MenuItem value="standard">普通计分</MenuItem><MenuItem value="diving">跳水计分（五位裁判）</MenuItem></TextField>
+          {form.scoringMode === 'diving' && <><TextField select label="跳水项目" fullWidth value={form.divingFormat || 'individual'} onChange={(e) => setForm({ ...form, divingFormat: e.target.value })}><MenuItem value="individual">个人</MenuItem><MenuItem value="synchronized">双人</MenuItem></TextField><Alert severity="info">个人：去掉一个最高分和一个最低分后乘难度系数；双人：五位裁判总分 × 难度系数 × 0.6。</Alert>{(form.divingProgram || []).map((dive, index) => <Box key={index} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5 }}><Typography variant="body2" fontWeight="bold" sx={{ mb: 1 }}>第 {index + 1} 轮动作</Typography><Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 0.8fr', gap: 1 }}><TextField size="small" label="动作代码" value={dive.actionCode || ''} onChange={(e) => updateDive(index, 'actionCode', e.target.value)} /><TextField size="small" required label="动作名称" value={dive.actionName || ''} onChange={(e) => updateDive(index, 'actionName', e.target.value)} /><TextField size="small" required type="number" label="难度系数" inputProps={{ min: 0, step: 0.1 }} value={dive.difficulty ?? ''} onChange={(e) => updateDive(index, 'difficulty', e.target.value)} /></Box><Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}><Button color="error" size="small" onClick={() => removeDive(index)}>删除本轮</Button></Box></Box>)}<Button variant="outlined" onClick={addDive}>添加一轮动作</Button></>}
         </Box>
       </DialogContent>
       <DialogActions sx={{ p: 2, pt: 0 }}>
@@ -362,7 +368,7 @@ const CompetitionScheduleManagementPage = () => {
   const [projectCandidates, setProjectCandidates] = useState([]);
   const [projectCandidateSearch, setProjectCandidateSearch] = useState('');
   const [selectedProjectParticipantIds, setSelectedProjectParticipantIds] = useState([]);
-  const [newProject, setNewProject] = useState({ name: '', scheduleDate: '', timeSlot: '上午', exactTime: '', court: '一号场地', eventMode: 'individual' });
+  const [newProject, setNewProject] = useState({ name: '', scheduleDate: '', timeSlot: '上午', exactTime: '', court: '一号场地', eventMode: 'individual', scoringMode: 'standard', divingFormat: 'individual', divingProgram: [] });
 
   useEffect(() => {
     fetchData();
@@ -583,7 +589,10 @@ const CompetitionScheduleManagementPage = () => {
       timeSlot: '上午',
       exactTime: '',
       court: '一号场地',
-      eventMode: 'individual'
+      eventMode: 'individual',
+      scoringMode: 'standard',
+      divingFormat: 'individual',
+      divingProgram: []
     });
     try {
       const response = await participantService.getParticipants(id, { limit: 1000 });
@@ -608,6 +617,10 @@ const CompetitionScheduleManagementPage = () => {
     if (!selectedProjectParticipantIds.length) {
       setError(newProject.eventMode === 'collective' ? '请至少选择一名集体项目队员' : '请至少选择一名选手');
       return;
+    }
+    if (newProject.scoringMode === 'diving') {
+      if (!newProject.divingProgram.length || newProject.divingProgram.some((dive) => !String(dive.actionName || '').trim() || !Number.isFinite(Number(dive.difficulty)) || Number(dive.difficulty) < 0)) { setError('请完整填写至少一轮跳水动作和难度系数'); return; }
+      if (newProject.divingFormat === 'synchronized' && newProject.eventMode !== 'collective') { setError('双人跳水请使用“集体项目（按代表单位成队）”，每次选择同一单位的两名选手建立一队'); return; }
     }
 
     setProjectCreating(true);
@@ -636,7 +649,11 @@ const CompetitionScheduleManagementPage = () => {
         endTime: `${date}T18:00:00`,
         location: newProject.court || '待定',
         type: 'other',
-        status: 'scheduled'
+        status: 'scheduled',
+        scoringMode: newProject.scoringMode,
+        divingFormat: newProject.scoringMode === 'diving' ? newProject.divingFormat : 'individual',
+        judgeCount: newProject.scoringMode === 'diving' ? 5 : undefined,
+        divingProgram: newProject.scoringMode === 'diving' ? newProject.divingProgram.map((dive) => ({ ...dive, actionCode: String(dive.actionCode || '').trim(), actionName: String(dive.actionName || '').trim(), difficulty: Number(dive.difficulty), source: 'custom' })) : []
       });
       setCreateProjectOpen(false);
       setSuccess(newProject.eventMode === 'collective'
@@ -914,7 +931,10 @@ const CompetitionScheduleManagementPage = () => {
       scheduleDate: schedule.scheduleDate || (competition?.startDate ? competition.startDate.split('T')[0] : ''),
       timeSlot: schedule.timeSlot || '上午',
       exactTime: schedule.exactTime || '',
-      court: schedule.court || '一号场地'
+      court: schedule.court || '一号场地',
+      scoringMode: schedule.scoringMode || 'standard',
+      divingFormat: schedule.divingFormat || 'individual',
+      divingProgram: schedule.divingProgram || []
     });
     setAssignDialogOpen(true);
   }, [competition]);
@@ -1435,6 +1455,7 @@ const CompetitionScheduleManagementPage = () => {
             <TextField select label="项目类型" value={newProject.eventMode} onChange={(event) => setNewProject((current) => ({ ...current, eventMode: event.target.value }))}>
               <MenuItem value="individual">个人项目</MenuItem><MenuItem value="collective">集体项目（按代表单位成队）</MenuItem>
             </TextField>
+            <TextField select label="计分方式" value={newProject.scoringMode} onChange={(event) => setNewProject((current) => ({ ...current, scoringMode: event.target.value, divingFormat: event.target.value === 'diving' ? current.divingFormat : 'individual', divingProgram: event.target.value === 'diving' ? current.divingProgram : [] }))}><MenuItem value="standard">普通计分</MenuItem><MenuItem value="diving">跳水计分（固定五裁判）</MenuItem></TextField>
             <TextField label="比赛项目名称" required fullWidth value={newProject.name} onChange={(event) => setNewProject((current) => ({ ...current, name: event.target.value }))} />
             <TextField label="比赛日期" required type="date" InputLabelProps={{ shrink: true }} value={newProject.scheduleDate} onChange={(event) => setNewProject((current) => ({ ...current, scheduleDate: event.target.value }))} />
             <TextField select label="时间段" value={newProject.timeSlot} onChange={(event) => setNewProject((current) => ({ ...current, timeSlot: event.target.value }))}>
@@ -1443,6 +1464,7 @@ const CompetitionScheduleManagementPage = () => {
             <TextField label="场地" value={newProject.court} onChange={(event) => setNewProject((current) => ({ ...current, court: event.target.value }))} />
             <TextField label="具体时间（可选）" value={newProject.exactTime} onChange={(event) => setNewProject((current) => ({ ...current, exactTime: event.target.value }))} />
           </Box>
+          {newProject.scoringMode === 'diving' && <Box sx={{ mb: 2, border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}><TextField select fullWidth label="跳水项目" value={newProject.divingFormat} onChange={(event) => setNewProject((current) => ({ ...current, divingFormat: event.target.value, eventMode: event.target.value === 'synchronized' ? 'collective' : current.eventMode }))} sx={{ mb: 1 }}><MenuItem value="individual">个人跳水（去最高、最低）</MenuItem><MenuItem value="synchronized">双人跳水（总分 × 0.6）</MenuItem></TextField><Alert severity="info" sx={{ mb: 1 }}>难度和动作名称可直接填写自订内容；官方动作可输入官方代码。建立后也可以从赛程卡片的“编辑”修改。</Alert>{(newProject.divingProgram || []).map((dive, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 0.8fr auto', gap: 1, mb: 1 }}><TextField size="small" label="动作代码" value={dive.actionCode || ''} onChange={(event) => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.map((item, itemIndex) => itemIndex === index ? { ...item, actionCode: event.target.value } : item) }))} /><TextField size="small" required label="动作名称" value={dive.actionName || ''} onChange={(event) => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.map((item, itemIndex) => itemIndex === index ? { ...item, actionName: event.target.value } : item) }))} /><TextField size="small" required type="number" label="难度" inputProps={{ min: 0, step: 0.1 }} value={dive.difficulty ?? ''} onChange={(event) => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.map((item, itemIndex) => itemIndex === index ? { ...item, difficulty: event.target.value } : item) }))} /><Button color="error" onClick={() => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.filter((_, itemIndex) => itemIndex !== index) }))}>删除</Button></Box>)}<Button variant="outlined" size="small" onClick={() => setNewProject((current) => ({ ...current, divingProgram: [...current.divingProgram, { actionCode: '', actionName: '', difficulty: '', source: 'custom' }] }))}>添加一轮动作</Button></Box>}
           <TextField fullWidth label="搜索姓名、代表单位、组别或报名项目" value={projectCandidateSearch} onChange={(event) => setProjectCandidateSearch(event.target.value)} sx={{ mb: 1 }} />
           {newProject.eventMode === 'collective' && <Alert severity="info" sx={{ mb: 1 }}>同一代表单位的勾选队员会自动组成一支队伍；如需分成多支队伍，请分别建立项目或使用集体项目 Excel。</Alert>}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>已选择 {selectedProjectParticipantIds.length} 名{newProject.eventMode === 'collective' ? '队员' : '选手'}</Typography>

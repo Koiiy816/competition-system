@@ -659,6 +659,27 @@ exports.getSchedule = async (req, res, next) => {
  * @route   POST /api/competitions/:competitionId/schedules
  * @access  Private/Admin/Organizer
  */
+function normalizeDivingScheduleConfig(body) {
+  if (body.scoringMode !== 'diving') return;
+  body.judgeCount = 5;
+  body.divingFormat = body.divingFormat === 'synchronized' ? 'synchronized' : 'individual';
+  if (!Array.isArray(body.divingProgram) || !body.divingProgram.length) {
+    const error = new Error('跳水项目至少需要设置一轮动作');
+    error.statusCode = 400;
+    throw error;
+  }
+  body.divingProgram = body.divingProgram.map((action) => {
+    const actionName = String((action && action.actionName) || '').trim();
+    const difficulty = Number(action && action.difficulty);
+    if (!actionName || !Number.isFinite(difficulty) || difficulty < 0) {
+      const error = new Error('跳水动作名称或难度系数无效');
+      error.statusCode = 400;
+      throw error;
+    }
+    return { actionCode: String((action && action.actionCode) || '').trim(), actionName, difficulty, source: action && action.source === 'official' ? 'official' : 'custom', notes: String((action && action.notes) || '').trim() };
+  });
+}
+
 exports.createSchedule = async (req, res, next) => {
   try {
     // 设置比赛ID
@@ -690,6 +711,9 @@ exports.createSchedule = async (req, res, next) => {
       const requestedIds = [...new Set(req.body.collectiveTeams.flatMap((team) => Array.isArray(team?.memberIds) ? team.memberIds : []).filter(Boolean).map(String))];
       if (!requestedIds.length) {
         return res.status(400).json({ success: false, message: '请至少为一支集体队伍选择一名已报名选手' });
+      }
+      if (req.body.scoringMode === 'diving' && req.body.divingFormat === 'synchronized' && req.body.collectiveTeams.some((team) => !Array.isArray(team && team.memberIds) || team.memberIds.length !== 2)) {
+        return res.status(400).json({ success: false, message: '双人跳水的每支队伍必须恰好选择两名选手' });
       }
       const members = await Participant.find({
         _id: { $in: requestedIds },
@@ -730,6 +754,8 @@ exports.createSchedule = async (req, res, next) => {
     }
     delete req.body.collectiveTeams;
     delete req.body.eventMode;
+
+    normalizeDivingScheduleConfig(req.body);
 
     // 创建赛程
     const schedule = await Schedule.create(req.body);
@@ -779,6 +805,8 @@ exports.updateSchedule = async (req, res, next) => {
 
     // 不允许更改比赛ID
     delete req.body.competition;
+
+    normalizeDivingScheduleConfig(req.body);
 
     // 如果是裁判但不是管理员/组织者，限制只能更新状态和备注
     if (!isOrganizer && !isAdmin && isAssignedReferee) {
