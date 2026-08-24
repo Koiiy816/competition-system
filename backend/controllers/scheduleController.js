@@ -1241,12 +1241,24 @@ exports.getAvailableParticipants = async (req, res, next) => {
       return res.status(404).json({ success: false, message: '未找到当前比赛的赛程' });
     }
 
-    const existingIds = schedule.participants.map((participant) => participant.toString());
+    // 集体项目保存的是虚拟队伍；可加入名单也必须排除这些队伍已包含的队员，
+    // 避免同一名选手被重复加入不同队伍。
+    const scheduledEntries = await Participant.find({ _id: { $in: schedule.participants } })
+      .select('_id isVirtualTeam teamMembers')
+      .lean();
+    const existingIds = new Set();
+    scheduledEntries.forEach((entry) => {
+      if (entry.isVirtualTeam) {
+        (entry.teamMembers || []).forEach((memberId) => existingIds.add(memberId.toString()));
+      } else {
+        existingIds.add(entry._id.toString());
+      }
+    });
     const participants = await Participant.find({
       competition: req.params.competitionId,
       isVirtualTeam: { $ne: true },
       status: { $ne: 'rejected' },
-      _id: { $nin: existingIds }
+      _id: { $nin: [...existingIds] }
     })
       .select('name schoolName ageGroup event gender status isTest')
       .sort({ schoolName: 1, name: 1 })
@@ -1263,13 +1275,12 @@ exports.getAvailableParticipants = async (req, res, next) => {
 // @access  Private/Admin
 exports.addParticipantsToSchedule = async (req, res, next) => {
   try {
+    const collectiveTeams = Array.isArray(req.body.collectiveTeams)
+      ? req.body.collectiveTeams
+      : [];
     const participantIds = Array.isArray(req.body.participantIds)
       ? [...new Set(req.body.participantIds.map((id) => String(id)).filter(Boolean))]
       : [];
-
-    if (participantIds.length === 0) {
-      return res.status(400).json({ success: false, message: '请至少选择一名选手' });
-    }
 
     const schedule = await Schedule.findOne({
       _id: req.params.id,
@@ -1277,6 +1288,102 @@ exports.addParticipantsToSchedule = async (req, res, next) => {
     });
     if (!schedule) {
       return res.status(404).json({ success: false, message: '未找到当前比赛的赛程' });
+    }
+
+    // 集体项目：前端按代表单位提交队员，后端将同一单位的队员保存成一支虚拟队伍。
+    // 只引用原有报名选手，不修改他们的报名资料、状态或照片。
+    if (collectiveTeams.length > 0) {
+      const requestedIds = [...new Set(collectiveTeams
+        .flatMap((team) => (Array.isArray(team?.memberIds) ? team.memberIds : []))
+        .map((memberId) => String(memberId))
+        .filter(Boolean))];
+      if (requestedIds.length === 0) {
+        return res.status(400).json({ success: false, message: '请至少选择一名队员' });
+      }
+
+      const candidates = await Participant.find({
+        _id: { $in: requestedIds },
+        competition: req.params.competitionId,
+        isVirtualTeam: { $ne: true },
+        status: { $ne: 'rejected' }
+      }).select('_id name schoolName isTest');
+      const candidateById = new Map(candidates.map((participant) => [participant._id.toString(), participant]));
+
+      const currentParticipants = await Participant.find({ _id: { $in: schedule.participants } })
+        .select('_id isVirtualTeam teamMembers isTest');
+      const occupiedMemberIds = new Set();
+      const currentById = new Map(currentParticipants.map((participant) => [participant._id.toString(), participant]));
+      currentParticipants.forEach((participant) => {
+        if (participant.isVirtualTeam) {
+          (participant.teamMembers || []).forEach((memberId) => occupiedMemberIds.add(memberId.toString()));
+        } else {
+          occupiedMemberIds.add(participant._id.toString());
+        }
+      });
+
+      const createdTeams = [];
+      for (const rawTeam of collectiveTeams) {
+        const memberIds = [...new Set((rawTeam?.memberIds || []).map((memberId) => String(memberId)))]
+          .filter((memberId) => candidateById.has(memberId) && !occupiedMemberIds.has(memberId));
+        if (memberIds.length === 0) continue;
+
+        const members = memberIds.map((memberId) => candidateById.get(memberId));
+        const units = [...new Set(members.map((member) => String(member.schoolName || '未填写代表单位').trim()))];
+        if (units.length > 1) {
+          return res.status(400).json({ success: false, message: '集体项目每支队伍只能选择同一代表单位的选手' });
+        }
+
+        const teamName = String(rawTeam?.teamName || units[0] || '未填写代表单位').trim();
+        const virtualTeam = await Participant.create({
+          competition: req.params.competitionId,
+          name: teamName,
+          teamName,
+          schoolName: teamName,
+          event: schedule.name,
+          ageGroup: '集体项目',
+          gender: 'mixed',
+          type: 'team',
+          isVirtualTeam: true,
+          teamMembers: memberIds,
+          status: 'approved',
+          isTest: members.some((member) => member.isTest),
+          additionalInfo: { source: 'manual-collective-add', createdBy: req.user.id }
+        });
+        createdTeams.push(virtualTeam);
+        memberIds.forEach((memberId) => occupiedMemberIds.add(memberId));
+      }
+
+      if (createdTeams.length === 0) {
+        return res.status(200).json({ success: true, addedCount: 0, message: '所选队员已在当前赛程中，未重复加入' });
+      }
+
+      // 保持测试队伍在名单末尾，与个人项目的现有排序规则一致。
+      const currentNormal = schedule.participants.filter((participantId) => !currentById.get(participantId.toString())?.isTest);
+      const currentTests = schedule.participants.filter((participantId) => currentById.get(participantId.toString())?.isTest);
+      const newNormal = createdTeams.filter((team) => !team.isTest).map((team) => team._id);
+      const newTests = createdTeams.filter((team) => team.isTest).map((team) => team._id);
+      schedule.participants = [...currentNormal, ...newNormal, ...currentTests, ...newTests];
+      await schedule.save();
+
+      const updatedSchedule = await Schedule.findById(schedule._id).populate({
+        path: 'participants',
+        select: 'user type teamName status name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest',
+        populate: [
+          { path: 'user', select: 'name email' },
+          { path: 'teamMembers', select: 'name schoolName' }
+        ]
+      });
+      const addedMemberCount = createdTeams.reduce((total, team) => total + team.teamMembers.length, 0);
+      return res.status(200).json({
+        success: true,
+        addedCount: createdTeams.length,
+        message: `已按代表单位新增 ${createdTeams.length} 支队伍（${addedMemberCount} 名队员）`,
+        data: updatedSchedule
+      });
+    }
+
+    if (participantIds.length === 0) {
+      return res.status(400).json({ success: false, message: '请至少选择一名选手' });
     }
 
     const candidates = await Participant.find({
@@ -1314,7 +1421,10 @@ exports.addParticipantsToSchedule = async (req, res, next) => {
     const updatedSchedule = await Schedule.findById(schedule._id).populate({
       path: 'participants',
       select: 'user type teamName status name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest',
-      populate: { path: 'user', select: 'name email' }
+      populate: [
+        { path: 'user', select: 'name email' },
+        { path: 'teamMembers', select: 'name schoolName' }
+      ]
     });
 
     res.status(200).json({
@@ -1327,6 +1437,7 @@ exports.addParticipantsToSchedule = async (req, res, next) => {
     next(error);
   }
 };
+
 // @desc    将新录入的参赛者追加到指定赛程中
 // @route   POST /api/schedules/:id/append-new
 // @access  Private/Admin
@@ -1958,3 +2069,4 @@ exports.importExcelSchedule = async (req, res, next) => {
     next(error);
   }
 };
+

@@ -257,6 +257,10 @@ const scheduleService = {
     const response = await api.post(`/competitions/${competitionId}/schedules/${scheduleId}/participants`, { participantIds });
     return response.data;
   },
+  addCollectiveTeamsToSchedule: async (competitionId, scheduleId, collectiveTeams) => {
+    const response = await api.post(`/competitions/${competitionId}/schedules/${scheduleId}/participants`, { collectiveTeams });
+    return response.data;
+  },
   updateParticipantCheckInStatus: async (competitionId, participantId, status, scheduleId) => {
     try {
       const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/check-in`, {

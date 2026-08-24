@@ -40,6 +40,13 @@ const CompetitionScheduleDetailPage = () => {
   const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [addingParticipants, setAddingParticipants] = useState(false);
 
+  const isCollectiveSchedule = Boolean(
+    schedule && (
+      String(schedule.name || '').includes('集体') ||
+      participants.some((participant) => participant.isVirtualTeam || participant.type === 'team')
+    )
+  );
+
   useEffect(() => {
     fetchData();
   }, [scheduleId]);
@@ -194,13 +201,22 @@ const CompetitionScheduleDetailPage = () => {
     ));
   };
 
+  const handleSelectUnitCandidates = (schoolName) => {
+    const unitIds = availableParticipants
+      .filter((participant) => String(participant.schoolName || '未填写代表单位') === schoolName)
+      .map((participant) => participant._id);
+    setSelectedParticipantIds((currentIds) => [...new Set([...currentIds, ...unitIds])]);
+  };
+
   const handleAddSelectedParticipants = async () => {
     if (selectedParticipantIds.length === 0) return;
 
     setAddingParticipants(true);
     setError('');
     try {
-      const response = await scheduleService.addParticipantsToSchedule(id, scheduleId, selectedParticipantIds);
+      const response = isCollectiveSchedule
+        ? await scheduleService.addCollectiveTeamsToSchedule(id, scheduleId, selectedCollectiveTeams)
+        : await scheduleService.addParticipantsToSchedule(id, scheduleId, selectedParticipantIds);
       if (response.data?.participants) {
         setParticipants(response.data.participants);
         setSchedule(response.data);
@@ -209,13 +225,30 @@ const CompetitionScheduleDetailPage = () => {
       }
       setAddDialogOpen(false);
       setHasChanges(false);
-      setSuccess(response.message || `已加入 ${response.addedCount || selectedParticipantIds.length} 名选手到当前赛程`);
+      setSuccess(response.message || (isCollectiveSchedule
+        ? `已新增 ${selectedCollectiveTeams.length} 支队伍`
+        : `已加入 ${response.addedCount || selectedParticipantIds.length} 名选手到当前赛程`));
     } catch (err) {
-      setError(err.message || '加入选手失败，请重试');
+      setError(err.response?.data?.message || err.message || '加入选手失败，请重试');
     } finally {
       setAddingParticipants(false);
     }
   };
+
+  const selectedCollectiveTeams = [];
+  if (isCollectiveSchedule) {
+    const teamsByUnit = new Map();
+    availableParticipants
+      .filter((participant) => selectedParticipantIds.includes(participant._id))
+      .forEach((participant) => {
+        const teamName = String(participant.schoolName || '未填写代表单位').trim() || '未填写代表单位';
+        if (!teamsByUnit.has(teamName)) {
+          teamsByUnit.set(teamName, { teamName, memberIds: [] });
+        }
+        teamsByUnit.get(teamName).memberIds.push(participant._id);
+      });
+    selectedCollectiveTeams.push(...teamsByUnit.values());
+  }
 
   const filteredAvailableParticipants = availableParticipants.filter((participant) => {
     const keyword = participantSearch.trim().toLowerCase();
@@ -529,10 +562,12 @@ const CompetitionScheduleDetailPage = () => {
         fullWidth
         maxWidth="md"
       >
-        <DialogTitle>加入选手到「{schedule.name}」</DialogTitle>
+        <DialogTitle>{isCollectiveSchedule ? `加入队员到「${schedule.name}」` : `加入选手到「${schedule.name}」`}</DialogTitle>
         <DialogContent dividers>
           <Alert severity="info" sx={{ mb: 2 }}>
-            这里仅将已报名选手加入当前赛程，不会修改其原始报名项目、报名资料或照片。
+            {isCollectiveSchedule
+              ? '集体项目会按「代表单位」自动组成队伍：同一单位本次勾选的所有选手只会新增为一支队伍，不会逐名成为出场队伍。原始报名资料和照片不会被修改。'
+              : '这里仅将已报名选手加入当前赛程，不会修改其原始报名项目、报名资料或照片。'}
           </Alert>
           <TextField
             fullWidth
@@ -555,7 +590,9 @@ const CompetitionScheduleDetailPage = () => {
                 })}
               />
             }
-            label={`本次已选择 ${selectedParticipantIds.length} 名；可加入 ${filteredAvailableParticipants.length} 名`}
+            label={isCollectiveSchedule
+              ? `本次已选择 ${selectedParticipantIds.length} 名队员，将按代表单位组成 ${selectedCollectiveTeams.length} 支队伍；可加入 ${filteredAvailableParticipants.length} 名`
+              : `本次已选择 ${selectedParticipantIds.length} 名；可加入 ${filteredAvailableParticipants.length} 名`}
           />
           {loadingCandidates ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box>
@@ -566,26 +603,46 @@ const CompetitionScheduleDetailPage = () => {
                   <TableRow>
                     <TableCell padding="checkbox" />
                     <TableCell>姓名</TableCell>
-                    <TableCell>代表单位</TableCell>
+                    <TableCell>{isCollectiveSchedule ? '代表单位（同单位自动成队）' : '代表单位'}</TableCell>
                     <TableCell>组别</TableCell>
                     <TableCell>原报名项目</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredAvailableParticipants.map((participant) => (
-                    <TableRow key={participant._id} hover onClick={() => handleToggleCandidate(participant._id)} sx={{ cursor: 'pointer' }}>
-                      <TableCell padding="checkbox">
-                        <Checkbox checked={selectedParticipantIds.includes(participant._id)} onClick={(event) => event.stopPropagation()} onChange={() => handleToggleCandidate(participant._id)} />
-                      </TableCell>
-                      <TableCell>{participant.name || '-'}</TableCell>
-                      <TableCell>{participant.schoolName || '-'}</TableCell>
-                      <TableCell>{participant.ageGroup || '-'}</TableCell>
-                      <TableCell>
-                        {participant.event || '-'}
-                        {participant.isTest && <Chip label="测试" size="small" sx={{ ml: 1 }} />}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filteredAvailableParticipants.map((participant, index) => {
+                    const unitName = String(participant.schoolName || '未填写代表单位');
+                    const previousUnitName = index > 0
+                      ? String(filteredAvailableParticipants[index - 1].schoolName || '未填写代表单位')
+                      : null;
+                    const showUnitHeader = isCollectiveSchedule && unitName !== previousUnitName;
+
+                    return (
+                      <React.Fragment key={participant._id}>
+                        {showUnitHeader && (
+                          <TableRow>
+                            <TableCell colSpan={5} sx={{ bgcolor: 'action.hover', py: 0.5 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Typography variant="body2" fontWeight="bold">{unitName}</Typography>
+                                <Button size="small" onClick={() => handleSelectUnitCandidates(unitName)}>全选本单位</Button>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow hover onClick={() => handleToggleCandidate(participant._id)} sx={{ cursor: 'pointer' }}>
+                          <TableCell padding="checkbox">
+                            <Checkbox checked={selectedParticipantIds.includes(participant._id)} onClick={(event) => event.stopPropagation()} onChange={() => handleToggleCandidate(participant._id)} />
+                          </TableCell>
+                          <TableCell>{participant.name || '-'}</TableCell>
+                          <TableCell>{participant.schoolName || '-'}</TableCell>
+                          <TableCell>{participant.ageGroup || '-'}</TableCell>
+                          <TableCell>
+                            {participant.event || '-'}
+                            {participant.isTest && <Chip label="测试" size="small" sx={{ ml: 1 }} />}
+                          </TableCell>
+                        </TableRow>
+                      </React.Fragment>
+                    );
+                  })}
                   {!loadingCandidates && filteredAvailableParticipants.length === 0 && (
                     <TableRow><TableCell colSpan={5} align="center">没有符合条件、且尚未加入本赛程的选手</TableCell></TableRow>
                   )}
@@ -597,7 +654,9 @@ const CompetitionScheduleDetailPage = () => {
         <DialogActions>
           <Button onClick={() => setAddDialogOpen(false)} disabled={addingParticipants}>取消</Button>
           <Button variant="contained" onClick={handleAddSelectedParticipants} disabled={addingParticipants || selectedParticipantIds.length === 0}>
-            {addingParticipants ? '加入中…' : `加入 ${selectedParticipantIds.length} 名选手`}
+            {addingParticipants ? '加入中…' : (isCollectiveSchedule
+              ? `按单位组成 ${selectedCollectiveTeams.length} 支队伍`
+              : `加入 ${selectedParticipantIds.length} 名选手`)}
           </Button>
         </DialogActions>
       </Dialog>
