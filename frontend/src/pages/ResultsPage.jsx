@@ -1069,8 +1069,16 @@ const ResultsPage = () => {
   const handleExportExcel = (scheduleName, scheduleResults) => {
     // 过滤掉测试人员
     const validResults = scheduleResults.filter(r => !r.participant?.isTest);
-    const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
-    const ruleSummary = getScheduleRuleSummary(selectedCompetition, scheduleName, validResults);
+    const completedParticipantCount = validResults.filter(result => !result.details?.isAbsent).length;
+    const getExportAwardLevel = (rank, isAbsent) => {
+      const numericRank = Number(rank);
+      if (isAbsent || !Number.isFinite(numericRank) || numericRank < 1 || completedParticipantCount <= 0) return '-';
+      const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
+      const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(completedParticipantCount * 0.6));
+      if (numericRank <= firstPrizeLimit) return '一等奖';
+      if (numericRank <= secondPrizeLimit) return '二等奖';
+      return '三等奖';
+    };
     
     // 判断是否为合并项目
     const isCombined = validResults.some(r => r.isCombined);
@@ -1090,10 +1098,9 @@ const ResultsPage = () => {
       }
 
       const rowData = {
-        '排名': r.dynamicRank || '',
+        '奖项': getExportAwardLevel(r.dynamicRank, isAbsent),
         '姓名': displayName,
-        '代表队/学校': p?.schoolName || p?.teamName || (p?.user && p.user.schoolName) || '-',
-        '是否录取': r.isAwarded ? '是' : '否'
+        '代表队/学校': p?.schoolName || p?.teamName || (p?.user && p?.user.schoolName) || '-'
       };
 
       // 动态插入子项目成绩列
@@ -1109,9 +1116,6 @@ const ResultsPage = () => {
       }
 
       rowData['最终得分'] = isAbsent ? '弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '0');
-      if (ruleSummary) {
-        rowData['录取说明'] = `录取前${ruleSummary.admissionCount}名${ruleSummary.countsForTeam ? '，计团体总分' : '，不计团体总分'}`;
-      }
       
       return rowData;
     });

@@ -126,11 +126,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
         ]?.subEvents || []
       )
     : [];
-  const showAwardColumn = !isTeamRanking && sortedParticipants.some(p => {
-    const key = p.__printKey || p._id || p;
-    return results[key]?.isAwarded !== undefined;
-  });
-  const emptyColSpan = 2 + (isTeamRanking ? 0 : 1) + (showCombinedColumns ? combinedSubEvents.length : 0) + (showAwardColumn ? 1 : 0) + 1;
+  const emptyColSpan = 2 + (isTeamRanking ? 0 : 1) + (showCombinedColumns ? combinedSubEvents.length : 0) + 1;
 
   return (
     <Dialog 
@@ -320,9 +316,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                   {showCombinedColumns && combinedSubEvents.map(subName => (
                     <TableCell key={subName} align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{subName}</TableCell>
                   ))}
-                  {showAwardColumn && (
-                    <TableCell align="center" width="110" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>录取</TableCell>
-                  )}
+
                   <TableCell align="center" width="120" sx={{ fontWeight: 'bold', color: 'black', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '总分' : '最终得分'}</TableCell>
                 </TableRow>
               </TableHead>
@@ -384,11 +378,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                         }
                         return <TableCell key={subName} align="center">-</TableCell>;
                       })}
-                      {showAwardColumn && (
-                        <TableCell align="center">
-                          {resultObj?.isAwarded ? '录取' : '未录取'}
-                        </TableCell>
-                      )}
+
                       <TableCell align="center">
                         {isAbsent ? '弃权' : (finalScore > 0 ? (isTeamRanking ? `${finalScore} 分` : finalScore.toFixed(2)) : '-')}
                       </TableCell>
