@@ -18,8 +18,7 @@ async function configureAug29AwardRules() {
       firstPrizePercent: 30,
       secondPrizePercent: 60,
       teamPoints: [8, 7, 6, 5, 4, 3, 2, 1],
-      teamMinEventsPerParticipant: 1,
-      mergeGroupsBelow: 3
+      teamMinEventsPerParticipant: 1
     };
     await competition.save();
     console.log(JSON.stringify({ competitionId: competition._id, competitionName: competition.name, startDate: competition.startDate, awardRules: competition.awardRules }, null, 2));

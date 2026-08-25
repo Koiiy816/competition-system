@@ -21,11 +21,11 @@ function mergeUndersizedAgeGroups(groups, competition) {
     const merged = []; let pending = null;
     list.forEach(group => {
       if (!pending) { pending = { ...group, participants: [...group.participants], mergedAgeGroups: [group.ageGroup] }; return; }
-      if (pending.participants.length <= minimum) { pending.participants.push(...group.participants); pending.mergedAgeGroups.push(group.ageGroup); }
+      if (pending.participants.length < minimum) { pending.participants.push(...group.participants); pending.mergedAgeGroups.push(group.ageGroup); }
       else { merged.push(pending); pending = { ...group, participants: [...group.participants], mergedAgeGroups: [group.ageGroup] }; }
     });
     if (pending) {
-      if (pending.participants.length <= minimum && merged.length > 0) { const previous = merged[merged.length - 1]; previous.participants.push(...pending.participants); previous.mergedAgeGroups.push(...pending.mergedAgeGroups); }
+      if (pending.participants.length < minimum && merged.length > 0) { const previous = merged[merged.length - 1]; previous.participants.push(...pending.participants); previous.mergedAgeGroups.push(...pending.mergedAgeGroups); }
       else merged.push(pending);
     }
     list.forEach(group => Object.keys(groups).forEach(key => { if (groups[key] === group) delete groups[key]; }));
