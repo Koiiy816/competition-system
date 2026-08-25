@@ -120,7 +120,7 @@ exports.submitDivingScore = async (req, res, next) => {
   const lockKey = 'diving_' + scheduleId + '_' + participantId;
   await acquireLock(lockKey);
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount scoringMode divingFormat divingProgram');
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount scoringMode divingFormat divingProgram status');
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
     if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
@@ -151,8 +151,12 @@ exports.submitDivingScore = async (req, res, next) => {
     });
     const totalScore = Math.round(savedDives.reduce((sum, dive) => sum + dive.score, 0) * 100) / 100;
     const allCompleted = savedDives.every((dive) => dive.completed);
-    const resultData = { competition: req.params.competitionId, schedule: scheduleId, participant: participantId, score: checkInStatus === 'absent' ? 0 : totalScore, details: { scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives, isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted }, submittedBy: req.user.id, status: isChiefOrAdmin && (checkInStatus === 'absent' || allCompleted) ? 'verified' : 'pending' };
+    const resultData = { competition: req.params.competitionId, schedule: scheduleId, participant: participantId, score: checkInStatus === 'absent' ? 0 : totalScore, details: { scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives, isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted }, submittedBy: req.user.id, status: isChiefOrAdmin && (checkInStatus === 'absent' || allCompleted) ? 'verified' : 'pending', updatedAt: new Date() };
     result = result ? await Result.findByIdAndUpdate(result._id, resultData, { new: true, runValidators: true }) : await Result.create(resultData);
+    if (schedule.status === 'scheduled') {
+      schedule.status = 'ongoing';
+      await schedule.save();
+    }
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -385,7 +389,7 @@ exports.submitScore = async (req, res, next) => {
   await acquireLock(lockKey);
 
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount');
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount status');
     if (!schedule) {
       return res.status(404).json({ success: false, message: '未找到对应赛程' });
     }
@@ -514,7 +518,8 @@ exports.submitScore = async (req, res, next) => {
         absentSource: finalIsAbsent ? 'check_in' : null
       },
       submittedBy: req.user.id,
-      status: newStatus
+      status: newStatus,
+      updatedAt: new Date()
     };
 
     if (result) {
@@ -524,6 +529,11 @@ exports.submitScore = async (req, res, next) => {
       });
     } else {
       result = await Result.create(resultData);
+    }
+
+    if (schedule.status === 'scheduled') {
+      schedule.status = 'ongoing';
+      await schedule.save();
     }
 
     res.status(200).json({

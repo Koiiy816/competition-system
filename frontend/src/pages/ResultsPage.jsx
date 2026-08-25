@@ -53,7 +53,8 @@ import {
   Add as AddIcon,
   Settings as SettingsIcon,
   Print as PrintIcon,
-  Download as DownloadIcon
+  Download as DownloadIcon,
+  PresentToAll as PresentToAllIcon
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
 import resultService from '../services/resultService';
@@ -1769,6 +1770,16 @@ const ResultsPage = () => {
             onClick={() => setPrintAllModalOpen(true)}
           >
             生成总成绩册
+          </Button>
+        )}
+        {filters.competitionId && (
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<PresentToAllIcon />}
+            onClick={() => navigate(`/competitions/${filters.competitionId}/live-scoreboard`)}
+          >
+            大屏即时成绩
           </Button>
         )}
       </Box>

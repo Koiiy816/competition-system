@@ -34,6 +34,7 @@ import CheckInPage from './pages/CheckInPage';
 import CompetitionCheckInPage from './pages/CompetitionCheckInPage';
 import CompetitionCheckInEntryPage from './pages/CompetitionCheckInEntryPage';
 import ResultsPage from './pages/ResultsPage';
+import LiveScoreboardPage from './pages/LiveScoreboardPage';
 import AwardManagementPage from './pages/AwardManagementPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -117,6 +118,8 @@ function App() {
             <Route path="unauthorized" element={<UnauthorizedPage />} />
             <Route path="test" element={<TestPage />} />
           </Route>
+
+          <Route path="/competitions/:id/live-scoreboard" element={<LiveScoreboardPage />} />
 
           {/* 认证相关路由 */}
           <Route path="/auth" element={<AuthLayout />}>
