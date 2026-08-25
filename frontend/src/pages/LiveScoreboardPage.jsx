@@ -10,7 +10,7 @@ const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 8;
 const AUTO_SCROLL_START_PAUSE = 3000;
 const AUTO_SCROLL_END_PAUSE = 5000;
-const AUTO_SCROLL_SPEED = 0.45;
+const AUTO_SCROLL_SPEED = 0.30;
 const SCOREBOARD_COLUMNS = { xs: '150px minmax(180px, 1.2fr) minmax(160px, 1fr) 110px', md: '200px minmax(280px, 1.35fr) minmax(240px, 1fr) 150px' };
 const rowsOf = (payload) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
 const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value._id || value.id || '') : String(value));
