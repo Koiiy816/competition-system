@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Box, Button, Chip, CircularProgress, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { ArrowBack, Fullscreen, FullscreenExit, Refresh } from '@mui/icons-material';
@@ -10,7 +10,7 @@ const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 8;
 const AUTO_SCROLL_START_PAUSE = 3000;
 const AUTO_SCROLL_END_PAUSE = 5000;
-const AUTO_SCROLL_SPEED = 0.30;
+const AUTO_SCROLL_STEP_INTERVAL = 2500;
 const SCOREBOARD_COLUMNS = { xs: '150px minmax(180px, 1.2fr) minmax(160px, 1fr) 110px', md: '200px minmax(280px, 1.35fr) minmax(240px, 1fr) 150px' };
 const rowsOf = (payload) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
 const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value._id || value.id || '') : String(value));
@@ -153,41 +153,32 @@ export default function LiveScoreboardPage() {
 }
 
 function CourtPanel({ panel, showPrizeLevels }) {
-  const listRef = useRef(null);
   const displayRows = showPrizeLevels ? panel.rows : panel.rows.slice(0, DISPLAYED_RANKS);
   const shouldAutoScroll = showPrizeLevels && displayRows.length > DISPLAYED_RANKS;
+  const [windowStart, setWindowStart] = useState(0);
+  const visibleRows = shouldAutoScroll ? displayRows.slice(windowStart, windowStart + DISPLAYED_RANKS) : displayRows;
 
   useEffect(() => {
-    const list = listRef.current;
-    if (!shouldAutoScroll || !list) return undefined;
+    setWindowStart(0);
+    if (!shouldAutoScroll) return undefined;
 
-    list.scrollTop = 0;
-    let frameId;
-    let waitingAtEnd = false;
-    let pauseUntil = performance.now() + AUTO_SCROLL_START_PAUSE;
-    const animate = (now) => {
-      const maxScroll = list.scrollHeight - list.clientHeight;
-      if (maxScroll > 0) {
-        if (waitingAtEnd) {
-          if (now >= pauseUntil) {
-            list.scrollTop = 0;
-            waitingAtEnd = false;
-            pauseUntil = now + AUTO_SCROLL_START_PAUSE;
-          }
-        } else if (now >= pauseUntil) {
-          if (list.scrollTop >= maxScroll - 1) {
-            list.scrollTop = maxScroll;
-            waitingAtEnd = true;
-            pauseUntil = now + AUTO_SCROLL_END_PAUSE;
-          } else {
-            list.scrollTop = Math.min(maxScroll, list.scrollTop + AUTO_SCROLL_SPEED);
-          }
-        }
+    const maxStart = Math.max(displayRows.length - DISPLAYED_RANKS, 0);
+    let currentStart = 0;
+    let timer;
+    const advance = () => {
+      if (currentStart >= maxStart) {
+        currentStart = 0;
+        setWindowStart(0);
+        timer = window.setTimeout(advance, AUTO_SCROLL_START_PAUSE);
+      } else {
+        currentStart += 1;
+        setWindowStart(currentStart);
+        timer = window.setTimeout(advance, currentStart >= maxStart ? AUTO_SCROLL_END_PAUSE : AUTO_SCROLL_STEP_INTERVAL);
       }
-      frameId = window.requestAnimationFrame(animate);
     };
-    frameId = window.requestAnimationFrame(animate);
-    return () => window.cancelAnimationFrame(frameId);
+
+    timer = window.setTimeout(advance, AUTO_SCROLL_START_PAUSE);
+    return () => window.clearTimeout(timer);
   }, [shouldAutoScroll]);
 
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)' }}>
@@ -206,16 +197,17 @@ function CourtPanel({ panel, showPrizeLevels }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
         {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
-      <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '55vh', md: 660 } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
-      {displayRows.map((result, index) => {
+      <Box key={windowStart} sx={{ height: shouldAutoScroll ? { xs: '55vh', md: 640 } : 'auto', overflow: 'hidden', animation: shouldAutoScroll ? 'live-scoreboard-window-in .35s ease-out' : 'none', '@keyframes live-scoreboard-window-in': { from: { opacity: .55, transform: 'translateY(10px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>
+      {visibleRows.map((result, index) => {
+        const absoluteIndex = windowStart + index;
         const participant = result.participant || {};
         const teamMembers = membersOf(participant);
         const firstPrizeLimit = Math.max(1, Math.ceil(panel.completedParticipantCount * 0.3));
         const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
-        const awardLevel = index + 1 <= firstPrizeLimit ? '一等奖' : (index + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
+        const awardLevel = absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
         const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
-        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: index % 2 ? '#0d2035' : '#0a192b' }}>
-          <Box sx={{ color: showPrizeLevels ? awardColor : (index < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{showPrizeLevels ? awardLevel : index + 1}</Box>
+        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
+          <Box sx={{ color: showPrizeLevels ? awardColor : (absoluteIndex < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{showPrizeLevels ? awardLevel : index + 1}</Box>
           <Box><Typography sx={{ fontSize: { xs: 19, md: 23 }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: 14 } }}>{teamMembers}</Typography>}</Box>
           <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: 18 }, pr: 1 }}>{participantUnit(participant)}</Typography>
           <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: 32 } }}>{showScore(result.score)}</Typography>
