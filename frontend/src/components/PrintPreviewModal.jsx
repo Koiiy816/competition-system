@@ -108,6 +108,15 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   };
 
   const participantRanks = getRanks(sortedParticipants);
+  const completedParticipantCount = sortedParticipants.filter((participant) => !getScoreData(participant).isAbsent).length;
+  const getAwardLevel = (rank) => {
+    if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
+    const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
+    const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(completedParticipantCount * 0.6));
+    if (rank <= firstPrizeLimit) return '一等奖';
+    if (rank <= secondPrizeLimit) return '二等奖';
+    return '三等奖';
+  };
   const showCombinedColumns = !isTeamRanking && sortedParticipants.some(p => results[p.__printKey || p._id || p]?.isCombined);
   const combinedSubEvents = showCombinedColumns
     ? (
@@ -305,7 +314,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             }}>
               <TableHead>
                 <TableRow>
-                  <TableCell align="center" width="100" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>名次</TableCell>
+                  <TableCell align="center" width="100" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '名次' : '奖项'}</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '单位' : '姓名'}</TableCell>
                   {!isTeamRanking && <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>代表队/学校</TableCell>}
                   {showCombinedColumns && combinedSubEvents.map(subName => (
@@ -355,7 +364,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                            participantRanks[index] === 6 ? '第六名' :
                            participantRanks[index] === 7 ? '第七名' :
                            participantRanks[index] === 8 ? '第八名' : participantRanks[index])
-                        : participantRanks[index]
+                        : getAwardLevel(participantRanks[index])
                       }</TableCell>
                       <TableCell align="center" sx={{
                         // 控制集体项目的名单排版

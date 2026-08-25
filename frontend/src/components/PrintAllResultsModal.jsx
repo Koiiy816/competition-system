@@ -87,6 +87,16 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
       }
     });
 
+    const completedParticipantCount = sortedResults.filter((result) => !result.details?.isAbsent).length;
+    const getAwardLevel = (rank) => {
+      if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
+      const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
+      const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(completedParticipantCount * 0.6));
+      if (rank <= firstPrizeLimit) return '一等奖';
+      if (rank <= secondPrizeLimit) return '二等奖';
+      return '三等奖';
+    };
+
     const isCombined = sortedResults.some(r => r.isCombined);
     const combinedSubEvents = isCombined ? (sortedResults.find(r => r.isCombined)?.subEvents || []) : [];
     
@@ -140,7 +150,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
           }}>
             <TableHead>
               <TableRow>
-                <TableCell align="center" width="80" sx={{ fontWeight: 'bold', bgcolor: '#ffffff' }}>名次</TableCell>
+                <TableCell align="center" width="80" sx={{ fontWeight: 'bold', bgcolor: '#ffffff' }}>奖项</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff' }}>姓名/代表队</TableCell>
                 <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff' }}>单位</TableCell>
                 <TableCell align="center" width="100" sx={{ fontWeight: 'bold', bgcolor: '#ffffff' }}>最终得分</TableCell>
@@ -169,7 +179,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
                 return (
                   <TableRow key={r._id || index}>
                     <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                      {isAbsent ? '-' : rank}
+                      {isAbsent ? '-' : getAwardLevel(rank)}
                     </TableCell>
                     <TableCell align="center">{displayName}</TableCell>
                     <TableCell align="center">{schoolName}</TableCell>
