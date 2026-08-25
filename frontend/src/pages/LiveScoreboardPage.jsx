@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Box, Button, Chip, CircularProgress, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { ArrowBack, Fullscreen, FullscreenExit, Refresh } from '@mui/icons-material';
@@ -98,7 +98,7 @@ export default function LiveScoreboardPage() {
       return {
         court,
         schedule: currentSchedule,
-        rows: scoredRows.slice(0, DISPLAYED_RANKS),
+        rows: scoredRows,
         completedParticipantCount: scoredRows.filter((result) => !result.details?.isAbsent).length,
         live: Boolean(currentSchedule && currentSchedule.status === 'ongoing')
       };
@@ -149,6 +149,35 @@ export default function LiveScoreboardPage() {
 }
 
 function CourtPanel({ panel, showPrizeLevels }) {
+  const listRef = useRef(null);
+  const displayRows = showPrizeLevels ? panel.rows : panel.rows.slice(0, DISPLAYED_RANKS);
+  const shouldAutoScroll = showPrizeLevels && displayRows.length > DISPLAYED_RANKS;
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!shouldAutoScroll || !list) return undefined;
+
+    list.scrollTop = 0;
+    let frameId;
+    let pauseUntil = performance.now() + 1800;
+    const animate = (now) => {
+      if (now >= pauseUntil) {
+        const maxScroll = list.scrollHeight - list.clientHeight;
+        if (maxScroll > 0) {
+          if (list.scrollTop >= maxScroll - 1) {
+            list.scrollTop = 0;
+            pauseUntil = now + 1800;
+          } else {
+            list.scrollTop = Math.min(maxScroll, list.scrollTop + 0.42);
+          }
+        }
+      }
+      frameId = window.requestAnimationFrame(animate);
+    };
+    frameId = window.requestAnimationFrame(animate);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [panel.schedule?._id, displayRows.length, shouldAutoScroll]);
+
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)' }}>
     <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
@@ -158,11 +187,12 @@ function CourtPanel({ panel, showPrizeLevels }) {
       <Typography sx={{ mt: .5, minHeight: 44, fontWeight: 800, fontSize: { xs: 20, md: 26 }, lineHeight: 1.25 }}>{panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
       {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: 16 }}>{panel.schedule.period || '比赛时段未设置'}</Typography>}
     </Box>
-    {panel.rows.length ? <Box>
+    {displayRows.length ? <Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
         {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
-      {panel.rows.map((result, index) => {
+      <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '50vh', md: 'calc(100vh - 390px)' } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+      {displayRows.map((result, index) => {
         const participant = result.participant || {};
         const teamMembers = membersOf(participant);
         const firstPrizeLimit = Math.max(1, Math.ceil(panel.completedParticipantCount * 0.3));
@@ -176,6 +206,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
           <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: 32 } }}>{showScore(result.score)}</Typography>
         </Box>;
       })}
+      </Box>
     </Box> : <Box sx={{ px: 3, py: 9, textAlign: 'center', color: '#92a7bc', fontSize: 22 }}>等待裁判开始打分</Box>}
   </Box>;
 }
