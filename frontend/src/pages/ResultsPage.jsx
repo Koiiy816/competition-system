@@ -100,7 +100,7 @@ const EditResultModal = ({ open, onClose, result, onResultUpdated }) => {
 
   const handleSubmit = async () => {
     if (!result) return;
-    
+
     // 只有管理员可以修改
     const isAdmin = user?.role === 'admin' || user?.roles?.includes('admin');
     if (!isAdmin) {
@@ -117,7 +117,7 @@ const EditResultModal = ({ open, onClose, result, onResultUpdated }) => {
       if (isNaN(parsedScore)) {
         throw new Error('请输入有效的数字成绩');
       }
-      
+
       const updatedResult = await resultService.updateResult(
         result.competition._id || result.competition,
         result._id,
@@ -143,7 +143,7 @@ const EditResultModal = ({ open, onClose, result, onResultUpdated }) => {
       <DialogTitle>编辑成绩 - {result?.participant?.name || (result?.participant?.teamMembers ? '集体项目' : '未知')}</DialogTitle>
       <DialogContent>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        
+
         {/* 如果有详细裁判打分数据，展示裁判分数供参考，但不允许在此直接编辑细项 */}
         {result?.details?.scores && (
           <Box sx={{ mb: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
@@ -345,12 +345,12 @@ const ResultsPage = () => {
   const [schedules, setSchedules] = useState([]); // 赛程列表，用于配置合并项
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // 合并项配置对话框状态
   const [combinedConfigOpen, setCombinedConfigOpen] = useState(false);
   const [newCombinedName, setNewCombinedName] = useState('');
   const [selectedSchedules, setSelectedSchedules] = useState([]);
-  
+
   // 判断是否为纯观赛者（有 spectator 且没有 admin 权限）
   const isSpectatorOnly = user && user.roles && user.roles.includes('spectator') && !user.roles.includes('admin');
 
@@ -370,17 +370,17 @@ const ResultsPage = () => {
       sessionStorage.setItem('resultsActiveTab', tabValue.toString());
     }
   }, [tabValue, isSpectatorOnly]);
-  
+
   // 过滤和搜索状态
   const [filters, setFilters] = useState({
     search: '',
     competitionId: sessionStorage.getItem('lastSelectedCompetitionId') || '',
     status: ''
   });
-  
+
   // 显示过滤器
   const [showFilters, setShowFilters] = useState(false);
-  
+
   // 模态框状态
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingResult, setEditingResult] = useState(null);
@@ -394,7 +394,7 @@ const ResultsPage = () => {
 
   // 自动滚动状态
   const [autoScroll, setAutoScroll] = useState(true);
-  
+
   // 成绩状态列表
   const [resultStatuses, setResultStatuses] = useState([]);
 
@@ -408,7 +408,7 @@ const ResultsPage = () => {
         console.error('获取成绩状态失败:', error);
       }
     };
-    
+
     fetchResultStatuses();
   }, []);
 
@@ -425,7 +425,7 @@ const ResultsPage = () => {
   const getCourtForSchedule = (scheduleName) => {
     let sched = schedules.find(s => s.name === scheduleName);
     if (sched && sched.court) return sched.court;
-    
+
     // 如果是合并项目，尝试找它的子项目所在的场地
     const currentCompetition = competitions.find(c => c._id === filters.competitionId);
     if (currentCompetition && currentCompetition.events) {
@@ -447,7 +447,7 @@ const ResultsPage = () => {
   // 自动滚动效果实现
   useEffect(() => {
     let scrollInterval;
-    
+
     if (autoScroll && tabValue === 1 && selectedLocation !== 'all') { // 只在单项排名且选定场地时自动滚动
       const container = document.getElementById('auto-scroll-container');
       if (container) {
@@ -469,7 +469,7 @@ const ResultsPage = () => {
       if (scrollInterval) clearInterval(scrollInterval);
     };
   }, [autoScroll, tabValue, selectedLocation, results]); // 当这些状态变化时重新绑定滚动
-  
+
   // 获取比赛列表
   useEffect(() => {
     const fetchCompetitions = async () => {
@@ -477,11 +477,11 @@ const ResultsPage = () => {
         const params = {
           limit: 100
         };
-        
+
         // 非管理员不允许查看已结束的比赛
         // 注意：后端的 roles 是一个数组还是单个字符串？通常返回的 user 结构里是 user.role 或者 user.roles
         const isAdmin = user?.role === 'admin' || user?.roles?.includes('admin');
-        
+
         if (!isAdmin) {
           params.status = ['ongoing', 'registration', 'draft']; // 获取非结束状态的比赛
           params.exclude_status = 'completed';
@@ -495,7 +495,7 @@ const ResultsPage = () => {
 
         const response = await competitionService.getCompetitions(params);
         setCompetitions(response.data);
-        
+
         // 当获取到比赛列表后，检查当前 filters 中的比赛是否存在于列表中
         if (response.data.length > 0) {
           setFilters(prev => {
@@ -514,21 +514,21 @@ const ResultsPage = () => {
         console.error('获取比赛列表失败:', error);
       }
     };
-    
+
     // 当 user 状态就绪时才去拉取比赛列表，避免首次渲染时 user 还为 null 导致被误认为非管理员
     if (user !== undefined) {
       fetchCompetitions();
     }
   }, [user]); // 依赖 user，确保获取到正确的角色信息
-  
+
   // 获取成绩和赛程列表
   useEffect(() => {
     const fetchResultsAndSchedules = async () => {
       if (!filters.competitionId && competitions.length === 0) return;
-      
+
       setLoading(true);
       setError('');
-      
+
       try {
         // 如果选择了比赛，获取该比赛的成绩和赛程
         if (filters.competitionId) {
@@ -537,12 +537,12 @@ const ResultsPage = () => {
             status: filters.status || 'verified', // 默认只拉取已审核(已存)的成绩，观众不能看到实时未保存的
             limit: 5000
           };
-          
+
           const [resultsRes, schedulesRes] = await Promise.all([
             resultService.getResults(filters.competitionId, params),
             scheduleService.getSchedules(filters.competitionId, { limit: 1000 })
           ]);
-          
+
           setResults(resultsRes.data || []);
           setSchedules(schedulesRes.data || []);
         } else {
@@ -556,9 +556,9 @@ const ResultsPage = () => {
         setLoading(false);
       }
     };
-    
+
     fetchResultsAndSchedules();
-    
+
     // 增加轮询：每 3 秒刷新一次数据，实现“实时刷新”
     const intervalId = setInterval(() => {
       if (filters.competitionId) {
@@ -578,10 +578,10 @@ const ResultsPage = () => {
         }).catch(err => console.error('Silent refresh failed:', err));
       }
     }, 3000);
-    
+
     return () => clearInterval(intervalId);
   }, [filters.competitionId, filters.search, filters.status, competitions]);
-  
+
   // 处理成绩数据计算排名和团体分
   useEffect(() => {
     if (!results || results.length === 0) {
@@ -606,17 +606,17 @@ const ResultsPage = () => {
         if (eventConfig.isCombinedEvent && eventConfig.subEvents && eventConfig.subEvents.length > 0) {
           const participantsScores = {};
           const validPrefixesForThisEvent = new Set();
-          
+
           // 找到属于这个合并项目所有子赛程的成绩
           const relevantResults = results.filter(r => {
              if (!r.schedule || !r.schedule.name) return false;
              return eventConfig.subEvents.some(subName => r.schedule.name.includes(subName));
           });
-          
+
           relevantResults.forEach(r => {
             const p = r.participant;
             if (!p || !p.name) return;
-            
+
             // 提取年龄组别和性别前缀 (如 "U13组 男子 ")
             let prefix = '';
             for (const subName of eventConfig.subEvents) {
@@ -625,14 +625,14 @@ const ResultsPage = () => {
                 break;
               }
             }
-            
+
             // --- 核心校验：这个 prefix 是否应该作为这个合并项目？ ---
             // 1. 检查 eventConfig.ageGroups (如果配置了的话)
             if (eventConfig.ageGroups && eventConfig.ageGroups.length > 0) {
               const matchAg = eventConfig.ageGroups.some(ag => prefix.includes(ag));
               if (!matchAg) return; // 不符合年龄组配置，跳过
             }
-            
+
             // 2. 特殊业务规则：U10组的 42式太极拳/剑 绝对不是合并项目
             if (prefix.includes('U10') && (eventConfig.name.includes('42式') || eventConfig.subEvents.some(s => s.includes('42式')))) {
               return; // 强制跳过
@@ -640,11 +640,11 @@ const ResultsPage = () => {
 
             // 记录这是一个有效的合并项目前缀
             validPrefixesForThisEvent.add(prefix);
-            
+
             // 核心修复点：使用 姓名+学校+前缀 作为唯一键。
             // 因为在系统中，同一个选手报多个子项目会生成多个独立的 participant 记录，_id 是不同的！
             const key = `${prefix}_${p.name}_${p.schoolName || p.teamName || ''}`;
-            
+
             if (!participantsScores[key]) {
               participantsScores[key] = {
                 participant: p, // 保留其中一个 participant 作为代表
@@ -655,15 +655,15 @@ const ResultsPage = () => {
                 latestUpdate: 0
               };
             }
-            
+
             const scoreVal = typeof r.finalScore === 'number' ? r.finalScore : 
                            (typeof r.score === 'number' ? r.score : parseFloat(r.score) || 0);
-                           
+
             // 只有当分数大于 0 或者该项被标记为弃权时，才认为该项有记录
             if (scoreVal > 0 || r.details?.isAbsent) {
               participantsScores[key].scoreCount += 1;
               participantsScores[key].totalScore += scoreVal; // 弃权分数为0，不影响总分
-              
+
               const rUpdate = new Date(r.updatedAt || r.createdAt || 0).getTime();
               if (rUpdate > participantsScores[key].latestUpdate) {
                 participantsScores[key].latestUpdate = rUpdate;
@@ -679,7 +679,7 @@ const ResultsPage = () => {
               });
             }
           });
-          
+
           // 从 grouped 中删除子项目，因为它们不应该单独出成绩和算团体分
           eventConfig.subEvents.forEach(subName => {
             Object.keys(grouped).forEach(groupName => {
@@ -706,13 +706,13 @@ const ResultsPage = () => {
               // 这解决了“某选手只报了其中一个子项目”或“另一个子项目缺考”时无法出总分的问题。
               if (ps.scoreCount > 0) {
                 const combinedScheduleName = ps.prefix ? `${ps.prefix} ${eventConfig.name}` : eventConfig.name;
-                
+
                 if (!grouped[combinedScheduleName]) {
                   grouped[combinedScheduleName] = [];
                 }
-                
+
                 const combinedScore = Math.round(ps.totalScore * 100) / 100;
-                
+
                 // 将子项成绩转换为对象映射
                 const subScores = {};
                 let isCompletelyAbsent = true; // 判断是否所有子项都弃权了
@@ -776,7 +776,7 @@ const ResultsPage = () => {
 
     Object.keys(grouped).forEach(scheduleName => {
       const scheduleResults = grouped[scheduleName];
-      
+
       // 降序排序，弃权排最后
       scheduleResults.sort((a, b) => {
         const isAbsentA = a.details?.isAbsent || false;
@@ -797,7 +797,7 @@ const ResultsPage = () => {
 
       // 团体分计分规则默认：前8名分别按13, 11, 10, 9, 8, 7, 6, 5计分
       let basePoints = [13, 11, 10, 9, 8, 7, 6, 5];
-        
+
         // 针对“5月30号那天的比赛”的特殊计分规则 (判断名字中是否包含5月30，或日期是否是5-30)
         if (selectedCompetition) {
           const compName = String(selectedCompetition.name || '');
@@ -809,7 +809,6 @@ const ResultsPage = () => {
       const percentAwardMode = isPercentAwardCompetition(selectedCompetition);
       const top3ThenPercentageMode = isTop3ThenPercentageCompetition(selectedCompetition);
       if (percentAwardMode) basePoints = selectedCompetition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
-
 
       const formalCount = getFormalResultCount(scheduleResults);
       const completedFormalCount = getCompletedFormalResultCount(scheduleResults);
@@ -832,7 +831,7 @@ const ResultsPage = () => {
 
         const currentScore = typeof currentMember.finalScore === 'number' ? currentMember.finalScore : 
                              (typeof currentMember.score === 'number' ? currentMember.score : parseFloat(currentMember.score) || 0);
-        
+
         // 找到当前分数的所有人员
         let j = i;
         let currentScoreMembers = [];
@@ -885,7 +884,7 @@ const ResultsPage = () => {
               actualPointsAwarded++;
             }
           }
-          
+
           // 并列名次得分：空出名次的分值相加后的平均数
           const averagePoints = top3ThenPercentageMode
             ? top3TeamPoints
@@ -898,10 +897,10 @@ const ResultsPage = () => {
             result.isAwarded = isWithinAdmissionRange;
             result.awardLevel = awardLevel;
             result.awardRankLimit = admissionCount;
-            
+
             // 累加到团体分
             const rawSchoolName = result.participant?.schoolName || result.participant?.teamName;
-            
+
             // 判断当前比赛是否是“第五届南山区中小学教育集团联盟”
             const isTargetCompetition = selectedCompetition && selectedCompetition.name.includes('第五届南山区中小学教育集团联盟');
 
@@ -940,7 +939,7 @@ const ResultsPage = () => {
                   '教育科学研究院附属学校教育集团',
                   '前海创新教育集团'
                 ];
-                
+
                 for (const groupName of groupNames) {
                   // 如果原始学校名称包含集团名字（例如：南山实验教育集团1队 包含 南山实验教育集团）
                   if (rawSchoolName.includes(groupName) || groupName.includes(rawSchoolName)) {
@@ -954,7 +953,7 @@ const ResultsPage = () => {
                 teamScores[schoolName] = { schoolName, totalPoints: 0, details: [] };
               }
               teamScores[schoolName].totalPoints += averagePoints;
-              
+
               let participantName = '未知参赛者';
               if (result.participant) {
                 if (result.participant.type === 'team' && result.participant.teamName) {
@@ -965,7 +964,7 @@ const ResultsPage = () => {
                   participantName = result.participant.user.name;
                 }
               }
-              
+
               teamScores[schoolName].details.push({
                 participantName,
                 scheduleName,
@@ -993,7 +992,7 @@ const ResultsPage = () => {
 
     // 将团体分对象转为数组并按总分降序排序
     const teamRankingsArray = Object.values(teamScores).sort((a, b) => b.totalPoints - a.totalPoints);
-    
+
     setProcessedData({ groupedResults: grouped, teamRankings: teamRankingsArray });
   }, [results, competitions, filters.competitionId]);
 
@@ -1001,7 +1000,7 @@ const ResultsPage = () => {
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
   };
-  
+
   // 处理过滤器变化
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -1009,19 +1008,19 @@ const ResultsPage = () => {
       ...prev,
       [name]: value
     }));
-    
+
     // 如果切换了比赛，记录到 sessionStorage 中，防止刷新时丢失
     if (name === 'competitionId') {
       sessionStorage.setItem('lastSelectedCompetitionId', value);
     }
   };
-  
+
   // 处理搜索
   const handleSearch = (e) => {
     e.preventDefault();
     // 搜索已经通过状态变化触发了数据获取
   };
-  
+
   // 处理重置过滤器
   const handleResetFilters = () => {
     setFilters({
@@ -1055,7 +1054,7 @@ const ResultsPage = () => {
       'verified': { name: '已确认', color: 'success', icon: <VerifiedIcon /> },
       'disputed': { name: '有异议', color: 'error', icon: <ErrorIcon /> }
     };
-    
+
     return statusMap[status] || { name: status, color: 'default', icon: null };
   };
 
@@ -1079,17 +1078,17 @@ const ResultsPage = () => {
       if (numericRank <= secondPrizeLimit) return '二等奖';
       return '三等奖';
     };
-    
+
     // 判断是否为合并项目
     const isCombined = validResults.some(r => r.isCombined);
     const subEventsList = isCombined ? (validResults.find(r => r.isCombined)?.subEvents || []) : [];
-    
+
     const dataToExport = validResults.map((r) => {
       const p = r.participant;
       const finalScore = typeof r.finalScore === 'number' ? r.finalScore : 
                          (typeof r.score === 'number' ? r.score : parseFloat(r.score) || 0);
       const isAbsent = r.details?.isAbsent || false;
-      
+
       let displayName = p?.name || (p?.user && p.user.name) || '未知';
       if (p?.isVirtualTeam && p?.teamMembers && p.teamMembers.length > 0) {
         displayName = p.teamMembers.map(m => m.name).join('、');
@@ -1116,7 +1115,7 @@ const ResultsPage = () => {
       }
 
       rowData['最终得分'] = isAbsent ? '弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '0');
-      
+
       return rowData;
     });
 
@@ -1128,7 +1127,7 @@ const ResultsPage = () => {
 
   const handlePrint = (scheduleName, scheduleResults) => {
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
-    
+
     const virtualSchedule = {
       name: scheduleName,
       startTime: selectedCompetition?.startDate || new Date(),
@@ -1148,7 +1147,7 @@ const ResultsPage = () => {
         const participantKey = r.participant._id || r.participant;
         // 如果是合并项目，生成的假 ID 也是唯一的，可以用作 key
         const actualKey = r._id || participantKey; 
-        
+
         vParticipants.push({ ...r.participant, __printKey: actualKey });
         vResults[actualKey] = r;
       }
@@ -1159,7 +1158,7 @@ const ResultsPage = () => {
     setPrintResultsData(vResults);
     setPrintModalOpen(true);
   };
-  
+
   // 渲染成绩列表
   const renderResults = () => {
     // 根据状态过滤结果
@@ -1176,7 +1175,7 @@ const ResultsPage = () => {
                          (typeof result.score === 'number' ? result.score : parseFloat(result.score) || 0);
         return scoreVal > 0;
       });
-      
+
       const court = getCourtForSchedule(scheduleName);
       if (filteredResults.length > 0 && (selectedLocation === 'all' || court === selectedLocation)) {
         filteredGroupedResults[scheduleName] = filteredResults;
@@ -1197,7 +1196,7 @@ const ResultsPage = () => {
         </Box>
       );
     }
-    
+
     return (
       <Box>
         {availableCourts.length > 0 && (
@@ -1273,10 +1272,10 @@ const ResultsPage = () => {
               <Table sx={{ minWidth: 650 }} aria-label={`${scheduleName}成绩表`}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>排名</TableCell>
+                    <TableCell>奖项</TableCell>
                     <TableCell>参赛者</TableCell>
                     <TableCell>代表队/学校</TableCell>
-                    <TableCell>是否录取</TableCell>
+
                     <TableCell>最后得分</TableCell>
                     <TableCell>状态</TableCell>
                   </TableRow>
@@ -1284,7 +1283,7 @@ const ResultsPage = () => {
                 <TableBody>
                   {filteredGroupedResults[scheduleName].map((result) => {
                     const statusInfo = getStatusInfo(result.status);
-                    
+
                     // 正确提取参赛者姓名和学校，如果是个人赛则取 participant.name，如果缺失则取 user.name
                     // 团队赛则取 teamName
                     let participantName = '未知参赛者';
@@ -1299,31 +1298,14 @@ const ResultsPage = () => {
                         participantName = result.participant.user.name;
                       }
                     }
-                    
+
                     const schoolName = result.participant?.schoolName || result.participant?.teamName || '-';
-                    
-                    // 渲染名次样式
-                    const renderRank = (rank) => {
-                      if (rank === 1) return <Chip label="1" sx={{ bgcolor: 'gold', color: 'white', fontWeight: 'bold' }} size="small" />;
-                      if (rank === 2) return <Chip label="2" sx={{ bgcolor: 'silver', color: 'white', fontWeight: 'bold' }} size="small" />;
-                      if (rank === 3) return <Chip label="3" sx={{ bgcolor: '#cd7f32', color: 'white', fontWeight: 'bold' }} size="small" />;
-                      if (rank === '测试') return <Chip label="测试" color="secondary" size="small" />;
-                      return <Typography sx={{ fontWeight: 'bold', ml: 1 }}>{rank}</Typography>;
-                    };
 
                     return (
                       <TableRow key={result._id}>
-                        <TableCell>{renderRank(result.dynamicRank)}</TableCell>
+                        <TableCell><Chip label={result.details?.isAbsent ? '弃权' : (result.awardLevel || '—')} color={result.details?.isAbsent ? 'default' : 'success'} size="small" variant={result.details?.isAbsent ? 'outlined' : 'filled'} /></TableCell>
                         <TableCell>{participantName}</TableCell>
                         <TableCell>{schoolName}</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={result.awardLevel || (result.isAwarded ? '\u5f55\u53d6' : '\u672a\u5f55\u53d6')}
-                            color={result.isAwarded ? 'success' : 'default'}
-                            size="small"
-                            variant={result.isAwarded ? 'filled' : 'outlined'}
-                          />
-                        </TableCell>
                         <TableCell sx={{ fontWeight: 'bold', color: result.details?.isAbsent ? 'error.main' : 'primary.main', fontSize: '1.1rem' }}>
                           {result.details?.isAbsent ? '弃权' : (
                             result.finalScore !== undefined ? result.finalScore : (
@@ -1353,7 +1335,7 @@ const ResultsPage = () => {
       </Box>
     );
   };
-  
+
   // 渲染排名
   const renderRankings = () => {
     if (!filters.competitionId) {
@@ -1365,10 +1347,10 @@ const ResultsPage = () => {
         </Box>
       );
     }
-    
+
     // 根据状态过滤结果
     const filteredGroupedResults = {};
-    
+
     // 找出所有正在打分或已经有成绩的项目
     let activeSchedules = [];
     Object.keys(processedData.groupedResults).forEach(scheduleName => {
@@ -1382,7 +1364,7 @@ const ResultsPage = () => {
                          (typeof result.score === 'number' ? result.score : parseFloat(result.score) || 0);
         return scoreVal > 0;
       });
-      
+
       const court = getCourtForSchedule(scheduleName);
       if (filteredResults.length > 0 && (selectedLocation === 'all' || court === selectedLocation)) {
         // 检查该项目是否“正在进行”（还有人的状态是 pending，或者还有人没打完分）
@@ -1413,10 +1395,10 @@ const ResultsPage = () => {
     // 核心修复：如果选择了某个场地，但该场地当前没有任何打完分的项目，
     // 我们不能直接返回“暂无数据”把整个页面连同 Tabs 一起隐藏掉。
     // 必须让 Tabs 保持可见，以便用户可以切回“全部场地”或其他场地。
-    
+
     // 获取当前选中的比赛
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
-    
+
     return (
       <Box>
         <Typography variant="h5" gutterBottom sx={{ mb: 4, textAlign: 'center' }}>
@@ -1453,7 +1435,7 @@ const ResultsPage = () => {
             const scheduleResults = filteredGroupedResults[scheduleName].filter(r => !r.participant?.isTest);
             const court = getCourtForSchedule(scheduleName);
             const ruleSummary = getScheduleRuleSummary(selectedCompetition, scheduleName, scheduleResults);
-            
+
             if (scheduleResults.length === 0) return null;
 
             return (
@@ -1501,7 +1483,7 @@ const ResultsPage = () => {
                     </Button>
                   </Box>
                 </Box>
-                
+
                 <Grid container spacing={3}>
                   {scheduleResults.slice(0, 3).map((ranking, index) => {
                     let participantName = '未知参赛者';
@@ -1516,7 +1498,7 @@ const ResultsPage = () => {
                         participantName = ranking.participant.user.name;
                       }
                     }
-                    
+
                     const schoolName = ranking.participant?.schoolName || ranking.participant?.teamName || '';
                     return (
                       <Grid item xs={12} sm={4} key={ranking._id || index}>
@@ -1558,7 +1540,7 @@ const ResultsPage = () => {
                     );
                   })}
                 </Grid>
-                
+
                 {scheduleResults.length > 3 && (
                   <TableContainer 
                     component={Paper} 
@@ -1591,7 +1573,7 @@ const ResultsPage = () => {
                               participantName = ranking.participant.user.name;
                             }
                           }
-                          
+
                           const schoolName = ranking.participant?.schoolName || ranking.participant?.teamName || '-';
                           return (
                             <TableRow key={ranking._id || index + 3}>
@@ -1622,7 +1604,7 @@ const ResultsPage = () => {
       </Box>
     );
   };
-  
+
   const handleExportTeamExcel = () => {
     const { teamRankings } = processedData;
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
@@ -1656,7 +1638,7 @@ const ResultsPage = () => {
         </Box>
       );
     }
-    
+
     const { teamRankings } = processedData;
 
     if (!teamRankings || teamRankings.length === 0) {
@@ -1668,9 +1650,9 @@ const ResultsPage = () => {
         </Box>
       );
     }
-    
+
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
-    
+
     return (
       <Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1697,7 +1679,7 @@ const ResultsPage = () => {
             </Button>
           </Box>
         </Box>
-        
+
         <TableContainer component={Paper} id="team-rankings-print-area">
           <Table sx={{ minWidth: 650 }} aria-label="团体总分表">
             <TableHead>
@@ -1749,7 +1731,7 @@ const ResultsPage = () => {
       </Box>
     );
   };
-  
+
   if (!user?.roles?.includes('admin') && !user?.roles?.includes('spectator')) {
     return (
       <Box sx={{ textAlign: 'center', py: 8 }}>
@@ -1787,7 +1769,7 @@ const ResultsPage = () => {
           </Button>
         )}
       </Box>
-      
+
       {/* 搜索和过滤 */}
       <Box sx={{ mb: 4 }}>
         <form onSubmit={handleSearch}>
@@ -1818,7 +1800,7 @@ const ResultsPage = () => {
                 }}
               />
             </Grid>
-            
+
             <Grid item xs={12} md={5}>
               <FormControl fullWidth>
                 <InputLabel id="competition-label">选择比赛</InputLabel>
@@ -1839,7 +1821,7 @@ const ResultsPage = () => {
                 </Select>
               </FormControl>
             </Grid>
-            
+
             <Grid item xs={12} md={2}>
               <Tooltip title="显示更多过滤选项">
                 <Button
@@ -1854,7 +1836,7 @@ const ResultsPage = () => {
             </Grid>
           </Grid>
         </form>
-        
+
         {/* 过滤器 */}
         {showFilters && (
           <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
@@ -1881,7 +1863,7 @@ const ResultsPage = () => {
                 </FormControl>
               </Grid>
             </Grid>
-            
+
             <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
               <Button size="small" onClick={handleResetFilters}>
                 重置过滤器
@@ -1890,14 +1872,14 @@ const ResultsPage = () => {
           </Box>
         )}
       </Box>
-      
+
       {/* 错误提示 */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
-      
+
       {/* 加载中 */}
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 5 }}>
@@ -1929,14 +1911,14 @@ const ResultsPage = () => {
               </Tabs>
             </Paper>
           )}
-          
+
           {/* 成绩和排名 */}
           {!isSpectatorOnly && (
             <TabPanel value={tabValue} index={0}>
               {renderResults()}
             </TabPanel>
           )}
-          
+
           <TabPanel value={tabValue} index={1}>
             {renderRankings()}
           </TabPanel>

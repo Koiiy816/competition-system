@@ -99,6 +99,7 @@ export default function LiveScoreboardPage() {
         court,
         schedule: currentSchedule,
         rows: scoredRows.slice(0, DISPLAYED_RANKS),
+        completedParticipantCount: scoredRows.filter((result) => !result.details?.isAbsent).length,
         live: Boolean(currentSchedule && currentSchedule.status === 'ongoing')
       };
     }).sort((a, b) => courtOrder(a.court) - courtOrder(b.court) || a.court.localeCompare(b.court, 'zh-CN'));
@@ -158,14 +159,18 @@ function CourtPanel({ panel }) {
       {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: 16 }}>{panel.schedule.period || '比赛时段未设置'}</Typography>}
     </Box>
     {panel.rows.length ? <Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: '72px minmax(140px,1fr) minmax(160px,1fr) 130px', px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
-        <span>名次</span><span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
+      <Box sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
+        <span>奖项</span><span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
       {panel.rows.map((result, index) => {
         const participant = result.participant || {};
         const teamMembers = membersOf(participant);
-        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: '72px minmax(140px,1fr) minmax(160px,1fr) 130px', alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: index % 2 ? '#0d2035' : '#0a192b' }}>
-          <Box sx={{ color: index < 3 ? '#f7c948' : '#c7d2df', fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{index + 1}</Box>
+        const firstPrizeLimit = Math.max(1, Math.ceil(panel.completedParticipantCount * 0.3));
+        const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
+        const awardLevel = index + 1 <= firstPrizeLimit ? '一等奖' : (index + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
+        const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
+        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: index % 2 ? '#0d2035' : '#0a192b' }}>
+          <Box sx={{ color: awardColor, fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{awardLevel}</Box>
           <Box><Typography sx={{ fontSize: { xs: 19, md: 23 }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: 14 } }}>{teamMembers}</Typography>}</Box>
           <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: 18 }, pr: 1 }}>{participantUnit(participant)}</Typography>
           <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: 32 } }}>{showScore(result.score)}</Typography>
