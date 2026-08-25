@@ -1602,7 +1602,6 @@ const ResultsPage = () => {
                               <TableCell>{ranking.dynamicRank || index + 4}</TableCell>
                               <TableCell>{participantName}</TableCell>
                               <TableCell>{schoolName}</TableCell>
-                        {!showPrizeLevels && <TableCell><Chip label={result.awardLevel || (result.isAwarded ? '录取' : '未录取')} color={result.isAwarded ? 'success' : 'default'} size="small" variant={result.isAwarded ? 'filled' : 'outlined'} /></TableCell>}
                               <TableCell>{ranking.isAwarded ? '录取' : '未录取'}</TableCell>
                               <TableCell sx={{ fontWeight: 'bold', color: ranking.details?.isAbsent ? 'error.main' : 'inherit' }}>
                                 {ranking.details?.isAbsent ? '弃权' : (
