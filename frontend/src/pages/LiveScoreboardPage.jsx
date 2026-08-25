@@ -8,6 +8,9 @@ import competitionService from '../services/competitionService';
 
 const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 8;
+const AUTO_SCROLL_START_PAUSE = 3000;
+const AUTO_SCROLL_END_PAUSE = 5000;
+const AUTO_SCROLL_SPEED = 0.22;
 const rowsOf = (payload) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
 const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value._id || value.id || '') : String(value));
 const timestamp = (value) => { const number = new Date(value || 0).getTime(); return Number.isFinite(number) ? number : 0; };
@@ -159,16 +162,16 @@ function CourtPanel({ panel, showPrizeLevels }) {
 
     list.scrollTop = 0;
     let frameId;
-    let pauseUntil = performance.now() + 1800;
+    let pauseUntil = performance.now() + AUTO_SCROLL_START_PAUSE;
     const animate = (now) => {
       if (now >= pauseUntil) {
         const maxScroll = list.scrollHeight - list.clientHeight;
         if (maxScroll > 0) {
           if (list.scrollTop >= maxScroll - 1) {
             list.scrollTop = 0;
-            pauseUntil = now + 1800;
+            pauseUntil = now + AUTO_SCROLL_END_PAUSE;
           } else {
-            list.scrollTop = Math.min(maxScroll, list.scrollTop + 0.42);
+            list.scrollTop = Math.min(maxScroll, list.scrollTop + AUTO_SCROLL_SPEED);
           }
         }
       }
