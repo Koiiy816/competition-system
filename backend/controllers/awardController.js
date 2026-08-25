@@ -34,6 +34,17 @@ function remainingAwardCounts(count, rules = {}) {
 }
 
 function awardLevel(rank, total, rules) {
+  // 「比例錄取」模式：所有正式參賽者依實際參賽人數（集體項目則為實際隊伍數）
+  // 分為前 30% 一等、31% 至 60% 二等、其餘三等。
+  if (rules?.mode === 'legacy_percentage') {
+    if (!rank || total <= 0) return null;
+    const firstLimit = Math.max(1, Math.ceil(total * (Number(rules?.firstPrizePercent ?? 30) / 100)));
+    const secondLimit = Math.max(firstLimit, Math.ceil(total * (Number(rules?.secondPrizePercent ?? 60) / 100)));
+    if (rank <= firstLimit) return '一等奖';
+    if (rank <= secondLimit) return '二等奖';
+    return '三等奖';
+  }
+
   const named = Number(rules?.rankAwardCount ?? 3);
   const canRank = total >= Number(rules?.minParticipantsForRanking ?? 3);
   if (canRank && rank <= named) return `\u7b2c${rank}\u540d`;
@@ -97,7 +108,7 @@ exports.getAwards = async (req, res, next) => {
       return { scheduleId: keyOf(schedule), scheduleName: schedule.name, count: rows.length, awards: list };
     });
 
-    // Team points mirror the configured top-three/graded rule and count only athletes completing >= 2 individual events.
+    // 團體總分只採計個人項目；29 號比賽依個人項目前八名 8 至 1 分計算。
     const eventKeysByPerson = new Map();
     valid.forEach(result => {
       const schedule = scheduleById.get(keyOf(result.schedule));
@@ -107,18 +118,26 @@ exports.getAwards = async (req, res, next) => {
         eventKeysByPerson.get(person).add(keyOf(schedule));
       }
     });
-    const eligible = new Set([...eventKeysByPerson].filter(([, events]) => events.size >= Number(competition.awardRules?.teamMinEventsPerParticipant ?? 2)).map(([person]) => person));
+    const minimumEvents = Number(competition.awardRules?.teamMinEventsPerParticipant ?? 2);
+    const eligible = new Set([...eventKeysByPerson]
+      .filter(([, events]) => events.size >= minimumEvents)
+      .map(([person]) => person));
     const teamPoints = new Map();
     eventAwards.forEach(event => {
       if (!isIndividual(event.scheduleName)) return;
       event.awards.forEach(item => {
         if (!eligible.has(item.recipientKey)) return;
+        const percentageMode = competition.awardRules?.mode === 'legacy_percentage';
+        const configuredTopEight = competition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
         const p = competition.awardRules?.teamAwardPoints || {};
-        const points = item.awardLevel === '\u7b2c1\u540d' ? Number(p.rank1 ?? 6)
-          : item.awardLevel === '\u7b2c2\u540d' ? Number(p.rank2 ?? 5)
-          : item.awardLevel === '\u7b2c3\u540d' ? Number(p.rank3 ?? 4)
-          : item.awardLevel === '\u4e00\u7b49\u5956' ? Number(p.firstPrize ?? 3)
-          : item.awardLevel === '\u4e8c\u7b49\u5956' ? Number(p.secondPrize ?? 2) : Number(p.thirdPrize ?? 1);
+        const points = percentageMode
+          ? Number(configuredTopEight[item.rank - 1] || 0)
+          : (item.awardLevel === '\u7b2c1\u540d' ? Number(p.rank1 ?? 6)
+            : item.awardLevel === '\u7b2c2\u540d' ? Number(p.rank2 ?? 5)
+              : item.awardLevel === '\u7b2c3\u540d' ? Number(p.rank3 ?? 4)
+                : item.awardLevel === '\u4e00\u7b49\u5956' ? Number(p.firstPrize ?? 3)
+                  : item.awardLevel === '\u4e8c\u7b49\u5956' ? Number(p.secondPrize ?? 2) : Number(p.thirdPrize ?? 1));
+        if (points <= 0) return;
         if (!teamPoints.has(item.schoolName)) teamPoints.set(item.schoolName, { recipientKey: item.schoolName, name: item.schoolName, score: 0 });
         teamPoints.get(item.schoolName).score += points;
       });
