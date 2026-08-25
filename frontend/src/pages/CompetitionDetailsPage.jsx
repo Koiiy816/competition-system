@@ -24,6 +24,16 @@ import competitionService from '../services/competitionService';
 import EventItem from '../components/competitions/EventItem';
 import { useAuth } from '../contexts/AuthContext';
 
+const DIVING_BASE_EVENTS = [
+  { name: '1米跳板', displayName: '1米跳板', category: '跳水', subcategory: '跳板', ageGroups: [], genderRestriction: 'both', maxParticipants: 0 },
+  { name: '3米跳板', displayName: '3米跳板', category: '跳水', subcategory: '跳板', ageGroups: [], genderRestriction: 'both', maxParticipants: 0 },
+  { name: '5米跳台', displayName: '5米跳台', category: '跳水', subcategory: '跳台', ageGroups: [], genderRestriction: 'both', maxParticipants: 0 },
+  { name: '7.5米跳台', displayName: '7.5米跳台', category: '跳水', subcategory: '跳台', ageGroups: [], genderRestriction: 'both', maxParticipants: 0 },
+  { name: '10米跳台', displayName: '10米跳台', category: '跳水', subcategory: '跳台', ageGroups: [], genderRestriction: 'both', maxParticipants: 0 }
+];
+
+const isDivingCompetition = (type) => String(type || '').trim().includes('跳水');
+
 export default function CompetitionDetailsPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -160,7 +170,18 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setCompetition(prev => ({ ...prev, [name]: value }));
+    setCompetition(prev => {
+      const enteringDiving = name === 'type'
+        && isDivingCompetition(value)
+        && !isDivingCompetition(prev.type)
+        && !(prev.events || []).length;
+
+      if (enteringDiving) {
+        return { ...prev, [name]: value, events: DIVING_BASE_EVENTS.map(event => ({ ...event })) };
+      }
+
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleNestedChange = (parent, field, value) => {
@@ -245,6 +266,14 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
         }
       ]
     }));
+  };
+
+  const applyDivingPreset = () => {
+    setCompetition(prev => {
+      const existingNames = new Set((prev.events || []).map(event => event.name));
+      const missingBaseEvents = DIVING_BASE_EVENTS.filter(event => !existingNames.has(event.name)).map(event => ({ ...event }));
+      return { ...prev, events: [...(prev.events || []), ...missingBaseEvents] };
+    });
   };
 
   const removeEvent = useCallback((index) => {
@@ -616,6 +645,11 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
               {activeStep === 1 && (
                 <Box>
                   <Typography variant="h6" sx={{ mb: 2 }}>比赛项目</Typography>
+                  {isDivingCompetition(competition.type) && (
+                    <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={applyDivingPreset}>套用标准项目</Button>}>
+                      已为跳水比赛准备 1米、3米跳板及 5米、7.5米、10米跳台。未设置年龄组的标准项目会向本比赛所有年龄组开放；你仍可在下方新增自定义项目。
+                    </Alert>
+                  )}
                   {competition.events && competition.events.map((event, index) => (
                     <EventItem
                       key={index}

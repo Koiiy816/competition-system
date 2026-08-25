@@ -260,7 +260,7 @@ const RegisterCompetitionPage = () => {
       
       return competition.events.filter(event => {
         // 检查年龄组别
-        const ageMatch = event.ageGroups && event.ageGroups.includes(selectedGroup);
+        const ageMatch = !event.ageGroups?.length || event.ageGroups.includes(selectedGroup);
         
         // 检查性别限制
         let genderMatch = true;
