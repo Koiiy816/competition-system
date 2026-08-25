@@ -10,7 +10,7 @@ const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 8;
 const AUTO_SCROLL_START_PAUSE = 3000;
 const AUTO_SCROLL_END_PAUSE = 5000;
-const AUTO_SCROLL_SPEED = 0.22;
+const AUTO_SCROLL_SPEED = 0.45;
 const SCOREBOARD_COLUMNS = { xs: '150px minmax(180px, 1.2fr) minmax(160px, 1fr) 110px', md: '200px minmax(280px, 1.35fr) minmax(240px, 1fr) 150px' };
 const rowsOf = (payload) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
 const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value._id || value.id || '') : String(value));
@@ -163,13 +163,21 @@ function CourtPanel({ panel, showPrizeLevels }) {
 
     list.scrollTop = 0;
     let frameId;
+    let waitingAtEnd = false;
     let pauseUntil = performance.now() + AUTO_SCROLL_START_PAUSE;
     const animate = (now) => {
-      if (now >= pauseUntil) {
-        const maxScroll = list.scrollHeight - list.clientHeight;
-        if (maxScroll > 0) {
-          if (list.scrollTop >= maxScroll - 1) {
+      const maxScroll = list.scrollHeight - list.clientHeight;
+      if (maxScroll > 0) {
+        if (waitingAtEnd) {
+          if (now >= pauseUntil) {
             list.scrollTop = 0;
+            waitingAtEnd = false;
+            pauseUntil = now + AUTO_SCROLL_START_PAUSE;
+          }
+        } else if (now >= pauseUntil) {
+          if (list.scrollTop >= maxScroll - 1) {
+            list.scrollTop = maxScroll;
+            waitingAtEnd = true;
             pauseUntil = now + AUTO_SCROLL_END_PAUSE;
           } else {
             list.scrollTop = Math.min(maxScroll, list.scrollTop + AUTO_SCROLL_SPEED);
