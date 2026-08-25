@@ -188,7 +188,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
     };
     frameId = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frameId);
-  }, [panel.schedule?._id, displayRows.length, shouldAutoScroll]);
+  }, [shouldAutoScroll]);
 
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)' }}>
     <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
@@ -206,7 +206,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
         {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
-      <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '42vh', md: 460 } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+      <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '55vh', md: 660 } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
       {displayRows.map((result, index) => {
         const participant = result.participant || {};
         const teamMembers = membersOf(participant);
