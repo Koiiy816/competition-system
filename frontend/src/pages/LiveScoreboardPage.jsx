@@ -11,6 +11,7 @@ const DISPLAYED_RANKS = 8;
 const AUTO_SCROLL_START_PAUSE = 3000;
 const AUTO_SCROLL_END_PAUSE = 5000;
 const AUTO_SCROLL_SPEED = 0.22;
+const SCOREBOARD_COLUMNS = { xs: '150px minmax(180px, 1.2fr) minmax(160px, 1fr) 110px', md: '200px minmax(280px, 1.35fr) minmax(240px, 1fr) 150px' };
 const rowsOf = (payload) => Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
 const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value._id || value.id || '') : String(value));
 const timestamp = (value) => { const number = new Date(value || 0).getTime(); return Number.isFinite(number) ? number : 0; };
@@ -185,13 +186,16 @@ function CourtPanel({ panel, showPrizeLevels }) {
     <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
         <Typography sx={{ color: '#f7c948', fontWeight: 900, fontSize: { xs: 24, md: 36 } }}>{panel.court}</Typography>
-        <Chip label={panel.live ? '正在打分' : '最近成绩'} sx={{ bgcolor: panel.live ? '#1d7f5f' : '#3b5875', color: '#fff', fontWeight: 800, fontSize: 15 }} />
+        <Stack direction="row" spacing={1}>
+          {shouldAutoScroll && <Chip label="自动滚动显示全部" sx={{ bgcolor: '#12385a', color: '#9ed8ff', fontWeight: 800, fontSize: 14 }} />}
+          <Chip label={panel.live ? '正在打分' : '最近成绩'} sx={{ bgcolor: panel.live ? '#1d7f5f' : '#3b5875', color: '#fff', fontWeight: 800, fontSize: 15 }} />
+        </Stack>
       </Stack>
       <Typography sx={{ mt: .5, minHeight: 44, fontWeight: 800, fontSize: { xs: 20, md: 26 }, lineHeight: 1.25 }}>{panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
       {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: 16 }}>{panel.schedule.period || '比赛时段未设置'}</Typography>}
     </Box>
     {displayRows.length ? <Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
+      <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
         {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
       <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '50vh', md: 'calc(100vh - 390px)' } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
@@ -202,7 +206,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
         const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
         const awardLevel = index + 1 <= firstPrizeLimit ? '一等奖' : (index + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
         const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
-        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: index % 2 ? '#0d2035' : '#0a192b' }}>
+        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: index % 2 ? '#0d2035' : '#0a192b' }}>
           <Box sx={{ color: showPrizeLevels ? awardColor : (index < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{showPrizeLevels ? awardLevel : index + 1}</Box>
           <Box><Typography sx={{ fontSize: { xs: 19, md: 23 }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: 14 } }}>{teamMembers}</Typography>}</Box>
           <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: 18 }, pr: 1 }}>{participantUnit(participant)}</Typography>
