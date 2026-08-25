@@ -198,7 +198,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
         {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
-      <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '50vh', md: 'calc(100vh - 390px)' } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
+      <Box ref={listRef} sx={{ maxHeight: shouldAutoScroll ? { xs: '48vh', md: 560 } : 'none', overflowY: shouldAutoScroll ? 'auto' : 'visible', scrollbarWidth: 'none', '&::-webkit-scrollbar': { display: 'none' } }}>
       {displayRows.map((result, index) => {
         const participant = result.participant || {};
         const teamMembers = membersOf(participant);
