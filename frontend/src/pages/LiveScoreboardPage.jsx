@@ -140,7 +140,7 @@ export default function LiveScoreboardPage() {
           {panels.map((panel) => <Button key={panel.court} variant={selectedCourt === panel.court ? 'contained' : 'outlined'} onClick={() => setSelectedCourt(panel.court)} sx={{ fontWeight: 700 }}>{panel.court}</Button>)}
         </Stack>
         <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Math.max(visiblePanels.length, 1), 2)}, minmax(0, 1fr))`, gap: 3 }}>
-          {visiblePanels.map((panel) => <CourtPanel key={panel.court} panel={panel} />)}
+          {visiblePanels.map((panel) => <CourtPanel key={panel.court} panel={panel} showPrizeLevels={Boolean(competition?.awardRules?.enabled)} />)}
         </Box>
         {!visiblePanels.length && <Box sx={{ py: 12, textAlign: 'center', color: '#93a7bd', fontSize: 26 }}>尚未设置场地或暂时没有成绩</Box>}
       </Box>
@@ -148,7 +148,7 @@ export default function LiveScoreboardPage() {
   );
 }
 
-function CourtPanel({ panel }) {
+function CourtPanel({ panel, showPrizeLevels }) {
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)' }}>
     <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
@@ -160,7 +160,7 @@ function CourtPanel({ panel }) {
     </Box>
     {panel.rows.length ? <Box>
       <Box sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
-        <span>奖项</span><span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
+        {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
       {panel.rows.map((result, index) => {
         const participant = result.participant || {};
@@ -170,7 +170,7 @@ function CourtPanel({ panel }) {
         const awardLevel = index + 1 <= firstPrizeLimit ? '一等奖' : (index + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
         const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
         return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: '96px minmax(140px,1fr) minmax(160px,1fr) 130px', alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: index % 2 ? '#0d2035' : '#0a192b' }}>
-          <Box sx={{ color: awardColor, fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{awardLevel}</Box>
+          <Box sx={{ color: showPrizeLevels ? awardColor : (index < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{showPrizeLevels ? awardLevel : index + 1}</Box>
           <Box><Typography sx={{ fontSize: { xs: 19, md: 23 }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: 14 } }}>{teamMembers}</Typography>}</Box>
           <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: 18 }, pr: 1 }}>{participantUnit(participant)}</Typography>
           <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: 32 } }}>{showScore(result.score)}</Typography>

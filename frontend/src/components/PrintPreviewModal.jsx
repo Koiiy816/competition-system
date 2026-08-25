@@ -117,6 +117,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     if (rank <= secondPrizeLimit) return '二等奖';
     return '三等奖';
   };
+  const showPrizeLevels = Boolean(schedule?.showPrizeLevels) && !isTeamRanking;
   const showCombinedColumns = !isTeamRanking && sortedParticipants.some(p => results[p.__printKey || p._id || p]?.isCombined);
   const combinedSubEvents = showCombinedColumns
     ? (
@@ -126,7 +127,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
         ]?.subEvents || []
       )
     : [];
-  const emptyColSpan = 2 + (isTeamRanking ? 0 : 1) + (showCombinedColumns ? combinedSubEvents.length : 0) + 1;
+  const showAwardColumn = !isTeamRanking && !showPrizeLevels && sortedParticipants.some(p => results[p.__printKey || p._id || p]?.isAwarded !== undefined);
+  const emptyColSpan = 2 + (isTeamRanking ? 0 : 1) + (showCombinedColumns ? combinedSubEvents.length : 0) + (showAwardColumn ? 1 : 0) + 1;
 
   return (
     <Dialog 
@@ -310,13 +312,14 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             }}>
               <TableHead>
                 <TableRow>
-                  <TableCell align="center" width="100" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '名次' : '奖项'}</TableCell>
+                  <TableCell align="center" width="100" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '名次' : (showPrizeLevels ? '奖项' : '名次')}</TableCell>
                   <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '单位' : '姓名'}</TableCell>
                   {!isTeamRanking && <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>代表队/学校</TableCell>}
                   {showCombinedColumns && combinedSubEvents.map(subName => (
                     <TableCell key={subName} align="center" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{subName}</TableCell>
                   ))}
 
+                  {showAwardColumn && <TableCell align="center" width="110" sx={{ fontWeight: 'bold', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>录取</TableCell>}
                   <TableCell align="center" width="120" sx={{ fontWeight: 'bold', color: 'black', bgcolor: '#ffffff', fontSize: isTeamRanking ? '20px' : '14px' }}>{isTeamRanking ? '总分' : '最终得分'}</TableCell>
                 </TableRow>
               </TableHead>
@@ -358,7 +361,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                            participantRanks[index] === 6 ? '第六名' :
                            participantRanks[index] === 7 ? '第七名' :
                            participantRanks[index] === 8 ? '第八名' : participantRanks[index])
-                        : getAwardLevel(participantRanks[index])
+                        : (showPrizeLevels ? getAwardLevel(participantRanks[index]) : participantRanks[index])
                       }</TableCell>
                       <TableCell align="center" sx={{
                         // 控制集体项目的名单排版
@@ -379,6 +382,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                         return <TableCell key={subName} align="center">-</TableCell>;
                       })}
 
+                      {showAwardColumn && <TableCell align="center">{resultObj?.isAwarded ? '录取' : '未录取'}</TableCell>}
                       <TableCell align="center">
                         {isAbsent ? '弃权' : (finalScore > 0 ? (isTeamRanking ? `${finalScore} 分` : finalScore.toFixed(2)) : '-')}
                       </TableCell>

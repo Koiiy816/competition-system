@@ -1068,6 +1068,9 @@ const ResultsPage = () => {
   const handleExportExcel = (scheduleName, scheduleResults) => {
     // 过滤掉测试人员
     const validResults = scheduleResults.filter(r => !r.participant?.isTest);
+    const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
+    const showPrizeLevelsForExport = isPercentAwardCompetition(selectedCompetition);
+    const ruleSummary = getScheduleRuleSummary(selectedCompetition, scheduleName, validResults);
     const completedParticipantCount = validResults.filter(result => !result.details?.isAbsent).length;
     const getExportAwardLevel = (rank, isAbsent) => {
       const numericRank = Number(rank);
@@ -1096,10 +1099,15 @@ const ResultsPage = () => {
         displayName = p.teamName;
       }
 
-      const rowData = {
+      const rowData = showPrizeLevelsForExport ? {
         '奖项': getExportAwardLevel(r.dynamicRank, isAbsent),
         '姓名': displayName,
         '代表队/学校': p?.schoolName || p?.teamName || (p?.user && p?.user.schoolName) || '-'
+      } : {
+        '排名': r.dynamicRank || '',
+        '姓名': displayName,
+        '代表队/学校': p?.schoolName || p?.teamName || (p?.user && p?.user.schoolName) || '-',
+        '是否录取': r.isAwarded ? '是' : '否'
       };
 
       // 动态插入子项目成绩列
@@ -1115,6 +1123,9 @@ const ResultsPage = () => {
       }
 
       rowData['最终得分'] = isAbsent ? '弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '0');
+      if (!showPrizeLevelsForExport && ruleSummary) {
+        rowData['录取说明'] = `录取前${ruleSummary.admissionCount}${ruleSummary.countsForTeam ? '，计团体总分' : '，不计团体总分'}`;
+      }
 
       return rowData;
     });
@@ -1131,7 +1142,8 @@ const ResultsPage = () => {
     const virtualSchedule = {
       name: scheduleName,
       startTime: selectedCompetition?.startDate || new Date(),
-      location: selectedCompetition?.location || ''
+      location: selectedCompetition?.location || '',
+      showPrizeLevels: isPercentAwardCompetition(selectedCompetition)
     };
 
     const vParticipants = [];
@@ -1160,6 +1172,15 @@ const ResultsPage = () => {
   };
 
   // 渲染成绩列表
+  const selectedCompetitionForDisplay = competitions.find(c => c._id === filters.competitionId);
+  const showPrizeLevels = isPercentAwardCompetition(selectedCompetitionForDisplay);
+  const renderRank = (rank) => {
+    if (rank === 1) return <Chip label="1" sx={{ bgcolor: 'gold', color: 'white', fontWeight: 'bold' }} size="small" />;
+    if (rank === 2) return <Chip label="2" sx={{ bgcolor: 'silver', color: 'white', fontWeight: 'bold' }} size="small" />;
+    if (rank === 3) return <Chip label="3" sx={{ bgcolor: '#cd7f32', color: 'white', fontWeight: 'bold' }} size="small" />;
+    if (rank === '测试') return <Chip label="测试" color="secondary" size="small" />;
+    return <Typography sx={{ fontWeight: 'bold', ml: 1 }}>{rank}</Typography>;
+  };
   const renderResults = () => {
     // 根据状态过滤结果
     const filteredGroupedResults = {};
@@ -1272,10 +1293,10 @@ const ResultsPage = () => {
               <Table sx={{ minWidth: 650 }} aria-label={`${scheduleName}成绩表`}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>奖项</TableCell>
+                    {showPrizeLevels ? <TableCell>奖项</TableCell> : <TableCell>排名</TableCell>}
                     <TableCell>参赛者</TableCell>
                     <TableCell>代表队/学校</TableCell>
-
+                    {!showPrizeLevels && <TableCell>是否录取</TableCell>}
                     <TableCell>最后得分</TableCell>
                     <TableCell>状态</TableCell>
                   </TableRow>
@@ -1303,9 +1324,10 @@ const ResultsPage = () => {
 
                     return (
                       <TableRow key={result._id}>
-                        <TableCell><Chip label={result.details?.isAbsent ? '弃权' : (result.awardLevel || '—')} color={result.details?.isAbsent ? 'default' : 'success'} size="small" variant={result.details?.isAbsent ? 'outlined' : 'filled'} /></TableCell>
+                        {showPrizeLevels ? <TableCell><Chip label={result.details?.isAbsent ? '弃权' : (result.awardLevel || '—')} color={result.details?.isAbsent ? 'default' : 'success'} size="small" variant={result.details?.isAbsent ? 'outlined' : 'filled'} /></TableCell> : <TableCell>{renderRank(result.dynamicRank)}</TableCell>}
                         <TableCell>{participantName}</TableCell>
                         <TableCell>{schoolName}</TableCell>
+                        {!showPrizeLevels && <TableCell><Chip label={result.awardLevel || (result.isAwarded ? '录取' : '未录取')} color={result.isAwarded ? 'success' : 'default'} size="small" variant={result.isAwarded ? 'filled' : 'outlined'} /></TableCell>}
                         <TableCell sx={{ fontWeight: 'bold', color: result.details?.isAbsent ? 'error.main' : 'primary.main', fontSize: '1.1rem' }}>
                           {result.details?.isAbsent ? '弃权' : (
                             result.finalScore !== undefined ? result.finalScore : (
@@ -1580,6 +1602,7 @@ const ResultsPage = () => {
                               <TableCell>{ranking.dynamicRank || index + 4}</TableCell>
                               <TableCell>{participantName}</TableCell>
                               <TableCell>{schoolName}</TableCell>
+                        {!showPrizeLevels && <TableCell><Chip label={result.awardLevel || (result.isAwarded ? '录取' : '未录取')} color={result.isAwarded ? 'success' : 'default'} size="small" variant={result.isAwarded ? 'filled' : 'outlined'} /></TableCell>}
                               <TableCell>{ranking.isAwarded ? '录取' : '未录取'}</TableCell>
                               <TableCell sx={{ fontWeight: 'bold', color: ranking.details?.isAbsent ? 'error.main' : 'inherit' }}>
                                 {ranking.details?.isAbsent ? '弃权' : (
