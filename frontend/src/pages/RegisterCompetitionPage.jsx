@@ -35,6 +35,29 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
+const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
+const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
+const createDivingPlan = () => ({ takeoffOrHeight: '', partnerName: '', partnerIdCard: '', dives: [{ actionCode: '', posture: '', difficulty: '' }] });
+const divingPlanSummary = (plan) => { if (!plan || typeof plan !== 'object') return ''; const dives = Array.isArray(plan.dives) ? plan.dives.length : 0; return (plan.partnerName ? '搭档：' + plan.partnerName + ' · ' : '') + '已填 ' + dives + ' 轮动作'; };
+
+const DivingPlanFields = ({ eventConfig, value, onChange, error }) => {
+  const plan = value && typeof value === 'object' ? value : createDivingPlan();
+  const paired = isSynchronizedDiving(eventConfig);
+  const update = (field, nextValue) => onChange({ ...plan, [field]: nextValue });
+  const updateDive = (index, field, nextValue) => onChange({ ...plan, dives: plan.dives.map((dive, diveIndex) => diveIndex === index ? { ...dive, [field]: nextValue } : dive) });
+  const addDive = () => onChange({ ...plan, dives: [...plan.dives, { actionCode: '', posture: '', difficulty: '' }] });
+  const removeDive = (index) => onChange({ ...plan, dives: plan.dives.length === 1 ? plan.dives : plan.dives.filter((_, diveIndex) => diveIndex !== index) });
+  return <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'primary.50' }}>
+    <Typography variant="subtitle2" fontWeight="bold">跳水动作计划</Typography>
+    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>报名时一次填写。动作、姿势和难度会随此比赛项目保存。</Typography>
+    {paired && <Grid container spacing={1} sx={{ mb: 1 }}><Grid item xs={12} sm={6}><TextField fullWidth required size="small" label="搭档姓名" value={plan.partnerName || ''} onChange={(event) => update('partnerName', event.target.value)} /></Grid><Grid item xs={12} sm={6}><TextField fullWidth required size="small" label="搭档身份证号码" value={plan.partnerIdCard || ''} onChange={(event) => update('partnerIdCard', event.target.value)} /></Grid></Grid>}
+    <TextField fullWidth size="small" label="起跳方式或高度" placeholder="例如：走板、三弹、1米、3米、5米" value={plan.takeoffOrHeight || ''} onChange={(event) => update('takeoffOrHeight', event.target.value)} sx={{ mb: 1.5 }} />
+    {plan.dives.map((dive, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.2fr 0.8fr 0.8fr auto' }, gap: 1, alignItems: 'center', mb: 1 }}><TextField required size="small" label={'第 ' + (index + 1) + ' 轮动作代码'} placeholder="例如：403" value={dive.actionCode || ''} onChange={(event) => updateDive(index, 'actionCode', event.target.value)} /><TextField required size="small" label="姿势" placeholder="A/B/C/D" value={dive.posture || ''} onChange={(event) => updateDive(index, 'posture', event.target.value.toUpperCase())} /><TextField required size="small" type="number" label="难度系数" inputProps={{ min: 0, step: 0.1 }} value={dive.difficulty ?? ''} onChange={(event) => updateDive(index, 'difficulty', event.target.value)} /><Button color="error" size="small" disabled={plan.dives.length === 1} onClick={() => removeDive(index)}>删除</Button></Box>)}
+    <Button size="small" variant="outlined" onClick={addDive}>添加一轮动作</Button>
+    {error && <FormHelperText error>{error}</FormHelperText>}
+  </Paper>;
+};
+
 
 const RegisterCompetitionPage = () => {
   const { id } = useParams();
@@ -572,6 +595,11 @@ const RegisterCompetitionPage = () => {
     }
   };
 
+  const handleDivingPlanChange = (eventName, plan) => {
+    setSelectedEventDetails((current) => ({ ...current, [eventName]: plan }));
+    if (formErrors['eventDetails.' + eventName]) setFormErrors((current) => ({ ...current, ['eventDetails.' + eventName]: '' }));
+  };
+
   const addEventSelection = () => setSelectedEvents(prev => [...prev, '']);
 
   const removeEventSelection = (index) => {
@@ -626,8 +654,13 @@ const RegisterCompetitionPage = () => {
     }
     selectedEvents.filter(Boolean).forEach(eventName => {
       const eventConfig = getAvailableEvents().find(event => event.name === eventName);
-      if (eventConfig?.registrationDetail?.required && !selectedEventDetails[eventName]?.trim()) {
-        errors[`eventDetails.${eventName}`] = eventConfig.registrationDetail.label || '请填写项目详情';
+      const detail = selectedEventDetails[eventName];
+      if (isDivingEvent(eventConfig)) {
+        const plan = detail && typeof detail === 'object' ? detail : null;
+        const hasValidDives = plan && plan.dives && plan.dives.length && plan.dives.every((dive) => String(dive.actionCode || '').trim() && String(dive.posture || '').trim() && String(dive.difficulty || '').trim() !== '' && Number.isFinite(Number(dive.difficulty)) && Number(dive.difficulty) >= 0);
+        if (!plan || !hasValidDives || (isSynchronizedDiving(eventConfig) && (!String(plan.partnerName || '').trim() || !String(plan.partnerIdCard || '').trim()))) errors['eventDetails.' + eventName] = isSynchronizedDiving(eventConfig) ? '请填写搭档资料及每轮动作、姿势、难度' : '请填写每轮动作、姿势、难度';
+      } else if (eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
+        errors['eventDetails.' + eventName] = eventConfig.registrationDetail.label || '请填写项目详情';
       }
     });
     
@@ -652,7 +685,8 @@ const RegisterCompetitionPage = () => {
         event,
         additionalInfo: {
           ...formData.additionalInfo,
-          eventDetail: selectedEventDetails[event] || '',
+          eventDetail: typeof selectedEventDetails[event] === 'string' ? selectedEventDetails[event] : '',
+          divingPlan: typeof selectedEventDetails[event] === 'object' ? selectedEventDetails[event] : undefined,
           eventDetailLabel: getAvailableEvents().find(item => item.name === event)?.registrationDetail?.label || ''
         }
       },
@@ -1002,7 +1036,7 @@ const RegisterCompetitionPage = () => {
                   </FormControl>
                   {selectedEvents.length > 1 && <Button color="error" onClick={() => removeEventSelection(index)}>删除</Button>}
                 </Box>
-                {selectedEvent && detailConfig?.required && (
+                {selectedEvent && !isDivingEvent(selectedEventConfig) && detailConfig?.required && (
                   <TextField
                     fullWidth
                     required
@@ -1016,6 +1050,7 @@ const RegisterCompetitionPage = () => {
                     inputProps={{ maxLength: detailConfig.maxLength || 100 }}
                   />
                 )}
+                {selectedEvent && isDivingEvent(selectedEventConfig) && <DivingPlanFields eventConfig={selectedEventConfig} value={selectedEventDetails[selectedEvent]} onChange={(plan) => handleDivingPlanChange(selectedEvent, plan)} error={formErrors['eventDetails.' + selectedEvent]} />}
               </Box>
               );
             })}
@@ -1124,7 +1159,7 @@ const RegisterCompetitionPage = () => {
             <Button variant="contained" onClick={addRegistrant} disabled={submitting} sx={{ mr: 2 }}>{'\u52a0\u5165\u62a5\u540d\u540d\u5355\u5e76\u7ee7\u7eed\u6dfb\u52a0'}</Button>
             <Typography variant="caption" color="text.secondary">{'\u6bcf\u4f4d\u8fd0\u52a8\u5458\u586b\u5199\u5b8c\u6210\u540e\u70b9\u51fb\u4e00\u6b21\uff1b\u5355\u4f4d\u3001\u9886\u961f\u548c\u6559\u7ec3\u4fe1\u606f\u4f1a\u4fdd\u7559\u3002'}</Typography>
           </Box>
-          {registrants.length > 0 && <Paper variant="outlined" sx={{ p: 2, mt: 2 }}><Typography variant="subtitle1" gutterBottom>{'\u62a5\u540d\u540d\u5355'} ({registrants.length})</Typography>{registrants.map((item, index) => <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography>{index + 1}. {item.data.name || item.data.teamName} {'\u00b7'} {item.data.gender || '-'} {'\u00b7'} {item.data.grade || '-'} {'\u00b7'} {item.data.event || '-'} {'\u00b7'} {item.photo ? '\u5df2\u4e0a\u4f20\u7167\u7247' : '\u672a\u4e0a\u4f20\u7167\u7247'}</Typography><Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>{'\u5220\u9664'}</Button></Box>)}</Paper>}
+          {registrants.length > 0 && <Paper variant="outlined" sx={{ p: 2, mt: 2 }}><Typography variant="subtitle1" gutterBottom>{'\u62a5\u540d\u540d\u5355'} ({registrants.length})</Typography>{registrants.map((item, index) => <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography>{index + 1}. {item.data.name || item.data.teamName} {'\u00b7'} {item.data.gender || '-'} {'\u00b7'} {item.data.grade || '-'} {'\u00b7'} {item.data.event || '-'} {'\u00b7'} {item.photo ? '\u5df2\u4e0a\u4f20\u7167\u7247' : '\u672a\u4e0a\u4f20\u7167\u7247'}{item.data.additionalInfo?.divingPlan ? ' · ' + divingPlanSummary(item.data.additionalInfo.divingPlan) : ''}</Typography><Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>{'\u5220\u9664'}</Button></Box>)}</Paper>}
 
         </Grid>
       </Grid>
@@ -1136,7 +1171,7 @@ const RegisterCompetitionPage = () => {
     <Box>
       <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
-      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{item.data.event || '-'} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
+      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{item.data.additionalInfo?.divingPlan ? divingPlanSummary(item.data.additionalInfo.divingPlan) + ' · ' : ''}{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{item.data.event || '-'} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
     </Box>
   );
 
