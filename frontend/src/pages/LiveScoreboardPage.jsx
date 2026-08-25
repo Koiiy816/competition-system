@@ -197,7 +197,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
         {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
       </Box>
-      <Box key={windowStart} sx={{ height: shouldAutoScroll ? { xs: '55vh', md: 640 } : 'auto', overflow: 'hidden', animation: shouldAutoScroll ? 'live-scoreboard-window-in .35s ease-out' : 'none', '@keyframes live-scoreboard-window-in': { from: { opacity: .55, transform: 'translateY(10px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>
+      <Box key={windowStart} sx={{ animation: shouldAutoScroll ? 'live-scoreboard-window-in .35s ease-out' : 'none', '@keyframes live-scoreboard-window-in': { from: { opacity: .55, transform: 'translateY(10px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>
       {visibleRows.map((result, index) => {
         const absoluteIndex = windowStart + index;
         const participant = result.participant || {};
