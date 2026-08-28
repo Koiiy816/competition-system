@@ -97,7 +97,10 @@ export default function LiveScoreboardPage() {
       const scored = courtSchedules.filter((schedule) => (resultMap.get(idOf(schedule)) || []).length > 0);
       const candidates = ongoing.length ? ongoing : scored;
       const currentSchedule = [...candidates].sort((a, b) => activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0];
-      const scoredRows = currentSchedule ? [...(resultMap.get(idOf(currentSchedule)) || [])] : [];
+      // 大屏仅展示裁判长/管理员已确认的正式成绩，普通裁判保存的待确认分数不会外显。
+      const scoredRows = currentSchedule
+        ? [...(resultMap.get(idOf(currentSchedule)) || [])].filter((result) => result.status === 'verified')
+        : [];
       scoredRows.sort((a, b) => (scoreOf(b.score) ?? -Infinity) - (scoreOf(a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
       return {
         court,

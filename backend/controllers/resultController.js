@@ -493,12 +493,14 @@ exports.submitScore = async (req, res, next) => {
     // 则把状态重置为 'pending'，这样普通裁判前端才会解除锁定。
     let newStatus = 'pending';
     if (isChiefOrAdmin) {
-      // 只有当所有该打分的格子都打了有效分，并且裁判长点击了保存，才变成 verified
-      const hasValidScore = newScores.some(s => s > 0);
-      if (hasValidScore || finalIsAbsent) {
+      // 只有全部有效裁判栏位都已录入，并且裁判长点击保存，才发布到大屏。
+      const allJudgeScoresEntered = newScores
+        .slice(0, judgeCount)
+        .every(score => Number(score) > 0);
+      if (allJudgeScoresEntered || finalIsAbsent) {
         newStatus = 'verified';
       } else {
-        // 全是0分，说明被裁判长退回或者重置了
+        // 分数尚未齐全，或被裁判长退回重打。
         newStatus = 'pending';
       }
     } else {
