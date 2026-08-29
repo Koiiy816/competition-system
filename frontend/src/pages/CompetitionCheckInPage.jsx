@@ -82,7 +82,10 @@ const CompetitionCheckInPage = () => {
         const response = await scheduleService.getSchedule(id, schedule._id);
         return response.data;
       }));
-      const rows = detailedSchedules.flatMap((schedule) => (schedule.participants || []).flatMap((participant) => {
+      // 只追踪已结束场次的漏检人员；尚未开始或正在进行的场次仍可正常检录，不列入补打名单。
+      const rows = detailedSchedules
+        .filter((schedule) => schedule.status === 'completed')
+        .flatMap((schedule) => (schedule.participants || []).flatMap((participant) => {
         if (participant.isVirtualTeam && Array.isArray(participant.teamMembers)) {
           return participant.teamMembers
             .filter((member) => normalizeCheckInStatus(member) === 'not_checked')
@@ -106,7 +109,7 @@ const CompetitionCheckInPage = () => {
           timeSlot: schedule.timeSlot,
           court: schedule.court
         }];
-      })).sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.court || '').localeCompare(String(b.court || '')) || String(a.scheduleName || '').localeCompare(String(b.scheduleName || ''), 'zh-CN'));
+        })).sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.court || '').localeCompare(String(b.court || '')) || String(a.scheduleName || '').localeCompare(String(b.scheduleName || ''), 'zh-CN'));
       setUncheckedRows(rows);
     } catch (err) {
       setUncheckedError(err.message || '加载未检录选手失败');
@@ -174,7 +177,7 @@ const CompetitionCheckInPage = () => {
       <Dialog open={uncheckedOpen} onClose={() => setUncheckedOpen(false)} maxWidth="lg" fullWidth>
         <DialogTitle>未检录选手</DialogTitle>
         <DialogContent dividers>
-          <Alert severity="info" sx={{ mb: 2 }}>这里列出所有场次仍未检录的选手。选手回来后，进入对应场次完成检录，即可补打。</Alert>
+          <Alert severity="info" sx={{ mb: 2 }}>这里只显示已结束场次中仍未检录的选手。选手回来后，进入对应场次完成检录，即可补打。</Alert>
           <TextField fullWidth label="搜索姓名、单位、项目、日期或场地" value={uncheckedSearch} onChange={(event) => setUncheckedSearch(event.target.value)} sx={{ mb: 2 }} />
           {uncheckedError && <Alert severity="error" sx={{ mb: 2 }}>{uncheckedError}</Alert>}
           {uncheckedLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box> : <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f5f5f5' }}><TableCell>姓名</TableCell><TableCell>单位</TableCell><TableCell>比赛项目</TableCell><TableCell>日期 / 时段</TableCell><TableCell>场地</TableCell></TableRow></TableHead><TableBody>{filteredUncheckedRows.map(row => <TableRow key={row.key}><TableCell>{row.name || '-'}</TableCell><TableCell>{row.schoolName || '-'}</TableCell><TableCell>{row.scheduleName || '-'}</TableCell><TableCell>{[row.scheduleDate, row.timeSlot].filter(Boolean).join(' ') || '-'}</TableCell><TableCell>{row.court || '-'}</TableCell></TableRow>)}{!filteredUncheckedRows.length && <TableRow><TableCell colSpan={5} align="center">目前没有未检录选手</TableCell></TableRow>}</TableBody></Table></TableContainer>}
