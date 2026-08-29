@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Container, CircularProgress, Alert, Chip,
@@ -73,7 +73,7 @@ const formatScheduleTime = (schedule) => {
   return schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : '';
 };
 
-const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus }) => {
+const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus }) => {
   const [scores, setScores] = useState(['', '', '', '', '']);
   const [deduction, setDeduction] = useState('');
   const [finalScore, setFinalScore] = useState(0);
@@ -167,7 +167,8 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, canEdit, onSave,
   // 如果分数是 0，说明被重置了，应该解锁
   const isLockedForMe = !isChiefOrAdmin && (myInitialScore > 0 || initialResult?.status === 'verified');
 
-  const disabled = isCompleted || !canEdit || isLockedForMe || isAbsent || isNotChecked || isMixed;
+  const isMakeupTarget = makeupParticipantId && String(participant._id) === String(makeupParticipantId);
+  const disabled = (isCompleted && !isMakeupTarget) || !canEdit || isLockedForMe || isAbsent || isNotChecked || isMixed;
   
   const renderIndices = Array.from({ length: judgeCount }, (_, index) => index);
 
@@ -379,6 +380,8 @@ const CompetitionScoreEntryPage = () => {
   const { id, scheduleId } = useParams(); // id is competitionId
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const makeupParticipantId = searchParams.get('makeup');
   
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState(null);
@@ -993,6 +996,7 @@ const CompetitionScoreEntryPage = () => {
                       participant={p}
                       initialResult={result}
                       scheduleStatus={schedule?.status}
+                      makeupParticipantId={makeupParticipantId}
                       canEdit={canEdit}
                       onSave={handleInlineSave}
                       onCheckIn={handleInlineCheckIn}

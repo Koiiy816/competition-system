@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -32,6 +32,8 @@ const normalizeCheckInStatus = (participant) => {
 const CompetitionCheckInPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const makeupMode = new URLSearchParams(location.search).get('makeup') === '1';
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
   const [error, setError] = useState('');
@@ -118,6 +120,12 @@ const CompetitionCheckInPage = () => {
     }
   };
 
+  const handleMakeup = async (row) => {
+    const [scheduleId, participantId] = String(row.key).split('_');
+    await scheduleService.updateParticipantCheckInStatus(id, participantId, 'checked', scheduleId);
+    navigate('/competitions/' + id + '/score/' + scheduleId + '?makeup=' + participantId);
+  };
+
   if (loading) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}><CircularProgress /></Box>;
   }
@@ -140,7 +148,7 @@ const CompetitionCheckInPage = () => {
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2, flexWrap: 'wrap', mb: 2 }}>
         <Box>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>参赛检录 - 场次选择</Typography>
+          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>{makeupMode ? '补打管理 - 未检录选手' : '参赛检录 - 场次选择'}</Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>请选择要进入检录的比赛。进入后可按场次对参赛者进行检录。</Typography>
         </Box>
         <Button variant="contained" color="warning" startIcon={<PersonSearchIcon />} onClick={handleOpenUnchecked}>
@@ -180,7 +188,7 @@ const CompetitionCheckInPage = () => {
           <Alert severity="info" sx={{ mb: 2 }}>这里只显示已结束场次中仍未检录的选手。选手回来后，进入对应场次完成检录，即可补打。</Alert>
           <TextField fullWidth label="搜索姓名、单位、项目、日期或场地" value={uncheckedSearch} onChange={(event) => setUncheckedSearch(event.target.value)} sx={{ mb: 2 }} />
           {uncheckedError && <Alert severity="error" sx={{ mb: 2 }}>{uncheckedError}</Alert>}
-          {uncheckedLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box> : <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f5f5f5' }}><TableCell>姓名</TableCell><TableCell>单位</TableCell><TableCell>比赛项目</TableCell><TableCell>日期 / 时段</TableCell><TableCell>场地</TableCell></TableRow></TableHead><TableBody>{filteredUncheckedRows.map(row => <TableRow key={row.key}><TableCell>{row.name || '-'}</TableCell><TableCell>{row.schoolName || '-'}</TableCell><TableCell>{row.scheduleName || '-'}</TableCell><TableCell>{[row.scheduleDate, row.timeSlot].filter(Boolean).join(' ') || '-'}</TableCell><TableCell>{row.court || '-'}</TableCell></TableRow>)}{!filteredUncheckedRows.length && <TableRow><TableCell colSpan={5} align="center">目前没有未检录选手</TableCell></TableRow>}</TableBody></Table></TableContainer>}
+          {uncheckedLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box> : <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow sx={{ bgcolor: '#f5f5f5' }}><TableCell>姓名</TableCell><TableCell>单位</TableCell><TableCell>比赛项目</TableCell><TableCell>日期 / 时段</TableCell><TableCell>场地</TableCell>{makeupMode && <TableCell>补打</TableCell>}</TableRow></TableHead><TableBody>{filteredUncheckedRows.map(row => <TableRow key={row.key}><TableCell>{row.name || '-'}</TableCell><TableCell>{row.schoolName || '-'}</TableCell><TableCell>{row.scheduleName || '-'}</TableCell><TableCell>{[row.scheduleDate, row.timeSlot].filter(Boolean).join(' ') || '-'}</TableCell><TableCell>{row.court || '-'}</TableCell>{makeupMode && <TableCell><Button size="small" variant="contained" onClick={() => handleMakeup(row)}>回来检录并补打</Button></TableCell>}</TableRow>)}{!filteredUncheckedRows.length && <TableRow><TableCell colSpan={5} align="center">目前没有未检录选手</TableCell></TableRow>}</TableBody></Table></TableContainer>}
         </DialogContent>
       </Dialog>
     </Container>

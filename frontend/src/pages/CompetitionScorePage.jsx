@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Paper, CircularProgress, Alert, Container, 
+  Box, Typography, Paper, Button, CircularProgress, Alert, Container, 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Pagination
 } from '@mui/material';
@@ -58,9 +58,10 @@ const CompetitionScorePage = () => {
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h4" gutterBottom component="h1" sx={{ mb: 4 }}>
-        比赛打分 - 场次选择
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" component="h1">比赛打分 - 场次选择</Typography>
+        <Button variant="contained" color="warning" onClick={() => navigate('/competitions/' + id + '/check-in?makeup=1')}>补打管理</Button>
+      </Box>
 
       {assigned.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
