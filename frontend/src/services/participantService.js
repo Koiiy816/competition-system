@@ -274,6 +274,15 @@ const participantService = {
     } catch (error) {
       throw error.response ? error.response.data : { message: '获取我的参赛记录失败' };
     }
+  },
+
+  saveDivingPlan: async (competitionId, participantId, plan) => {
+    try {
+      const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/diving-plan`, plan);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '保存跳水动作表失败' };
+    }
   }
 };
 

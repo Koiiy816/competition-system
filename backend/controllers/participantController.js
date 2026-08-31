@@ -1111,3 +1111,41 @@ exports.bulkDeleteParticipants = async (req, res, next) => {
     next(error);
   }
 };
+
+const normalizeDivingPlan = (plan) => {
+  if (!plan || !Array.isArray(plan.dives) || !plan.dives.length || plan.dives.length > 20) throw new Error('请填写 1 至 20 轮跳水动作');
+  return {
+    takeoffOrHeight: String(plan.takeoffOrHeight || '').trim().slice(0, 100),
+    dives: plan.dives.map((dive, index) => {
+      const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
+      if (!actionCode) throw new Error(`第 ${index + 1} 轮请填写动作代码`);
+      const difficulty = dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty);
+      if (difficulty !== undefined && (!Number.isFinite(difficulty) || difficulty <= 0 || difficulty > 10)) throw new Error(`第 ${index + 1} 轮难度系数无效`);
+      return { actionCode, posture: String(dive?.posture || '').trim().slice(0, 50), ...(difficulty === undefined ? {} : { difficulty }) };
+    })
+  };
+};
+
+exports.saveDivingPlan = async (req, res, next) => {
+  try {
+    const participant = await Participant.findOne({ _id: req.params.id, competition: req.params.competitionId, isVirtualTeam: { $ne: true } });
+    if (!participant) return res.status(404).json({ success: false, message: '未找到该报名记录' });
+    if (!/跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''))) return res.status(400).json({ success: false, message: '仅跳水项目可以补录动作表' });
+    if (participant.user?.toString() !== req.user.id && !req.user.roles?.some((role) => ['admin', 'chief_referee'].includes(role))) return res.status(403).json({ success: false, message: '没有权限补录该报名的动作表' });
+
+    let divingPlan;
+    try { divingPlan = normalizeDivingPlan(req.body); } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+    participant.additionalInfo = { ...(participant.additionalInfo || {}), divingPlan };
+    await participant.save();
+
+    const pairId = participant.additionalInfo?.divingPair?.pairId;
+    let syncedCount = 0;
+    if (pairId) {
+      const result = await Participant.updateMany({ competition: participant.competition, _id: { $ne: participant._id }, 'additionalInfo.divingPair.pairId': pairId, isVirtualTeam: { $ne: true } }, { $set: { 'additionalInfo.divingPlan': divingPlan, updatedAt: new Date() } });
+      syncedCount = result.modifiedCount || 0;
+    }
+    res.status(200).json({ success: true, message: syncedCount ? '动作表已保存并同步到搭档' : '动作表已保存', data: participant, syncedCount });
+  } catch (error) {
+    next(error);
+  }
+};

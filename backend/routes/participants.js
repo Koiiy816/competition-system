@@ -41,6 +41,13 @@ router.get(
   participantController.getMyParticipations
 );
 
+router.put(
+  '/:id/diving-plan',
+  auth,
+  authorize('admin', 'chief_referee', 'organization'),
+  participantController.saveDivingPlan
+);
+
 // @route   GET api/competitions/:competitionId/participants/export-photos
 router.get('/export-photos', auth, authorize('admin', 'chief_referee'), participantController.exportParticipantsWithPhotos);
 

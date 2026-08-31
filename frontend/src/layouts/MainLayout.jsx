@@ -99,6 +99,10 @@ const MainLayout = () => {
         pages.push({ title: '我的报名', path: '/my-registrations' });
       }
 
+      if (user.roles.includes('organization') || user.roles.includes('admin') || user.roles.includes('chief_referee')) {
+        pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
+      }
+
       // 7. 创建比赛 (管理员)
       if (user.roles.includes('admin')) {
         pages.push({ title: '创建比赛', path: '/admin/competitions/create' });

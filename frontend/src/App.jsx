@@ -41,6 +41,7 @@ import NotFoundPage from './pages/NotFoundPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
 import AdminPage from './pages/AdminPage';
 import TestPage from './pages/TestPage';
+import DivingActionPlanPage from './pages/DivingActionPlanPage';
 
 const theme = createTheme({
   palette: {
@@ -228,6 +229,14 @@ function App() {
             </ProtectedRoute>
           }>
             <Route index element={<ParticipantsPage myRegistrations={true} />} />
+          </Route>
+
+          <Route path="/diving-action-plans" element={
+            <ProtectedRoute allowedRoles={['organization', 'admin', 'chief_referee']}>
+              <MainLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<DivingActionPlanPage />} />
           </Route>
 
           {/* 受保护路由 - 需要特定角色 */}
