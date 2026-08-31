@@ -324,7 +324,6 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                       <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '70px 1fr 150px 150px' }, gap: 1, py: 0.75, borderTop: index ? 1 : 0, borderColor: 'divider' }}>
                         <Typography variant="body2">第 {index + 1} 个</Typography>
                         <Typography variant="body2">动作：{dive.actionCode || '-'}</Typography>
-                        <Typography variant="body2">姿势：{dive.posture || '-'}</Typography>
                         <Typography variant="body2">难度：{dive.difficulty ?? '待配置'}</Typography>
                       </Box>
                     ))

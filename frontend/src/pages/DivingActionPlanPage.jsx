@@ -11,7 +11,7 @@ const customDifficulties = {
 const getDifficulty = (participant, platformHeight, actionCode) => {
   const event = String(participant.event || '');
   const code = String(actionCode || '').trim().toUpperCase();
-  const custom = Object.entries(customDifficulties).find(([name]) => event.includes(name))?.[1]?.[code];
+  const custom = customDifficulties[code];
   if (custom !== undefined) return custom;
   if (/跳板/.test(event)) return divingDifficultyTable.board[/3米/.test(event) ? '3m' : '1m']?.[code];
   return undefined;
