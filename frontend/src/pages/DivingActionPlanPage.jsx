@@ -26,23 +26,6 @@ const getDifficulty = (participant, platformHeight, actionCode) => {
   return undefined;
 };
 
-const fixedActions = {
-  U8: {
-    '1米跳板': ['三弹冰棍B', '向后冰棍C', '三弹101B', '三弹101C'],
-    '3米跳台': ['向前冰棍B', '向后冰棍A', '向前站倒B', '后倒A'],
-    '陆上网': ['十弹A', '连续五弹C', '三弹B', '三弹C'],
-    '陆上板': ['五弹A', '五弹C', '三弹B', '向后立定C'],
-    '素质力量': ['肋木举腿5次', '立定跳远', '提膝跳10次', '引体控40秒']
-  },
-  U7: {
-    '1米跳板': ['三弹冰棍A', '三弹冰棍B', '向后冰棍A', '向后冰棍C'],
-    '1米跳台': ['向前冰棍B', '向前冰棍C', '向后冰棍A', '向后冰棍C'],
-    '陆上网': ['十弹A', '十弹C（最后一弹C）', '三弹B', '三弹C'],
-    '陆上板': ['五弹A', '三弹C', '向后立定A', '向后立定C'],
-    '素质力量': ['垫上两头起10次', '立定跳远', '提膝跳5次', '引体控20秒']
-  }
-};
-
 const groupKey = (participant) => {
   const group = String(participant.ageGroup || participant.grade || '');
   return ['U12', 'U10', 'U8', 'U7'].find((key) => group.includes(key)) || '';
@@ -51,11 +34,9 @@ const groupKey = (participant) => {
 const getRule = (participant) => {
   const group = groupKey(participant);
   const event = String(participant.event || '');
-  const fixed = fixedActions[group] && Object.entries(fixedActions[group]).find(([name]) => event.includes(name))?.[1];
   return {
     group,
     count: group === 'U12' ? 5 : 4,
-    fixed: fixed || null,
     platformHeight: group === 'U10' && /跳台/.test(event) ? '5m' : ''
   };
 };
@@ -64,7 +45,7 @@ const buildPlan = (participant, currentPlan) => {
   const rule = getRule(participant);
   const existing = Array.isArray(currentPlan?.dives) ? currentPlan.dives : [];
   const dives = Array.from({ length: rule.count }, (_, index) => ({
-    actionCode: rule.fixed?.[index] || existing[index]?.actionCode || '',
+    actionCode: existing[index]?.actionCode || '',
     difficulty: existing[index]?.difficulty ?? ''
   }));
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
@@ -137,7 +118,7 @@ export default function DivingActionPlanPage() {
       return <Paper key={item._id} sx={{ p: 2, mb: 2 }}>
         <Typography fontWeight="bold">{item.competition?.name} · {item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          {rule.fixed ? `规程规定动作，共 ${rule.count} 个（不可修改）` : `请填写 ${rule.count} 个自选动作`}
+          请填写 {rule.count} 个动作代码；已收录代码会自动带出难度系数，未收录代码可手动填写。
         </Typography>
         {item.additionalInfo?.divingPair && <Typography variant="body2" color="primary">双人 {item.additionalInfo.divingPair.pairCode} · 搭档：{item.additionalInfo.divingPair.partnerName}</Typography>}
         {showPlatformHeight && <TextField
@@ -157,7 +138,6 @@ export default function DivingActionPlanPage() {
             fullWidth
             size="small"
             required
-            disabled={Boolean(rule.fixed)}
             label={'第 ' + (index + 1) + ' 个动作'}
             value={dive.actionCode || ''}
             onChange={(event) => setPlans((current) => ({

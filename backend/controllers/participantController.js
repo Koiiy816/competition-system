@@ -1114,25 +1114,7 @@ exports.bulkDeleteParticipants = async (req, res, next) => {
 
 const getDivingPlanRule = (participant) => {
   const group = ['U12', 'U10', 'U8', 'U7'].find((key) => String(participant.ageGroup || participant.grade || '').includes(key)) || '';
-  const event = String(participant.event || '');
-  const fixed = {
-    U8: {
-      '1米跳板': ['三弹冰棍B', '向后冰棍C', '三弹101B', '三弹101C'],
-      '3米跳台': ['向前冰棍B', '向后冰棍A', '向前站倒B', '后倒A'],
-      '陆上网': ['十弹A', '连续五弹C', '三弹B', '三弹C'],
-      '陆上板': ['五弹A', '五弹C', '三弹B', '向后立定C'],
-      '素质力量': ['肋木举腿5次', '立定跳远', '提膝跳10次', '引体控40秒']
-    },
-    U7: {
-      '1米跳板': ['三弹冰棍A', '三弹冰棍B', '向后冰棍A', '向后冰棍C'],
-      '1米跳台': ['向前冰棍B', '向前冰棍C', '向后冰棍A', '向后冰棍C'],
-      '陆上网': ['十弹A', '十弹C（最后一弹C）', '三弹B', '三弹C'],
-      '陆上板': ['五弹A', '三弹C', '向后立定A', '向后立定C'],
-      '素质力量': ['垫上两头起10次', '立定跳远', '提膝跳5次', '引体控20秒']
-    }
-  };
-  const actions = fixed[group] && Object.entries(fixed[group]).find(([name]) => event.includes(name))?.[1];
-  return { count: group === 'U12' ? 5 : 4, actions };
+  return { count: group === 'U12' ? 5 : 4 };
 };
 
 const normalizeDivingPlan = (plan, participant) => {
@@ -1143,10 +1125,9 @@ const normalizeDivingPlan = (plan, participant) => {
     dives: plan.dives.map((dive, index) => {
       const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
       if (!actionCode) throw new Error(`第 ${index + 1} 个动作不能为空`);
-      if (rule.actions?.[index] && actionCode !== rule.actions[index]) throw new Error(`第 ${index + 1} 个动作必须为“${rule.actions[index]}”`);
       const difficulty = dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty);
       if (difficulty !== undefined && (!Number.isFinite(difficulty) || difficulty <= 0 || difficulty > 10)) throw new Error(`第 ${index + 1} 轮难度系数无效`);
-      return { actionCode, posture: String(dive?.posture || '').trim().slice(0, 50), ...(difficulty === undefined ? {} : { difficulty }) };
+      return { actionCode, ...(difficulty === undefined ? {} : { difficulty }) };
     })
   };
 };
