@@ -24,6 +24,53 @@ import competitionService from '../services/competitionService';
 import EventItem from '../components/competitions/EventItem';
 import { useAuth } from '../contexts/AuthContext';
 
+
+const DIVING_REGULATION_AGE_GROUPS = [
+  { name: 'U12组', description: '11-12岁' },
+  { name: 'U10组', description: '9-10岁' },
+  { name: 'U8组', description: '8岁' },
+  { name: 'U7组', description: '7岁及以下' }
+];
+
+const divingEvent = (name, ageGroups, genderRestriction, subcategory) => ({
+  name,
+  displayName: name,
+  category: '跳水',
+  subcategory,
+  ageGroups,
+  genderRestriction,
+  maxParticipants: 0,
+  isGroupEvent: false,
+  isCombinedEvent: false
+});
+
+const DIVING_REGULATION_EVENTS = [
+  divingEvent('男子1米跳板', ['U12组', 'U10组', 'U8组', 'U7组'], 'male', '跳板'),
+  divingEvent('女子1米跳板', ['U12组', 'U10组', 'U8组', 'U7组'], 'female', '跳板'),
+  divingEvent('男子3米跳板', ['U12组', 'U10组'], 'male', '跳板'),
+  divingEvent('女子3米跳板', ['U12组', 'U10组'], 'female', '跳板'),
+  divingEvent('男子跳台', ['U12组', 'U10组'], 'male', '跳台'),
+  divingEvent('女子跳台', ['U12组', 'U10组'], 'female', '跳台'),
+  divingEvent('男子3米跳板双人', ['U12组', 'U10组'], 'male', '跳板'),
+  divingEvent('女子3米跳板双人', ['U12组', 'U10组'], 'female', '跳板'),
+  divingEvent('男子跳台双人', ['U12组', 'U10组'], 'male', '跳台'),
+  divingEvent('女子跳台双人', ['U12组', 'U10组'], 'female', '跳台'),
+  divingEvent('男女混合跳台双人', ['U12组', 'U10组'], 'both', '跳台'),
+  divingEvent('男女混合3米跳板双人', ['U12组', 'U10组'], 'both', '跳板'),
+  divingEvent('男子3米跳台', ['U8组'], 'male', '跳台'),
+  divingEvent('女子3米跳台', ['U8组'], 'female', '跳台'),
+  divingEvent('男子陆上网', ['U8组', 'U7组'], 'male', '陆上'),
+  divingEvent('女子陆上网', ['U8组', 'U7组'], 'female', '陆上'),
+  divingEvent('男子陆上板', ['U8组', 'U7组'], 'male', '陆上'),
+  divingEvent('女子陆上板', ['U8组', 'U7组'], 'female', '陆上'),
+  divingEvent('男子素质力量', ['U8组', 'U7组'], 'male', '素质'),
+  divingEvent('女子素质力量', ['U8组', 'U7组'], 'female', '素质'),
+  divingEvent('男子1米跳台', ['U7组'], 'male', '跳台'),
+  divingEvent('女子1米跳台', ['U7组'], 'female', '跳台')
+];
+
+const isDivingCompetition = (type) => String(type || '').trim().includes('跳水');
+
 export default function CompetitionDetailsPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -245,6 +292,25 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
         }
       ]
     }));
+  };
+
+
+  const applyDivingRegulationTemplate = () => {
+    setCompetition(prev => {
+      const ageGroupNames = new Set((prev.ageGroups || []).map(group => group.name));
+      const eventNames = new Set((prev.events || []).map(event => event.name));
+      return {
+        ...prev,
+        ageGroups: [
+          ...(prev.ageGroups || []),
+          ...DIVING_REGULATION_AGE_GROUPS.filter(group => !ageGroupNames.has(group.name)).map(group => ({ ...group }))
+        ],
+        events: [
+          ...(prev.events || []),
+          ...DIVING_REGULATION_EVENTS.filter(event => !eventNames.has(event.name)).map(event => ({ ...event, ageGroups: [...event.ageGroups] }))
+        ]
+      };
+    });
   };
 
   const removeEvent = useCallback((index) => {
@@ -616,6 +682,12 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
               {activeStep === 1 && (
                 <Box>
                   <Typography variant="h6" sx={{ mb: 2 }}>比赛项目</Typography>
+
+                  {isDivingCompetition(competition.type) && (
+                    <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={applyDivingRegulationTemplate}>套用本次规程</Button>}>
+                      按本次规程建立 U12、U10、U8、U7 组项目；包含男女项目、双人及混合双人。只会补入缺少的组别和项目，不会覆盖你已填写的内容。
+                    </Alert>
+                  )}
                   {competition.events && competition.events.map((event, index) => (
                     <EventItem
                       key={index}
