@@ -277,7 +277,8 @@ const RegisterCompetitionPage = () => {
       
       return competition.events.filter(event => {
         // 检查年龄组别
-        const ageMatch = !event.ageGroups?.length || event.ageGroups.includes(selectedGroup);
+        const normalizeGroupName = (group) => String(typeof group === 'object' ? group?.name : group || '').trim();
+        const ageMatch = !event.ageGroups?.length || event.ageGroups.some((group) => normalizeGroupName(group) === normalizeGroupName(selectedGroup));
         
         // 检查性别限制
         let genderMatch = true;
