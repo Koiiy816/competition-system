@@ -321,7 +321,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                   <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>跳水动作表（报名单位补录）</Typography>
                   {Array.isArray(divingPlan?.dives) && divingPlan.dives.length ? (
                     divingPlan.dives.map((dive, index) => (
-                      <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '70px 1fr 150px 150px' }, gap: 1, py: 0.75, borderTop: index ? 1 : 0, borderColor: 'divider' }}>
+                      <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '70px 1fr 150px' }, gap: 1, py: 0.75, borderTop: index ? 1 : 0, borderColor: 'divider' }}>
                         <Typography variant="body2">第 {index + 1} 个</Typography>
                         <Typography variant="body2">动作：{dive.actionCode || '-'}</Typography>
                         <Typography variant="body2">难度：{dive.difficulty ?? '待配置'}</Typography>

@@ -5,8 +5,16 @@ import divingDifficultyTable from '../data/divingDifficultyTable';
 
 const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''));
 const customDifficulties = {
-  '陆上板': { '五弹A': 1, '三弹C': 1, '向后立定A': 1, '向后立定C': 1 },
-  '1米跳板': { '三弹冰棍A': 0.5, '三弹冰棍B': 0.7, '向后冰棍A': 0.6, '向后冰棍C': 0.7, '三弹101B': 1.3, '三弹101C': 1.2 }
+  '五弹A': 1,
+  '三弹C': 1,
+  '向后立定A': 1,
+  '向后立定C': 1,
+  '三弹冰棍A': 0.5,
+  '三弹冰棍B': 0.7,
+  '向后冰棍A': 0.6,
+  '向后冰棍C': 0.7,
+  '三弹101B': 1.3,
+  '三弹101C': 1.2
 };
 const getDifficulty = (participant, platformHeight, actionCode) => {
   const event = String(participant.event || '');
@@ -14,6 +22,7 @@ const getDifficulty = (participant, platformHeight, actionCode) => {
   const custom = customDifficulties[code];
   if (custom !== undefined) return custom;
   if (/跳板/.test(event)) return divingDifficultyTable.board[/3米/.test(event) ? '3m' : '1m']?.[code];
+  if (/跳台/.test(event) && platformHeight) return divingDifficultyTable.platform[platformHeight]?.[code];
   return undefined;
 };
 
