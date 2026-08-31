@@ -829,7 +829,7 @@ exports.getMyParticipations = async (req, res, next) => {
     let query = { user: req.user.id };
     
     // 如果URL中包含competitionId，则按比赛ID过滤
-    if (req.params.competitionId) {
+    if (req.params.competitionId && req.params.competitionId !== 'all') {
       query.competition = req.params.competitionId;
     }
 

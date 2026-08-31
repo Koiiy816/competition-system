@@ -18,7 +18,7 @@ export default function DivingActionPlanPage() {
       const rows = (response.data || []).filter(isDiving);
       setItems(rows);
       setPlans(Object.fromEntries(rows.map(row => [row._id, row.additionalInfo?.divingPlan || emptyPlan()])));
-    } catch (error) { setMessage(error.message || '无法读取报名资料'); }
+    } catch (error) { setMessage('加载失败：' + (error.message || '无法读取报名资料')); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
