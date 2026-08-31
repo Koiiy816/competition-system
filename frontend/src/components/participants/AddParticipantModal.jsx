@@ -23,6 +23,8 @@ import {
 import competitionService from '../../services/competitionService';
 import participantService from '../../services/participantService';
 
+const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
+
 const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData }) => {
   const [competition, setCompetition] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +52,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
 
   const [errors, setErrors] = useState({});
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const divingPlan = editData?.additionalInfo?.divingPlan;
+  const showDivingPlan = Boolean(editData && isDivingEntry(editData));
 
   const gradeOptions = [
     { value: 'U10组 (7-10岁)', label: 'U10组 (7-10岁)' },
@@ -311,6 +315,23 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </Grid>
             )}
 
+            {showDivingPlan && (
+              <Grid item xs={12}>
+                <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>跳水动作表（报名单位补录）</Typography>
+                  {Array.isArray(divingPlan?.dives) && divingPlan.dives.length ? (
+                    divingPlan.dives.map((dive, index) => (
+                      <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '70px 1fr 150px 150px' }, gap: 1, py: 0.75, borderTop: index ? 1 : 0, borderColor: 'divider' }}>
+                        <Typography variant="body2">第 {index + 1} 个</Typography>
+                        <Typography variant="body2">动作：{dive.actionCode || '-'}</Typography>
+                        <Typography variant="body2">姿势：{dive.posture || '-'}</Typography>
+                        <Typography variant="body2">难度：{dive.difficulty ?? '待配置'}</Typography>
+                      </Box>
+                    ))
+                  ) : <Alert severity="info">该选手尚未提交跳水动作表。</Alert>}
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
