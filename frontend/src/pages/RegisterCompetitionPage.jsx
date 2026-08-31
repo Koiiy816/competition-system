@@ -759,11 +759,7 @@ const RegisterCompetitionPage = () => {
     selectedEvents.filter(Boolean).forEach(eventName => {
       const eventConfig = getAvailableEvents().find(event => event.name === eventName);
       const detail = selectedEventDetails[eventName];
-      if (isDivingEvent(eventConfig)) {
-        const plan = detail && typeof detail === 'object' ? detail : null;
-        const hasValidDives = plan && plan.dives && plan.dives.length && plan.dives.every((dive) => String(dive.actionCode || '').trim() && String(dive.posture || '').trim() && String(dive.difficulty || '').trim() !== '' && Number.isFinite(Number(dive.difficulty)) && Number(dive.difficulty) >= 0);
-        if (!plan || !hasValidDives) errors['eventDetails.' + eventName] = '请填写每轮动作、姿势、难度';
-      } else if (eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
+      if (!isDivingEvent(eventConfig) && eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
         errors['eventDetails.' + eventName] = eventConfig.registrationDetail.label || '请填写项目详情';
       }
     });
@@ -1162,7 +1158,7 @@ const RegisterCompetitionPage = () => {
                     inputProps={{ maxLength: detailConfig.maxLength || 100 }}
                   />
                 )}
-                {selectedEvent && isDivingEvent(selectedEventConfig) && <DivingPlanFields eventConfig={selectedEventConfig} value={selectedEventDetails[selectedEvent]} onChange={(plan) => handleDivingPlanChange(selectedEvent, plan)} error={formErrors['eventDetails.' + selectedEvent]} />}
+                {selectedEvent && isDivingEvent(selectedEventConfig) && <Alert severity="info" sx={{ mt: 1 }}>本阶段只确认报名项目。动作代码、姿势和难度将在比赛前由单位通过“补录跳水动作表”统一填写。</Alert>}
               </Box>
               );
             })}
