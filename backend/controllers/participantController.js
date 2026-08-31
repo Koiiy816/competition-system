@@ -1112,13 +1112,38 @@ exports.bulkDeleteParticipants = async (req, res, next) => {
   }
 };
 
-const normalizeDivingPlan = (plan) => {
-  if (!plan || !Array.isArray(plan.dives) || !plan.dives.length || plan.dives.length > 20) throw new Error('请填写 1 至 20 轮跳水动作');
+const getDivingPlanRule = (participant) => {
+  const group = ['U12', 'U10', 'U8', 'U7'].find((key) => String(participant.ageGroup || participant.grade || '').includes(key)) || '';
+  const event = String(participant.event || '');
+  const fixed = {
+    U8: {
+      '1米跳板': ['三弹冰棍B', '向后冰棍C', '三弹101B', '三弹101C'],
+      '3米跳台': ['向前冰棍B', '向后冰棍A', '向前站倒B', '后倒A'],
+      '陆上网': ['十弹A', '连续五弹C', '三弹B', '三弹C'],
+      '陆上板': ['五弹A', '五弹C', '三弹B', '向后立定C'],
+      '素质力量': ['肋木举腿5次', '立定跳远', '提膝跳10次', '引体控40秒']
+    },
+    U7: {
+      '1米跳板': ['三弹冰棍A', '三弹冰棍B', '向后冰棍A', '向后冰棍C'],
+      '1米跳台': ['向前冰棍B', '向前冰棍C', '向后冰棍A', '向后冰棍C'],
+      '陆上网': ['十弹A', '十弹C（最后一弹C）', '三弹B', '三弹C'],
+      '陆上板': ['五弹A', '三弹C', '向后立定A', '向后立定C'],
+      '素质力量': ['垫上两头起10次', '立定跳远', '提膝跳5次', '引体控20秒']
+    }
+  };
+  const actions = fixed[group] && Object.entries(fixed[group]).find(([name]) => event.includes(name))?.[1];
+  return { count: group === 'U12' ? 5 : 4, actions };
+};
+
+const normalizeDivingPlan = (plan, participant) => {
+  const rule = getDivingPlanRule(participant);
+  if (!plan || !Array.isArray(plan.dives) || plan.dives.length !== rule.count) throw new Error(`请按规程填写 ${rule.count} 个动作`);
   return {
     takeoffOrHeight: String(plan.takeoffOrHeight || '').trim().slice(0, 100),
     dives: plan.dives.map((dive, index) => {
       const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
-      if (!actionCode) throw new Error(`第 ${index + 1} 轮请填写动作代码`);
+      if (!actionCode) throw new Error(`第 ${index + 1} 个动作不能为空`);
+      if (rule.actions?.[index] && actionCode !== rule.actions[index]) throw new Error(`第 ${index + 1} 个动作必须为“${rule.actions[index]}”`);
       const difficulty = dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty);
       if (difficulty !== undefined && (!Number.isFinite(difficulty) || difficulty <= 0 || difficulty > 10)) throw new Error(`第 ${index + 1} 轮难度系数无效`);
       return { actionCode, posture: String(dive?.posture || '').trim().slice(0, 50), ...(difficulty === undefined ? {} : { difficulty }) };
@@ -1134,7 +1159,7 @@ exports.saveDivingPlan = async (req, res, next) => {
     if (participant.user?.toString() !== req.user.id && !req.user.roles?.some((role) => ['admin', 'chief_referee'].includes(role))) return res.status(403).json({ success: false, message: '没有权限补录该报名的动作表' });
 
     let divingPlan;
-    try { divingPlan = normalizeDivingPlan(req.body); } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+    try { divingPlan = normalizeDivingPlan(req.body, participant); } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
     participant.additionalInfo = { ...(participant.additionalInfo || {}), divingPlan };
     await participant.save();
 

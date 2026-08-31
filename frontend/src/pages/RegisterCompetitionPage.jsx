@@ -36,6 +36,7 @@ import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
+const isDivingCompetition = (competition = {}) => /跳水|跳板|跳台/.test([competition.type, competition.name].filter(Boolean).join(' '));
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const createDivingPlan = () => ({ takeoffOrHeight: '', dives: [{ actionCode: '', posture: '', difficulty: '' }] });
 const divingPlanSummary = (plan, pair) => {
@@ -127,6 +128,7 @@ const RegisterCompetitionPage = () => {
   const [registrants, setRegistrants] = useState([]);
   const [selectedEvents, setSelectedEvents] = useState(['']);
   const [selectedEventDetails, setSelectedEventDetails] = useState({});
+  const photoSummary = (photo) => isDivingCompetition(competition) ? '' : ' · ' + (photo ? '已上传照片' : '未上传照片');
   
   // 表单数据
   const [formData, setFormData] = useState({
@@ -769,7 +771,7 @@ const RegisterCompetitionPage = () => {
     // 这里可以根据比赛的具体要求添加更多验证
     
     if (!isAdmin && !formData.idCard.trim()) errors.idCard = '\u8bf7\u586b\u5199\u8eab\u4efd\u8bc1\u53f7\u7801';
-    if (competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
+    if (!isDivingCompetition(competition) && competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -1254,7 +1256,7 @@ const RegisterCompetitionPage = () => {
           )}
           
           {/* 纸质版报名表上传 */}
-          {competition?.participantRequirements?.requirePhoto && (
+          {!isDivingCompetition(competition) && competition?.participantRequirements?.requirePhoto && (
           <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
             <Typography variant="subtitle1" gutterBottom>{'\u8fd0\u52a8\u5458\u7167\u7247'}{competition?.participantRequirements?.requirePhoto ? ' *' : ''}</Typography>
             <input accept="image/jpeg,image/png" style={{ display: 'none' }} id="participant-photo-upload" type="file" onChange={handlePhotoSelect} />
@@ -1275,7 +1277,7 @@ const RegisterCompetitionPage = () => {
                 {registrants.map((item, index) => (
                   <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
                     <Typography>
-                      {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {item.data.grade || '-'} · {item.data.event || '-'} · {item.photo ? '已上传照片' : '未上传照片'}
+                      {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {item.data.grade || '-'} · {item.data.event || '-'}{photoSummary(item.photo)}
                       {item.data.additionalInfo?.divingPlan ? ' · ' + divingPlanSummary(item.data.additionalInfo.divingPlan, item.data.additionalInfo?.divingPair) : ''}
                     </Typography>
                     <Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>删除</Button>
@@ -1305,7 +1307,7 @@ const RegisterCompetitionPage = () => {
                           </Box>
                         ) : (
                           <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                            <InputLabel id={'pair-label-' + entry.id}>选择搭档</InputLabel>
+                            <InputLabel shrink id={'pair-label-' + entry.id}>选择搭档</InputLabel>
                             <Select
                               labelId={'pair-label-' + entry.id}
                               value=""
