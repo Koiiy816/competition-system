@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, MenuItem, Paper, TextField, Typography } from '@mui/material';
 import participantService from '../services/participantService';
+import competitionService from '../services/competitionService';
+import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
 
 const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''));
@@ -51,6 +53,8 @@ const buildPlan = (participant, currentPlan) => {
 };
 
 export default function DivingActionPlanPage() {
+  const { user } = useAuth();
+  const canManageAll = user?.roles?.some((role) => ['admin', 'chief_referee'].includes(role));
   const [items, setItems] = useState([]);
   const [plans, setPlans] = useState({});
   const [loading, setLoading] = useState(true);
@@ -60,8 +64,18 @@ export default function DivingActionPlanPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const response = await participantService.getMyParticipations();
-      const rows = (response.data || []).filter(isDiving);
+      let rows;
+      if (canManageAll) {
+        const competitionResponse = await competitionService.getCompetitions({ limit: 100 });
+        const competitions = competitionResponse.data || [];
+        const participantResponses = await Promise.all(
+          competitions.map((competition) => participantService.getParticipants(competition._id, { limit: 10000 }))
+        );
+        rows = participantResponses.flatMap((response) => response.data || []).filter(isDiving);
+      } else {
+        const response = await participantService.getMyParticipations();
+        rows = (response.data || []).filter(isDiving);
+      }
       setItems(rows);
       setPlans(Object.fromEntries(rows.map((row) => [row._id, buildPlan(row, row.additionalInfo?.divingPlan)])));
     } catch (error) {
@@ -71,7 +85,7 @@ export default function DivingActionPlanPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [canManageAll]);
 
   const save = async (item) => {
     const rule = getRule(item);
@@ -109,6 +123,7 @@ export default function DivingActionPlanPage() {
   return <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
     <Typography variant="h4" gutterBottom>补录跳水动作表</Typography>
     <Typography color="text.secondary" sx={{ mb: 2 }}>先填写第一个动作代码；需要增加动作时点击“＋ 添加动作”。已收录的动作会自动带出难度，未收录动作可先保存，之后再补录难度。</Typography>
+    {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>管理员模式：这里显示所有比赛的跳水选手，可补填任意选手的动作和难度系数。</Alert>}
     {message && <Alert severity={message.severity} sx={{ mb: 2 }} onClose={() => setMessage(null)}>{message.text}</Alert>}
     {items.map((item) => {
       const rule = getRule(item);
