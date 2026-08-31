@@ -1114,12 +1114,12 @@ exports.bulkDeleteParticipants = async (req, res, next) => {
 
 const getDivingPlanRule = (participant) => {
   const group = ['U12', 'U10', 'U8', 'U7'].find((key) => String(participant.ageGroup || participant.grade || '').includes(key)) || '';
-  return { count: group === 'U12' ? 5 : 4 };
+  return { maxDives: 20 };
 };
 
 const normalizeDivingPlan = (plan, participant) => {
   const rule = getDivingPlanRule(participant);
-  if (!plan || !Array.isArray(plan.dives) || plan.dives.length !== rule.count) throw new Error(`请按规程填写 ${rule.count} 个动作`);
+  if (!plan || !Array.isArray(plan.dives) || !plan.dives.length || plan.dives.length > rule.maxDives) throw new Error(`请至少填写 1 个动作，最多 ${rule.maxDives} 个`);
   return {
     takeoffOrHeight: String(plan.takeoffOrHeight || '').trim().slice(0, 100),
     dives: plan.dives.map((dive, index) => {

@@ -36,7 +36,7 @@ const getRule = (participant) => {
   const event = String(participant.event || '');
   return {
     group,
-    count: group === 'U12' ? 5 : 4,
+    maxDives: 20,
     platformHeight: group === 'U10' && /跳台/.test(event) ? '5m' : ''
   };
 };
@@ -44,10 +44,9 @@ const getRule = (participant) => {
 const buildPlan = (participant, currentPlan) => {
   const rule = getRule(participant);
   const existing = Array.isArray(currentPlan?.dives) ? currentPlan.dives : [];
-  const dives = Array.from({ length: rule.count }, (_, index) => ({
-    actionCode: existing[index]?.actionCode || '',
-    difficulty: existing[index]?.difficulty ?? ''
-  }));
+  const dives = existing.length
+    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: dive?.difficulty ?? '' }))
+    : [{ actionCode: '', difficulty: '' }];
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
 };
 
@@ -83,13 +82,13 @@ export default function DivingActionPlanPage() {
       return;
     }
 
-    if (completedPlan.dives.some((dive) => !String(dive.actionCode || '').trim())) {
-      setMessage({ severity: 'error', text: `请完整填写 ${rule.count} 个动作。` });
+    if (!completedPlan.dives.length || completedPlan.dives.length > rule.maxDives) {
+      setMessage({ severity: 'error', text: `请至少填写 1 个动作，最多 ${rule.maxDives} 个。` });
       return;
     }
 
-    if (completedPlan.dives.some((dive) => !Number.isFinite(Number(dive.difficulty)) || Number(dive.difficulty) <= 0)) {
-      setMessage({ severity: 'error', text: '请为未匹配难度表的自订动作手动填写难度系数。' });
+    if (completedPlan.dives.some((dive) => !String(dive.actionCode || '').trim())) {
+      setMessage({ severity: 'error', text: '请填写每一个已添加动作的代码。' });
       return;
     }
 
@@ -109,7 +108,7 @@ export default function DivingActionPlanPage() {
 
   return <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
     <Typography variant="h4" gutterBottom>补录跳水动作表</Typography>
-    <Typography color="text.secondary" sx={{ mb: 2 }}>U12 组填写 5 个自选动作；U10、U8、U7 组填写 4 个动作。U8、U7 的规定动作已按竞赛规程锁定。</Typography>
+    <Typography color="text.secondary" sx={{ mb: 2 }}>先填写第一个动作代码；需要增加动作时点击“＋ 添加动作”。已收录的动作会自动带出难度，未收录动作可先保存，之后再补录难度。</Typography>
     {message && <Alert severity={message.severity} sx={{ mb: 2 }} onClose={() => setMessage(null)}>{message.text}</Alert>}
     {items.map((item) => {
       const rule = getRule(item);
@@ -118,7 +117,7 @@ export default function DivingActionPlanPage() {
       return <Paper key={item._id} sx={{ p: 2, mb: 2 }}>
         <Typography fontWeight="bold">{item.competition?.name} · {item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          请填写 {rule.count} 个动作代码；已收录代码会自动带出难度系数，未收录代码可手动填写。
+          动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。
         </Typography>
         {item.additionalInfo?.divingPair && <Typography variant="body2" color="primary">双人 {item.additionalInfo.divingPair.pairCode} · 搭档：{item.additionalInfo.divingPair.partnerName}</Typography>}
         {showPlatformHeight && <TextField
@@ -133,31 +132,37 @@ export default function DivingActionPlanPage() {
           {rule.group === 'U12' && <MenuItem value="7.5m">7.5 米跳台</MenuItem>}
           {rule.group === 'U12' && <MenuItem value="10m">10 米跳台</MenuItem>}
         </TextField>}
-        {plan.dives.map((dive, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 180px' }, gap: 1, mt: 1 }}>
-          <TextField
-            fullWidth
-            size="small"
-            required
-            label={'第 ' + (index + 1) + ' 个动作'}
-            value={dive.actionCode || ''}
-            onChange={(event) => setPlans((current) => ({
+        {plan.dives.map((dive, index) => {
+          const matchedDifficulty = getDifficulty(item, plan.takeoffOrHeight, dive.actionCode);
+          return <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 180px auto' }, gap: 1, mt: 1 }}>
+            <TextField
+              fullWidth size="small" required label={'第 ' + (index + 1) + ' 个动作'} value={dive.actionCode || ''}
+              onChange={(event) => setPlans((current) => ({
+                ...current,
+                [item._id]: { ...plan, dives: plan.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, actionCode: event.target.value.toUpperCase() } : entry) }
+              }))}
+            />
+            <TextField
+              size="small" type="number" label={matchedDifficulty === undefined ? '难度系数（可选）' : '官方难度系数'}
+              value={matchedDifficulty ?? dive.difficulty ?? ''} disabled={matchedDifficulty !== undefined}
+              inputProps={{ min: 0.1, max: 10, step: 0.1 }}
+              helperText={matchedDifficulty === undefined ? '未收录动作可暂不填写，之后可补录' : '已自动带出'}
+              onChange={(event) => setPlans((current) => ({
+                ...current,
+                [item._id]: { ...plan, dives: plan.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, difficulty: event.target.value } : entry) }
+              }))}
+            />
+            <Button color="error" disabled={plan.dives.length === 1} onClick={() => setPlans((current) => ({
               ...current,
-              [item._id]: { ...plan, dives: plan.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, actionCode: event.target.value.toUpperCase() } : entry) }
-            }))}
-          />
-          <TextField
-            size="small"
-            required
-            type="number"
-            label={getDifficulty(item, plan.takeoffOrHeight, dive.actionCode) === undefined ? '自订难度系数' : '官方难度系数'}
-            value={getDifficulty(item, plan.takeoffOrHeight, dive.actionCode) ?? dive.difficulty ?? ''}
-            disabled={getDifficulty(item, plan.takeoffOrHeight, dive.actionCode) !== undefined}
-            inputProps={{ min: 0.1, max: 10, step: 0.1 }}
-            helperText={getDifficulty(item, plan.takeoffOrHeight, dive.actionCode) === undefined ? '未收录动作可手动填写' : '已自动带出'}
-            onChange={(event) => setPlans((current) => ({ ...current, [item._id]: { ...plan, dives: plan.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, difficulty: event.target.value } : entry) } }))}
-          />
-        </Box>)}
-        <Box sx={{ mt: 1.5 }}>
+              [item._id]: { ...plan, dives: plan.dives.filter((_, diveIndex) => diveIndex !== index) }
+            }))}>删除</Button>
+          </Box>;
+        })}
+        <Box sx={{ mt: 1.5, display: 'flex', gap: 1 }}>
+          <Button variant="outlined" disabled={plan.dives.length >= rule.maxDives} onClick={() => setPlans((current) => ({
+            ...current,
+            [item._id]: { ...plan, dives: [...plan.dives, { actionCode: '', difficulty: '' }] }
+          }))}>＋ 添加动作</Button>
           <Button variant="contained" disabled={savingId === item._id} onClick={() => save(item)}>
             {savingId === item._id ? '保存中…' : '保存动作表'}
           </Button>
