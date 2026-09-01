@@ -620,7 +620,7 @@ exports.getSchedule = async (req, res, next) => {
       .populate('competition', 'name startDate endDate location')
       .populate({
         path: 'participants',
-        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy',
+        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo',
         populate: [
           {
             path: 'user',
@@ -628,7 +628,7 @@ exports.getSchedule = async (req, res, next) => {
           },
           {
             path: 'teamMembers',
-            select: 'name schoolName isCheckedIn checkedInAt checkedInBy'
+            select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo'
           },
           {
             path: 'checkedInBy',
@@ -663,11 +663,7 @@ function normalizeDivingScheduleConfig(body) {
   if (body.scoringMode !== 'diving') return;
   body.judgeCount = 5;
   body.divingFormat = body.divingFormat === 'synchronized' ? 'synchronized' : 'individual';
-  if (!Array.isArray(body.divingProgram) || !body.divingProgram.length) {
-    const error = new Error('跳水项目至少需要设置一轮动作');
-    error.statusCode = 400;
-    throw error;
-  }
+  body.divingProgram = Array.isArray(body.divingProgram) ? body.divingProgram : [];
   body.divingProgram = body.divingProgram.map((action) => {
     const actionName = String((action && action.actionName) || '').trim();
     const difficulty = Number(action && action.difficulty);

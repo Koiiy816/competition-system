@@ -786,12 +786,18 @@ const RegisterCompetitionPage = () => {
       data: {
         ...formData,
         event,
-        additionalInfo: {
-          ...formData.additionalInfo,
-          eventDetail: typeof selectedEventDetails[event] === 'string' ? selectedEventDetails[event] : '',
-          divingPlan: typeof selectedEventDetails[event] === 'object' ? selectedEventDetails[event] : undefined,
-          eventDetailLabel: getAvailableEvents().find(item => item.name === event)?.registrationDetail?.label || ''
-        }
+        additionalInfo: (() => {
+          const eventConfig = getAvailableEvents().find(item => item.name === event);
+          const eventDetail = selectedEventDetails[event];
+          return {
+            ...formData.additionalInfo,
+            eventDetail: typeof eventDetail === 'string' ? eventDetail : '',
+            ...(isDivingEvent(eventConfig) && eventDetail && typeof eventDetail === 'object' && Array.isArray(eventDetail.dives)
+              ? { divingPlan: eventDetail }
+              : {}),
+            eventDetailLabel: eventConfig?.registrationDetail?.label || ''
+          };
+        })()
       },
       photo: selectedPhoto
     }))]);

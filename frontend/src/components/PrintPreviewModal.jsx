@@ -26,8 +26,9 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
 
   React.useEffect(() => {
     if (open && schedule) {
-      setTitle(`${schedule.name || '比赛'} - 成绩公告`);
-      setSubTitle(`日期：${schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} | 地点：${schedule.location || ''}`);
+      const isDiving = schedule.scoringMode === 'diving';
+      setTitle(isDiving ? (schedule.competitionName || '比赛') : `${schedule.name || '比赛'} - 成绩公告`);
+      setSubTitle(isDiving ? `成绩记录 | ${schedule.name || ''}` : `日期：${schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} | 地点：${schedule.location || ''}`);
     }
   }, [open, schedule]);
   
@@ -109,6 +110,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
 
   const participantRanks = getRanks(sortedParticipants);
   const completedParticipantCount = sortedParticipants.filter((participant) => !getScoreData(participant).isAbsent).length;
+  const isDivingPrint = schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives));
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
     const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
@@ -129,6 +131,50 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     : [];
   const showAwardColumn = !isTeamRanking && !showPrizeLevels && sortedParticipants.some(p => results[p.__printKey || p._id || p]?.isAwarded !== undefined);
   const emptyColSpan = 2 + (isTeamRanking ? 0 : 1) + (showCombinedColumns ? combinedSubEvents.length : 0) + (showAwardColumn ? 1 : 0) + 1;
+
+  const renderDivingRecordTable = () => (
+    <TableContainer sx={{ border: '1px solid black' }}>
+      <Table size="small" sx={{
+        '& .MuiTableCell-root': {
+          borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 4px',
+          color: 'black', fontSize: '11px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap'
+        },
+        '& .MuiTableCell-root:last-child': { borderRight: 'none' }
+      }}>
+        <TableHead>
+          <TableRow>
+            {['姓名', '单位', '动作', '难度系数', '1号', '2号', '3号', '4号', '5号', '实得分', '总分', '名次', '备注'].map((header) => (
+              <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header}</TableCell>
+            ))}
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {sortedParticipants.map((participant, participantIndex) => {
+            const result = results[participant.__printKey || participant._id || participant];
+            const dives = result?.details?.dives || [];
+            const { finalScore, isAbsent } = getScoreData(participant);
+            const rowCount = Math.max(dives.length, 1);
+            const name = participant?.isVirtualTeam ? (participant.teamMembers || []).map((member) => member.name).join('、') : (participant?.teamName || participant?.name || participant?.user?.name || '未知');
+            const unit = participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-';
+            const rowDives = dives.length ? dives : [null];
+            return rowDives.map((dive, diveIndex) => (
+              <TableRow key={`${participant._id || participantIndex}-${diveIndex}`}>
+                {diveIndex === 0 && <TableCell rowSpan={rowCount} align="center">{name}</TableCell>}
+                {diveIndex === 0 && <TableCell rowSpan={rowCount} align="center">{unit}</TableCell>}
+                <TableCell align="center">{dive?.actionName || dive?.actionCode || (isAbsent ? '弃权' : '-')}</TableCell>
+                <TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
+                {[0, 1, 2, 3, 4].map((judgeIndex) => <TableCell key={judgeIndex} align="center">{dive?.scores?.[judgeIndex] ?? '-'}</TableCell>)}
+                <TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell>
+                {diveIndex === 0 && <TableCell rowSpan={rowCount} align="center">{isAbsent ? '弃权' : Number(finalScore || 0).toFixed(2)}</TableCell>}
+                {diveIndex === 0 && <TableCell rowSpan={rowCount} align="center">{participantRanks[participantIndex]}</TableCell>}
+                {diveIndex === 0 && <TableCell rowSpan={rowCount} align="center" />}
+              </TableRow>
+            ));
+          })}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
 
   return (
     <Dialog 
@@ -278,7 +324,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           }}
         >
           {/* Header */}
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box sx={{ textAlign: 'center', mb: isDivingPrint ? 1.5 : 4 }}>
             <Typography variant="h4" sx={{ 
               fontWeight: 'bold', 
               mb: 1, 
@@ -287,16 +333,18 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
               lineHeight: 1.5,
               fontFamily: isTeamRanking ? '"SimHei", "黑体", sans-serif' : 'inherit' // 标题使用黑体更显正式
             }}>
-              {/* 如果包含连字符或较长，允许它自然换行 */}
-              {title}
+              {isDivingPrint ? schedule.competitionName : title}
             </Typography>
-            <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>
-              {subTitle}
-            </Typography>
+            {isDivingPrint ? <>
+              <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>成绩记录</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontFamily: '"SimSun", "宋体", serif' }}>
+                <span>跳水</span><span>{schedule.name}</span><span>{schedule.location || ''}</span>
+              </Box>
+            </> : <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>{subTitle}</Typography>}
           </Box>
 
           {/* Table */}
-          <TableContainer sx={{ border: '2px solid black' }}>
+          {isDivingPrint ? renderDivingRecordTable() : <TableContainer sx={{ border: '2px solid black' }}>
             <Table size="medium" sx={{ 
               '& .MuiTableCell-root': { 
                 borderBottom: '1px solid black',
@@ -396,7 +444,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                 )}
               </TableBody>
             </Table>
-          </TableContainer>
+          </TableContainer>}
 
           {/* Footer Signature Area */}
           <Box sx={{ mt: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>

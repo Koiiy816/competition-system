@@ -619,7 +619,7 @@ const CompetitionScheduleManagementPage = () => {
       return;
     }
     if (newProject.scoringMode === 'diving') {
-      if (!newProject.divingProgram.length || newProject.divingProgram.some((dive) => !String(dive.actionName || '').trim() || !Number.isFinite(Number(dive.difficulty)) || Number(dive.difficulty) < 0)) { setError('请完整填写至少一轮跳水动作和难度系数'); return; }
+      if (newProject.divingProgram.some((dive) => !String(dive.actionName || '').trim() || !Number.isFinite(Number(dive.difficulty)) || Number(dive.difficulty) < 0)) { setError('已添加的跳水动作需完整填写动作名称和难度系数'); return; }
       if (newProject.divingFormat === 'synchronized' && newProject.eventMode !== 'collective') { setError('双人跳水请使用“集体项目（按代表单位成队）”，每次选择同一单位的两名选手建立一队'); return; }
     }
 
