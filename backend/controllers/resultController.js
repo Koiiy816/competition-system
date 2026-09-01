@@ -114,6 +114,25 @@ function calculateDivingDiveScore(scores, difficulty, format = 'individual') {
     : (total - Math.max(...scores) - Math.min(...scores)) * factor;
   return Math.round(rawScore * 100) / 100;
 }
+
+function getParticipantDivingPlan(participant) {
+  if (!participant) return null;
+  if (participant.additionalInfo?.divingPlan) return participant.additionalInfo.divingPlan;
+  const teamMemberPlan = (participant.teamMembers || []).find((member) => member.additionalInfo?.divingPlan)?.additionalInfo?.divingPlan;
+  return teamMemberPlan || null;
+}
+
+function buildDivingProgramFromParticipant(participant) {
+  const plan = getParticipantDivingPlan(participant);
+  if (!plan || !Array.isArray(plan.dives) || !plan.dives.length) return [];
+  return plan.dives.map((dive) => ({
+    actionCode: String(dive?.actionCode || '').trim(),
+    actionName: String(dive?.actionName || dive?.posture || dive?.actionCode || '').trim(),
+    difficulty: dive?.difficulty,
+    source: 'participant-plan'
+  }));
+}
+
 exports.submitDivingScore = async (req, res, next) => {
   const { scheduleId, participantId, dives } = req.body;
   if (!scheduleId || !participantId || !Array.isArray(dives)) return res.status(400).json({ success: false, message: 'Missing diving score data' });
@@ -124,13 +143,14 @@ exports.submitDivingScore = async (req, res, next) => {
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
     if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
-    const program = schedule.divingProgram || [];
-    if (!program.length || dives.length !== program.length) return res.status(400).json({ success: false, message: 'Diving program and submitted actions do not match' });
-    const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus');
+    const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus additionalInfo');
     if (!participant) return res.status(404).json({ success: false, message: 'Participant not found' });
     if (schedule.divingFormat === 'synchronized' && (!participant.isVirtualTeam || (participant.teamMembers || []).length !== 2)) {
       return res.status(400).json({ success: false, message: 'Synchronized diving requires a two-member team' });
     }
+    const program = buildDivingProgramFromParticipant(participant);
+    if (!program.length) return res.status(400).json({ success: false, message: 'Participant diving action plan is missing' });
+    if (dives.length !== program.length) return res.status(400).json({ success: false, message: 'Participant diving action plan and submitted scores do not match' });
     const checkInStatus = getEffectiveCheckInStatus(participant);
     if (checkInStatus !== 'checked' && checkInStatus !== 'absent') return res.status(400).json({ success: false, message: 'Participant must be checked in before scoring' });
     const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');

@@ -130,6 +130,59 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     const admissionCount = getScheduleRuleSummary();
     const showAwardColumn = sortedResults.some((_, i) => ranks[i] !== '-' && ranks[i] <= admissionCount);
 
+    const isDivingResults = sortedResults.some((result) => result.details?.scoringType === 'diving' && Array.isArray(result.details?.dives));
+    if (isDivingResults) {
+      const maxRounds = Math.max(1, ...sortedResults.map((result) => result.details?.dives?.length || 0));
+      const eventDate = competition.startDate ? new Date(competition.startDate).toLocaleDateString() : '';
+      return (
+        <Box sx={{ mb: 4, pageBreakInside: 'avoid' }} key={scheduleName}>
+          <Box sx={{ textAlign: 'center', mb: 1.5, fontFamily: '"SimSun", "宋体", serif' }}>
+            <Typography sx={{ fontSize: '18px', fontWeight: 'bold', fontFamily: '"SimHei", "黑体", sans-serif' }}>{competition.name}</Typography>
+            <Typography sx={{ fontSize: '16px', fontWeight: 'bold', fontFamily: '"SimHei", "黑体", sans-serif' }}>成绩公告</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', mt: 0.5 }}><span>跳水</span><span>{eventDate}</span></Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}><span>{scheduleName}</span><span>{competition.location || ''}</span></Box>
+          </Box>
+          <TableContainer sx={{ border: '1px solid black' }}>
+            <Table size="small" sx={{
+              '& .MuiTableCell-root': {
+                borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 5px',
+                color: 'black', fontSize: '11px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap'
+              },
+              '& .MuiTableCell-root:last-child': { borderRight: 'none' }
+            }}>
+              <TableHead><TableRow>
+                <TableCell align="center" sx={{ fontWeight: 'bold' }}>姓名</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 'bold' }}>单位</TableCell>
+                {Array.from({ length: maxRounds }, (_, index) => <TableCell key={index} align="center" sx={{ fontWeight: 'bold' }}>第{index + 1}轮</TableCell>)}
+                <TableCell align="center" sx={{ fontWeight: 'bold' }}>总分</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 'bold' }}>名次</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 'bold' }}>备注</TableCell>
+              </TableRow></TableHead>
+              <TableBody>{sortedResults.map((result, index) => {
+                const participant = result.participant;
+                const dives = result.details?.dives || [];
+                const isAbsent = result.details?.isAbsent || false;
+                const name = participant?.isVirtualTeam ? (participant.teamMembers || []).map((member) => member.name).join('、') : (participant?.teamName || participant?.name || participant?.user?.name || '未知');
+                const unit = participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-';
+                const score = typeof result.finalScore === 'number' ? result.finalScore : (typeof result.score === 'number' ? result.score : parseFloat(result.score) || 0);
+                return <React.Fragment key={result._id || index}>
+                  <TableRow>
+                    <TableCell rowSpan={2} align="center">{name}</TableCell>
+                    <TableCell rowSpan={2} align="center">{unit}</TableCell>
+                    {Array.from({ length: maxRounds }, (_, diveIndex) => <TableCell key={diveIndex} align="center">{dives[diveIndex]?.actionName || dives[diveIndex]?.actionCode || '-'}</TableCell>)}
+                    <TableCell rowSpan={2} align="center">{isAbsent ? '弃权' : score.toFixed(2)}</TableCell>
+                    <TableCell rowSpan={2} align="center">{ranks[index]}</TableCell>
+                    <TableCell rowSpan={2} align="center" />
+                  </TableRow>
+                  <TableRow>{Array.from({ length: maxRounds }, (_, diveIndex) => <TableCell key={diveIndex} align="center">{dives[diveIndex] ? Number(dives[diveIndex].score || 0).toFixed(2) : '-'}</TableCell>)}</TableRow>
+                </React.Fragment>;
+              })}</TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      );
+    }
+
     return (
       <Box sx={{ mb: 6, pageBreakInside: 'avoid' }} key={scheduleName}>
         <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2, textAlign: 'center', fontFamily: '"SimHei", "黑体", sans-serif' }}>

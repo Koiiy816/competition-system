@@ -1143,7 +1143,9 @@ const ResultsPage = () => {
       name: scheduleName,
       startTime: selectedCompetition?.startDate || new Date(),
       location: selectedCompetition?.location || '',
-      showPrizeLevels: isPercentAwardCompetition(selectedCompetition)
+      showPrizeLevels: isPercentAwardCompetition(selectedCompetition),
+      competitionName: selectedCompetition?.name || '比赛',
+      scoringMode: scheduleResults.some((result) => result.details?.scoringType === 'diving') ? 'diving' : 'standard'
     };
 
     const vParticipants = [];
