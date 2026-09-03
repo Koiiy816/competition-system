@@ -118,6 +118,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [editingParticipant, setEditingParticipant] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, success: 0, fail: 0 });
+  const [importFailureDetails, setImportFailureDetails] = useState([]);
   
   // 过滤和搜索状态
   const [filters, setFilters] = useState({
@@ -648,6 +649,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     setImporting(true);
     setError('');
     setSuccessMessage('');
+    setImportFailureDetails([]);
     
     try {
       const data = await file.arrayBuffer();
@@ -667,6 +669,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       let successCount = 0;
       let failCount = 0;
       const importedDivingPairs = new Map();
+      const failureDetails = [];
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
@@ -759,6 +762,12 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         } catch (err) {
           console.error(`第 ${i + 2} 行导入失败:`, err);
           failCount++;
+          failureDetails.push({
+            row: i + 2,
+            name: row[0] || '未填写姓名',
+            event: row[4] || '未填写项目',
+            reason: err.message || err?.response?.data?.message || '服务器未返回具体原因'
+          });
         }
       }
 
@@ -777,6 +786,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       }
 
       setImportProgress(prev => ({ ...prev, success: successCount, fail: failCount }));
+      setImportFailureDetails(failureDetails);
       setSuccessMessage(`批量导入完成！成功: ${successCount} 条，失败: ${failCount} 条。${importedDivingPairs.size ? ` 双人自动配对: ${importedDivingPairs.size - pairFailCount} 组成功${pairFailCount ? `，${pairFailCount} 组需在编辑页面处理` : ''}。` : ''}`);
             // 刷新列表
       await refreshLists();
@@ -785,8 +795,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       setError(err.message || '读取 Excel 文件失败');
     } finally {
       setImporting(false);
-      setImportDialogOpen(false);
-      // 重置 input
+     // 重置 input
       event.target.value = null;
     }
   };
@@ -2173,6 +2182,16 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                 sx={{ mt: 2 }}
               >
                 导入完成。成功: {importProgress.success} 条，失败: {importProgress.fail} 条。
+              </Alert>
+            )}
+            {importFailureDetails.length > 0 && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>以下报名未导入：</Typography>
+                {importFailureDetails.map((item) => (
+                  <Typography key={`${item.row}-${item.name}-${item.event}`} variant="body2">
+                    第 {item.row} 行：{item.name}／{item.event}。原因：{item.reason}
+                  </Typography>
+                ))}
               </Alert>
             )}
           </Box>

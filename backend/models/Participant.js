@@ -208,15 +208,26 @@ ParticipantSchema.pre('save', function(next) {
 
 // 生成唯一的参赛编号
 ParticipantSchema.pre('save', async function(next) {
-  if (!this.registrationNumber) {
-    // 生成格式为 CP-年份-6位随机数字 的参赛编号
-    const year = new Date().getFullYear();
-    const randomNum = Math.floor(100000 + Math.random() * 900000); // 6位随机数字
-    this.registrationNumber = `CP-${year}-${randomNum}`;
+  try {
+    if (!this.registrationNumber) {
+      // 批量导入可能在短时间内创建大量记录；先查询并重试，避免随机编号撞库导致单条报名失败。
+      const year = new Date().getFullYear();
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const randomNum = Math.floor(100000 + Math.random() * 900000);
+        const candidate = `CP-${year}-${randomNum}`;
+        const exists = await this.constructor.exists({ registrationNumber: candidate });
+        if (!exists) {
+          this.registrationNumber = candidate;
+          return next();
+        }
+      }
+      return next(new Error('无法生成未占用的参赛编号，请重试'));
+    }
+    return next();
+  } catch (error) {
+    return next(error);
   }
-  next();
 });
-
 // 虚拟字段：成绩
 ParticipantSchema.virtual('results', {
   ref: 'Result',
