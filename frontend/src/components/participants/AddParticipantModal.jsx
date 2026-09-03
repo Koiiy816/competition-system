@@ -52,8 +52,23 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
 
   const [errors, setErrors] = useState({});
   const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [pairCandidates, setPairCandidates] = useState([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState('');
+  const [pairLoading, setPairLoading] = useState(false);
   const divingPlan = editData?.additionalInfo?.divingPlan;
   const showDivingPlan = Boolean(editData && isDivingEntry(editData));
+  const isDoubleDivingEvent = Boolean(editData && /双人|雙人/.test(String(formData.event || '')));
+  const existingPairId = editData?.additionalInfo?.divingPair?.pairId || '';
+  const availablePairCandidates = pairCandidates.filter((candidate) => {
+    if (!isDoubleDivingEvent || candidate._id === editData?._id || candidate.event !== formData.event) return false;
+    const sameUnit = String(candidate.schoolName || '').trim() === String(formData.schoolName || '').trim();
+    const sameGroup = String(candidate.ageGroup || candidate.grade || '').trim() === String(formData.grade || '').trim();
+    const mixed = /混合|混雙/.test(String(formData.event || ''));
+    const genderMatch = mixed ? candidate.gender !== formData.gender : candidate.gender === formData.gender;
+    const pair = candidate.additionalInfo?.divingPair;
+    const available = !pair || pair.partnerId === editData?._id || (existingPairId && pair.pairId === existingPairId);
+    return sameUnit && sameGroup && genderMatch && available;
+  });
 
   const gradeOptions = [
     { value: 'U10组 (7-10岁)', label: 'U10组 (7-10岁)' },
@@ -139,6 +154,33 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
        setErrors({});
        setSelectedPhoto(null);
     }
+  }, [open, competitionId, editData]);
+  useEffect(() => {
+    if (!open || !editData || !competitionId) {
+      setPairCandidates([]);
+      setSelectedPartnerId('');
+      return;
+    }
+    let active = true;
+    const loadPairCandidates = async () => {
+      setPairLoading(true);
+      try {
+        const result = await participantService.getParticipants(competitionId, { page: 1, limit: 1000 });
+        const entries = result?.data || [];
+        if (!active) return;
+        setPairCandidates(entries);
+        const savedPartnerId = editData.additionalInfo?.divingPair?.partnerId;
+        const savedPairId = editData.additionalInfo?.divingPair?.pairId;
+        const reciprocal = entries.find((entry) => entry._id !== editData._id && (entry._id === savedPartnerId || (savedPairId && entry.additionalInfo?.divingPair?.pairId === savedPairId)));
+        setSelectedPartnerId(reciprocal?._id || '');
+      } catch (err) {
+        if (active) setError('获取双人跳水可选搭档失败: ' + (err.message || '未知错误'));
+      } finally {
+        if (active) setPairLoading(false);
+      }
+    };
+    loadPairCandidates();
+    return () => { active = false; };
   }, [open, competitionId, editData]);
 
   // 处理输入改变
@@ -288,6 +330,13 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       } else {
          await participantService.addParticipant(competitionId, submitData);
       }
+      const wasPaired = Boolean(editData?.additionalInfo?.divingPair?.pairId);
+      if (editData && wasPaired && !isDoubleDivingEvent) {
+        await participantService.setDivingPair(competitionId, editData._id, '');
+      }
+      if (editData && isDoubleDivingEvent) {
+        await participantService.setDivingPair(competitionId, editData._id, selectedPartnerId);
+      }
       onSuccess();
     } catch (err) {
       setError(err.message || (editData ? '更新参赛者失败' : '添加参赛者失败'));
@@ -431,7 +480,35 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </FormControl>
             </Grid>
 
-            <Grid item xs={12}>
+            {editData && isDoubleDivingEvent && (
+              <Grid item xs={12}>
+                <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2, bgcolor: 'primary.50' }}>
+                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>双人跳水搭档</Typography>
+                  <FormControl fullWidth disabled={pairLoading}>
+                    <InputLabel>选择搭档</InputLabel>
+                    <Select
+                      value={selectedPartnerId}
+                      label="选择搭档"
+                      onChange={(event) => setSelectedPartnerId(event.target.value)}
+                    >
+                      <MenuItem value=""><em>暂不配对／解除现有搭档</em></MenuItem>
+                      {availablePairCandidates.map((candidate) => (
+                        <MenuItem key={candidate._id} value={candidate._id}>
+                          {candidate.name}（{candidate.gender === 'female' ? '女' : '男'}）
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    <FormHelperText>
+                      仅显示同单位、同组别、同双人项目且性别规则匹配的报名记录。保存后双方会自动互相配对并共用动作表。
+                    </FormHelperText>
+                  </FormControl>
+                  {!pairLoading && availablePairCandidates.length === 0 && (
+                    <Alert severity="info" sx={{ mt: 1 }}>暂时没有符合条件的搭档；请先导入或添加另一位相同双人项目的选手。</Alert>
+                  )}
+                </Box>
+              </Grid>
+            )}
+<Grid item xs={12}>
               <TextField
                 fullWidth
                 label="人工项目分组（可选）"

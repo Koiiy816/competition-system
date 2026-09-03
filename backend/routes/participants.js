@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router({ mergeParams: true });
 const { check } = require('express-validator');
 const participantController = require('../controllers/participantController');
+const divingPairController = require('../controllers/divingPairController');
 const { protect: auth, authorize } = require('../middlewares/authMiddleware');
 const { uploadParticipantPhoto } = require('../middlewares/uploadMiddleware');
 
@@ -46,6 +47,13 @@ router.put(
   auth,
   authorize('admin', 'chief_referee', 'organization'),
   participantController.saveDivingPlan
+);
+
+router.put(
+  '/:id/diving-pair',
+  auth,
+  authorize('admin', 'chief_referee'),
+  divingPairController.setDivingPair
 );
 
 // @route   GET api/competitions/:competitionId/participants/export-photos

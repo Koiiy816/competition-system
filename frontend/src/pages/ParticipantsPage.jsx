@@ -666,6 +666,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       
       let successCount = 0;
       let failCount = 0;
+      const importedDivingPairs = new Map();
 
       for (let i = 0; i < dataRows.length; i++) {
         const row = dataRows[i];
@@ -745,18 +746,39 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             participantData.birthDate = new Date(`${year}-${month}-${day}`);
           }
 
-          await participantService.addParticipant(filters.competitionId, participantData);
+          const created = await participantService.addParticipant(filters.competitionId, participantData);
           successCount++;
+          const pairCode = String(row[9] || '').trim();
+          const createdId = created?.data?._id;
+          if (pairCode && createdId && /双人|雙人/.test(String(participantData.event || ''))) {
+            const pairKey = [participantData.ageGroup, participantData.event, participantData.schoolName, pairCode].map(value => String(value || '').trim()).join('|');
+            const members = importedDivingPairs.get(pairKey) || [];
+            members.push(createdId);
+            importedDivingPairs.set(pairKey, members);
+          }
         } catch (err) {
           console.error(`第 ${i + 2} 行导入失败:`, err);
           failCount++;
         }
       }
 
+      let pairFailCount = 0;
+      for (const memberIds of importedDivingPairs.values()) {
+        if (memberIds.length !== 2) {
+          pairFailCount++;
+          continue;
+        }
+        try {
+          await participantService.setDivingPair(filters.competitionId, memberIds[0], memberIds[1]);
+        } catch (pairError) {
+          console.error('双人跳水自动配对失败:', pairError);
+          pairFailCount++;
+        }
+      }
+
       setImportProgress(prev => ({ ...prev, success: successCount, fail: failCount }));
-      setSuccessMessage(`批量导入完成！成功: ${successCount} 条，失败: ${failCount} 条。`);
-      
-      // 刷新列表
+      setSuccessMessage(`批量导入完成！成功: ${successCount} 条，失败: ${failCount} 条。${importedDivingPairs.size ? ` 双人自动配对: ${importedDivingPairs.size - pairFailCount} 组成功${pairFailCount ? `，${pairFailCount} 组需在编辑页面处理` : ''}。` : ''}`);
+            // 刷新列表
       await refreshLists();
 
     } catch (err) {

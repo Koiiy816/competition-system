@@ -96,6 +96,15 @@ const participantService = {
     }
   },
 
+  setDivingPair: async (competitionId, participantId, partnerId) => {
+    try {
+      const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/diving-pair`, { partnerId });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '设置双人跳水搭档失败' };
+    }
+  },
+
   /**
    * 审核通过参赛者
    * @param {string} competitionId - 比赛ID
