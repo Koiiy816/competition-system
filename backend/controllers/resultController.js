@@ -104,6 +104,28 @@ function normalizeDivingScores(scores) {
 function isCompleteDivingScore(scores) {
   return scores.length === 5 && scores.every((score) => Number.isFinite(score));
 }
+const normalizeParticipantDivingProgram = (participant) => {
+  const plan = participant?.additionalInfo?.divingPlan;
+  if (!Array.isArray(plan?.dives) || !plan.dives.length) return null;
+  const program = plan.dives.map((dive, index) => {
+    const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
+    const difficulty = Number(dive?.difficulty);
+    if (!actionCode || !Number.isFinite(difficulty) || difficulty <= 0) return null;
+    return { actionCode, actionName: actionCode, difficulty, source: 'registration-plan', round: index + 1 };
+  });
+  return program.every(Boolean) ? program : null;
+};
+
+const sameDivingProgram = (left, right) => JSON.stringify(left?.map(({ actionCode, difficulty }) => ({ actionCode, difficulty }))) === JSON.stringify(right?.map(({ actionCode, difficulty }) => ({ actionCode, difficulty })));
+
+const getScoringDivingProgram = (participant, format) => {
+  if (format !== 'synchronized') return normalizeParticipantDivingProgram(participant);
+  const members = participant?.teamMembers || [];
+  if (members.length !== 2) return null;
+  const first = normalizeParticipantDivingProgram(members[0]);
+  const second = normalizeParticipantDivingProgram(members[1]);
+  return first && second && sameDivingProgram(first, second) ? first : null;
+};
 function calculateDivingDiveScore(scores, difficulty, format = 'individual') {
   if (!isCompleteDivingScore(scores)) return 0;
   const factor = Number(difficulty);
@@ -113,24 +135,6 @@ function calculateDivingDiveScore(scores, difficulty, format = 'individual') {
     ? total * factor * 0.6
     : (total - Math.max(...scores) - Math.min(...scores)) * factor;
   return Math.round(rawScore * 100) / 100;
-}
-
-function getParticipantDivingPlan(participant) {
-  if (!participant) return null;
-  if (participant.additionalInfo?.divingPlan) return participant.additionalInfo.divingPlan;
-  const teamMemberPlan = (participant.teamMembers || []).find((member) => member.additionalInfo?.divingPlan)?.additionalInfo?.divingPlan;
-  return teamMemberPlan || null;
-}
-
-function buildDivingProgramFromParticipant(participant) {
-  const plan = getParticipantDivingPlan(participant);
-  if (!plan || !Array.isArray(plan.dives) || !plan.dives.length) return [];
-  return plan.dives.map((dive) => ({
-    actionCode: String(dive?.actionCode || '').trim(),
-    actionName: String(dive?.actionName || dive?.posture || dive?.actionCode || '').trim(),
-    difficulty: dive?.difficulty,
-    source: 'participant-plan'
-  }));
 }
 
 exports.submitDivingScore = async (req, res, next) => {
@@ -145,12 +149,12 @@ exports.submitDivingScore = async (req, res, next) => {
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
     const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus additionalInfo');
     if (!participant) return res.status(404).json({ success: false, message: 'Participant not found' });
+    const program = getScoringDivingProgram(participant, schedule.divingFormat || 'individual');
+    if (!program) return res.status(400).json({ success: false, message: schedule.divingFormat === 'synchronized' ? '双人跳水须由两位搭档补录完全一致的动作与难度后才能打分' : '请先补录完整的跳水动作表（动作代码和难度系数）' });
+    if (dives.length !== program.length) return res.status(400).json({ success: false, message: '提交的打分轮次与补录动作表不一致' });
     if (schedule.divingFormat === 'synchronized' && (!participant.isVirtualTeam || (participant.teamMembers || []).length !== 2)) {
       return res.status(400).json({ success: false, message: 'Synchronized diving requires a two-member team' });
     }
-    const program = buildDivingProgramFromParticipant(participant);
-    if (!program.length) return res.status(400).json({ success: false, message: 'Participant diving action plan is missing' });
-    if (dives.length !== program.length) return res.status(400).json({ success: false, message: 'Participant diving action plan and submitted scores do not match' });
     const checkInStatus = getEffectiveCheckInStatus(participant);
     if (checkInStatus !== 'checked' && checkInStatus !== 'absent') return res.status(400).json({ success: false, message: 'Participant must be checked in before scoring' });
     const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');

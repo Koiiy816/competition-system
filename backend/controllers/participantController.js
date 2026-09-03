@@ -13,6 +13,33 @@ const participantRosterKey = (participant) => {
   return `record:${participant._id}`;
 };
 
+const normalizeRuleValue = (value) => String(typeof value === 'object' ? value?.name : value || '').trim();
+const isSynchronizedDivingEventName = (value) => /双人|雙人/.test(String(value || ''));
+
+// 报名页面的筛选只是辅助；这里才是所有报名入口都必须遵守的最终规则。
+const validateRegistrationAgainstCompetition = ({ competition, body }) => {
+  if (competition.registrationDeadline && new Date() > new Date(competition.registrationDeadline)) return '报名已截止，只有管理员或主裁判可以代为修改报名资料';
+  if (!Array.isArray(competition.events) || !competition.events.length) return null;
+  const event = competition.events.find((item) => normalizeRuleValue(item.name) === normalizeRuleValue(body.event));
+  if (!event) return '所选比赛项目不属于本次比赛，请重新选择';
+  const submittedGroup = normalizeRuleValue(body.ageGroup || body.grade);
+  const allowedGroups = (event.ageGroups || []).map(normalizeRuleValue).filter(Boolean);
+  if (allowedGroups.length && !allowedGroups.includes(submittedGroup)) return `项目“${event.displayName || event.name}”不接受“${submittedGroup || '未填写'}”报名`;
+  if (event.genderRestriction && event.genderRestriction !== 'both' && event.genderRestriction !== body.gender) return `项目“${event.displayName || event.name}”不接受当前性别报名`;
+  return null;
+};
+
+const validateDivingPairPayload = (body) => {
+  const pair = body.additionalInfo?.divingPair;
+  const synchronized = isSynchronizedDivingEventName(body.event);
+  if (!synchronized && pair) return '只有双人跳水项目可以提交双人配对资料';
+  if (!synchronized) return null;
+  if (!pair || !String(pair.pairId || '').trim() || !String(pair.pairKey || '').trim() || !String(pair.partnerName || '').trim()) return '双人跳水必须先完成配对后才能报名';
+  const mixed = /混合|混雙/.test(String(body.event || ''));
+  if ((mixed && pair.type !== 'mixed') || (!mixed && pair.type !== 'same-gender')) return '双人跳水配对类型与报名项目不一致';
+  if (String(pair.event || '').trim() !== String(body.event || '').trim() || String(pair.ageGroup || '').trim() !== String(body.ageGroup || body.grade || '').trim()) return '双人跳水配对资料与当前项目或年龄组不一致';
+  return null;
+};
 /**
  * @desc    获取所有参赛者
  * @route   GET /api/competitions/:competitionId/participants
@@ -363,6 +390,28 @@ exports.createParticipant = async (req, res, next) => {
     if (competition.participantRequirements?.requirePhoto && !req.body.photoFile && !isAdmin) {
       return res.status(400).json({ success: false, message: '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247' });
     }
+    // 管理员和主裁可在截止后代报名；单位提交必须同时满足截止时间、项目、年龄组及性别限制。
+    if (!isAdmin) {
+      const registrationError = validateRegistrationAgainstCompetition({ competition, body: req.body });
+      if (registrationError) return res.status(400).json({ success: false, message: registrationError });
+      const pairError = validateDivingPairPayload(req.body);
+      if (pairError) return res.status(400).json({ success: false, message: pairError });
+      const pair = req.body.additionalInfo?.divingPair;
+      if (pair) {
+        const existingPairMembers = await Participant.find({ competition: competition._id, 'additionalInfo.divingPair.pairId': pair.pairId, isVirtualTeam: { $ne: true } }).select('name schoolName grade ageGroup gender event additionalInfo.divingPair');
+        if (existingPairMembers.length > 1) return res.status(400).json({ success: false, message: '该双人跳水配对已满，不能重复报名' });
+        if (existingPairMembers.length === 1) {
+          const partner = existingPairMembers[0];
+          const existingPair = partner.additionalInfo?.divingPair || {};
+          const sameUnit = normalizeRuleValue(partner.schoolName) === normalizeRuleValue(req.body.schoolName);
+          const sameGroup = normalizeRuleValue(partner.ageGroup || partner.grade) === normalizeRuleValue(req.body.ageGroup || req.body.grade);
+          const sameEvent = normalizeRuleValue(partner.event) === normalizeRuleValue(req.body.event);
+          const gendersMatch = /混合|混雙/.test(String(req.body.event || '')) ? partner.gender !== req.body.gender : partner.gender === req.body.gender;
+          if (!sameUnit || !sameGroup || !sameEvent || !gendersMatch || existingPair.partnerName !== req.body.name || pair.partnerName !== partner.name) return res.status(400).json({ success: false, message: '双人跳水搭档资料不匹配；须为同单位、同组别、同项目且符合性别规则的双方互相配对' });
+        }
+      }
+    }
+
     // 检查比赛状态
     if (!isAdmin && competition.status !== 'registration') {
       return res.status(400).json({

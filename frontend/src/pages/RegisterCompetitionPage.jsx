@@ -38,33 +38,6 @@ import participantService from '../services/participantService';
 const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
 const isDivingCompetition = (competition = {}) => /跳水|跳板|跳台/.test([competition.type, competition.name].filter(Boolean).join(' '));
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
-const createDivingPlan = () => ({ takeoffOrHeight: '', dives: [{ actionCode: '', posture: '', difficulty: '' }] });
-const divingPlanSummary = (plan, pair) => {
-  if (!plan || typeof plan !== 'object') return '';
-  const dives = Array.isArray(plan.dives) ? plan.dives.length : 0;
-  const pairText = pair ? '双人' + pair.pairCode + ' · 搭档：' + pair.partnerName + ' · ' : '';
-  return pairText + '已填 ' + dives + ' 轮动作';
-};
-
-const DivingPlanFields = ({ eventConfig, value, onChange, error }) => {
-  const plan = value && typeof value === 'object' ? value : createDivingPlan();
-  const paired = isSynchronizedDiving(eventConfig);
-  const update = (field, nextValue) => onChange({ ...plan, [field]: nextValue });
-  const updateDive = (index, field, nextValue) => onChange({ ...plan, dives: plan.dives.map((dive, diveIndex) => diveIndex === index ? { ...dive, [field]: nextValue } : dive) });
-  const addDive = () => onChange({ ...plan, dives: [...plan.dives, { actionCode: '', posture: '', difficulty: '' }] });
-  const removeDive = (index) => onChange({ ...plan, dives: plan.dives.length === 1 ? plan.dives : plan.dives.filter((_, diveIndex) => diveIndex !== index) });
-  return <Paper variant="outlined" sx={{ mt: 1.5, p: 2, bgcolor: 'primary.50' }}>
-    <Typography variant="subtitle2" fontWeight="bold">跳水动作计划</Typography>
-    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>报名时一次填写。动作、姿势和难度会随此比赛项目保存。</Typography>
-    {paired && <Alert severity="info" sx={{ mb: 1.5 }}>先将两位运动员加入报名名单；随后在下方“跳水双人配对”中选择搭档。系统会自动生成 A、B、C 配对编号并写入双方资料。</Alert>}
-    <TextField fullWidth size="small" label="起跳方式或高度" placeholder="例如：走板、三弹、1米、3米、5米" value={plan.takeoffOrHeight || ''} onChange={(event) => update('takeoffOrHeight', event.target.value)} sx={{ mb: 1.5 }} />
-    {plan.dives.map((dive, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.2fr 0.8fr 0.8fr auto' }, gap: 1, alignItems: 'center', mb: 1 }}><TextField required size="small" label={'第 ' + (index + 1) + ' 轮动作代码'} placeholder="例如：403" value={dive.actionCode || ''} onChange={(event) => updateDive(index, 'actionCode', event.target.value)} /><TextField required size="small" label="姿势" placeholder="A/B/C/D" value={dive.posture || ''} onChange={(event) => updateDive(index, 'posture', event.target.value.toUpperCase())} /><TextField required size="small" type="number" label="难度系数" inputProps={{ min: 0, step: 0.1 }} value={dive.difficulty ?? ''} onChange={(event) => updateDive(index, 'difficulty', event.target.value)} /><Button color="error" size="small" disabled={plan.dives.length === 1} onClick={() => removeDive(index)}>删除</Button></Box>)}
-    <Button size="small" variant="outlined" onClick={addDive}>添加一轮动作</Button>
-    {error && <FormHelperText error>{error}</FormHelperText>}
-  </Paper>;
-};
-
-
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const getPairKind = (event = {}, gender = '') => isMixedDivingEvent(event) ? 'mixed' : (gender || 'same-gender');
 const getPairCode = (index) => {
@@ -615,12 +588,6 @@ const RegisterCompetitionPage = () => {
     }
   };
 
-  const handleDivingPlanChange = (eventName, plan) => {
-    setSelectedEventDetails((current) => ({ ...current, [eventName]: plan }));
-    if (formErrors['eventDetails.' + eventName]) setFormErrors((current) => ({ ...current, ['eventDetails.' + eventName]: '' }));
-  };
-
-
   const getEventConfigByName = (eventName) => (competition?.events || []).find(event => event.name === eventName) || getAvailableEvents().find(event => event.name === eventName);
   const getRegistrantUnit = (entry) => String(entry?.data?.schoolName || entry?.data?.teamName || '').trim();
   const isDivingPairRegistrant = (entry) => {
@@ -771,7 +738,7 @@ const RegisterCompetitionPage = () => {
     // 这里可以根据比赛的具体要求添加更多验证
     
     if (!isAdmin && !formData.idCard.trim()) errors.idCard = '\u8bf7\u586b\u5199\u8eab\u4efd\u8bc1\u53f7\u7801';
-    if (!isDivingCompetition(competition) && competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
+    if (competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -792,9 +759,6 @@ const RegisterCompetitionPage = () => {
           return {
             ...formData.additionalInfo,
             eventDetail: typeof eventDetail === 'string' ? eventDetail : '',
-            ...(isDivingEvent(eventConfig) && eventDetail && typeof eventDetail === 'object' && Array.isArray(eventDetail.dives)
-              ? { divingPlan: eventDetail }
-              : {}),
             eventDetailLabel: eventConfig?.registrationDetail?.label || ''
           };
         })()
@@ -1262,7 +1226,7 @@ const RegisterCompetitionPage = () => {
           )}
           
           {/* 纸质版报名表上传 */}
-          {!isDivingCompetition(competition) && competition?.participantRequirements?.requirePhoto && (
+          {competition?.participantRequirements?.requirePhoto && (
           <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
             <Typography variant="subtitle1" gutterBottom>{'\u8fd0\u52a8\u5458\u7167\u7247'}{competition?.participantRequirements?.requirePhoto ? ' *' : ''}</Typography>
             <input accept="image/jpeg,image/png" style={{ display: 'none' }} id="participant-photo-upload" type="file" onChange={handlePhotoSelect} />
@@ -1349,7 +1313,7 @@ const RegisterCompetitionPage = () => {
     <Box>
       <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
-      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{item.data.additionalInfo?.divingPlan ? divingPlanSummary(item.data.additionalInfo.divingPlan, item.data.additionalInfo?.divingPair) + ' · ' : ''}{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{item.data.event || '-'} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
+      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{item.data.event || '-'} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
     </Box>
   );
 

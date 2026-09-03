@@ -716,7 +716,7 @@ exports.createSchedule = async (req, res, next) => {
         competition: req.params.competitionId,
         isVirtualTeam: { $ne: true },
         status: { $ne: 'rejected' }
-      }).select('_id name schoolName isTest');
+      }).select('_id name schoolName grade ageGroup gender event additionalInfo isTest');
       const memberById = new Map(members.map((member) => [member._id.toString(), member]));
       const virtualTeamIds = [];
 
@@ -724,7 +724,12 @@ exports.createSchedule = async (req, res, next) => {
         const memberIds = [...new Set((rawTeam?.memberIds || []).map(String))].filter((memberId) => memberById.has(memberId));
         if (!memberIds.length) continue;
         const teamMembers = memberIds.map((memberId) => memberById.get(memberId));
-        const teamName = String(rawTeam?.teamName || teamMembers[0]?.schoolName || '未填写代表单位').trim();
+        if (req.body.scoringMode === 'diving' && req.body.divingFormat === 'synchronized') {
+          const pairIds = new Set(teamMembers.map((member) => member.additionalInfo?.divingPair?.pairId).filter(Boolean));
+          const [first, second] = teamMembers;
+          const reciprocal = first?.additionalInfo?.divingPair?.partnerName === second?.name && second?.additionalInfo?.divingPair?.partnerName === first?.name;
+          if (pairIds.size !== 1 || !reciprocal || first?.event !== second?.event || String(first?.ageGroup || first?.grade) !== String(second?.ageGroup || second?.grade) || String(first?.schoolName || '') !== String(second?.schoolName || '')) return res.status(400).json({ success: false, message: '双人跳水赛程必须使用已完成互相配对、同单位、同组别、同项目的两位报名运动员' });
+        }        const teamName = String(rawTeam?.teamName || teamMembers[0]?.schoolName || '未填写代表单位').trim();
         const virtualTeam = await Participant.create({
           competition: req.params.competitionId,
           name: teamName,
@@ -1330,7 +1335,7 @@ exports.addParticipantsToSchedule = async (req, res, next) => {
         competition: req.params.competitionId,
         isVirtualTeam: { $ne: true },
         status: { $ne: 'rejected' }
-      }).select('_id name schoolName isTest');
+      }).select('_id name schoolName grade ageGroup gender event additionalInfo isTest');
       const candidateById = new Map(candidates.map((participant) => [participant._id.toString(), participant]));
 
       const currentParticipants = await Participant.find({ _id: { $in: schedule.participants } })
