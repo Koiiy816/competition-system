@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogTitle,
@@ -26,6 +27,7 @@ import participantService from '../../services/participantService';
 const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
 
 const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData }) => {
+  const navigate = useNavigate();
   const [competition, setCompetition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -59,6 +61,12 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const showDivingPlan = Boolean(editData && isDivingEntry(editData));
   const isDoubleDivingEvent = Boolean(editData && /双人|雙人/.test(String(formData.event || '')));
   const existingPairId = editData?.additionalInfo?.divingPair?.pairId || '';
+  const sameAthleteRegistrations = pairCandidates.filter((candidate) => (
+    candidate._id !== editData?._id
+    && String(candidate.name || '').trim() === String(editData?.name || '').trim()
+    && String(candidate.schoolName || '').trim() === String(editData?.schoolName || '').trim()
+    && candidate.gender === editData?.gender
+  ));
   const availablePairCandidates = pairCandidates.filter((candidate) => {
     if (!isDoubleDivingEvent || candidate._id === editData?._id || candidate.event !== formData.event) return false;
     const sameUnit = String(candidate.schoolName || '').trim() === String(formData.schoolName || '').trim();
@@ -367,7 +375,31 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
             {showDivingPlan && (
               <Grid item xs={12}>
                 <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}>
-                  <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>跳水动作表（报名单位补录）</Typography>
+                  <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 1 }}>跳水报名管理</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <Alert severity={Array.isArray(divingPlan?.dives) && divingPlan.dives.length ? 'success' : 'warning'} sx={{ py: 0 }}>
+                      动作表：{Array.isArray(divingPlan?.dives) && divingPlan.dives.length ? `已补录 ${divingPlan.dives.length} 个动作` : '尚未补录'}
+                    </Alert>
+                    {isDoubleDivingEvent && <Alert severity={selectedPartnerId ? 'success' : 'warning'} sx={{ py: 0 }}>
+                      搭档：{selectedPartnerId ? (pairCandidates.find((candidate) => candidate._id === selectedPartnerId)?.name || editData.additionalInfo?.divingPair?.partnerName || '已配对') : '尚未配对'}
+                    </Alert>}
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => {
+                        onClose();
+                        navigate(`/diving-action-plans?competitionId=${competitionId}&participantId=${editData._id}`);
+                      }}
+                    >
+                      {Array.isArray(divingPlan?.dives) && divingPlan.dives.length ? '编辑动作表' : '补录动作表'}
+                    </Button>
+                  </Box>
+                  {sameAthleteRegistrations.length > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      同一运动员的其他报名：{sameAthleteRegistrations.map((item) => item.event).filter(Boolean).join('、')}
+                    </Typography>
+                  )}
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>当前项目动作表</Typography>
                   {Array.isArray(divingPlan?.dives) && divingPlan.dives.length ? (
                     divingPlan.dives.map((dive, index) => (
                       <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '70px 1fr 150px' }, gap: 1, py: 0.75, borderTop: index ? 1 : 0, borderColor: 'divider' }}>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, MenuItem, Paper, TextField, Typography } from '@mui/material';
 import participantService from '../services/participantService';
 import competitionService from '../services/competitionService';
@@ -64,6 +65,9 @@ const buildPlan = (participant, currentPlan) => {
 };
 
 export default function DivingActionPlanPage() {
+  const [searchParams] = useSearchParams();
+  const focusCompetitionId = searchParams.get('competitionId');
+  const focusParticipantId = searchParams.get('participantId');
   const { user } = useAuth();
   const canManageAll = user?.roles?.some((role) => ['admin', 'chief_referee'].includes(role));
   const [items, setItems] = useState([]);
@@ -88,6 +92,14 @@ export default function DivingActionPlanPage() {
         rows = (response.data || []).filter(isDiving);
       }
       rows = collapseDivingPairs(rows);
+      if (focusCompetitionId || focusParticipantId) {
+        rows = rows.filter((row) => {
+          const rowCompetitionId = String(row.competition?._id || row.competition || '');
+          const matchesCompetition = !focusCompetitionId || rowCompetitionId === focusCompetitionId;
+          const matchesParticipant = !focusParticipantId || row._id === focusParticipantId || row.additionalInfo?.divingPair?.partnerId === focusParticipantId;
+          return matchesCompetition && matchesParticipant;
+        });
+      }
       setItems(rows);
       setPlans(Object.fromEntries(rows.map((row) => [row._id, buildPlan(row, row.additionalInfo?.divingPlan)])));
     } catch (error) {
@@ -135,7 +147,7 @@ export default function DivingActionPlanPage() {
   return <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
     <Typography variant="h4" gutterBottom>补录跳水动作表</Typography>
     <Typography color="text.secondary" sx={{ mb: 2 }}>先填写第一个动作代码；需要增加动作时点击“＋ 添加动作”。已收录的动作会自动带出难度，未收录动作可先保存，之后再补录难度。</Typography>
-    {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>管理员模式：这里显示所有比赛的跳水选手，可补填任意选手的动作和难度系数。</Alert>}
+    {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>{focusParticipantId ? '已定位到当前报名项目；完成动作表后可返回参赛者管理继续编辑。' : '管理员模式：这里显示所有比赛的跳水选手，可补填任意选手的动作和难度系数。'}</Alert>}
     {message && <Alert severity={message.severity} sx={{ mb: 2 }} onClose={() => setMessage(null)}>{message.text}</Alert>}
     {items.map((item) => {
       const rule = getRule(item);
