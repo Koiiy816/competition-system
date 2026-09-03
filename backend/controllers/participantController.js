@@ -1190,17 +1190,19 @@ exports.saveDivingPlan = async (req, res, next) => {
 
     let divingPlan;
     try { divingPlan = normalizeDivingPlan(req.body, participant); } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
-    participant.additionalInfo = { ...(participant.additionalInfo || {}), divingPlan };
-    await participant.save();
-
     const pairId = participant.additionalInfo?.divingPair?.pairId;
     let syncedCount = 0;
     if (pairId) {
-      const result = await Participant.updateMany({ competition: participant.competition, _id: { $ne: participant._id }, 'additionalInfo.divingPair.pairId': pairId, isVirtualTeam: { $ne: true } }, { $set: { 'additionalInfo.divingPlan': divingPlan, updatedAt: new Date() } });
+      const pairMembers = await Participant.find({ competition: participant.competition, 'additionalInfo.divingPair.pairId': pairId, isVirtualTeam: { $ne: true } }).select('_id name additionalInfo.divingPair');
+      const reciprocal = pairMembers.length === 2 && pairMembers.every((member) => pairMembers.some((other) => other._id.toString() !== member._id.toString() && member.additionalInfo?.divingPair?.partnerName === other.name));
+      if (!reciprocal) return res.status(400).json({ success: false, message: '双人跳水配对资料不完整，暂不能保存共用动作表' });
+      const result = await Participant.updateMany({ _id: { $in: pairMembers.map((member) => member._id) } }, { $set: { 'additionalInfo.divingPlan': divingPlan, updatedAt: new Date() } });
       syncedCount = result.modifiedCount || 0;
+    } else {
+      participant.additionalInfo = { ...(participant.additionalInfo || {}), divingPlan };
+      await participant.save();
     }
-    res.status(200).json({ success: true, message: syncedCount ? '动作表已保存并同步到搭档' : '动作表已保存', data: participant, syncedCount });
-  } catch (error) {
+    res.status(200).json({ success: true, message: pairId ? '双人共用动作表已保存并同步到两位搭档' : '动作表已保存', data: participant, syncedCount });  } catch (error) {
     next(error);
   }
 };

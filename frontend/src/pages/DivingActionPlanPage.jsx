@@ -6,6 +6,17 @@ import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
 
 const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''));
+
+const collapseDivingPairs = (rows) => {
+  const seenPairs = new Set();
+  return rows.filter((row) => {
+    const pairId = row.additionalInfo?.divingPair?.pairId;
+    if (!pairId) return true;
+    if (seenPairs.has(pairId)) return false;
+    seenPairs.add(pairId);
+    return true;
+  });
+};
 const customDifficulties = {
   '五弹A': 1,
   '三弹C': 1,
@@ -76,6 +87,7 @@ export default function DivingActionPlanPage() {
         const response = await participantService.getMyParticipations();
         rows = (response.data || []).filter(isDiving);
       }
+      rows = collapseDivingPairs(rows);
       setItems(rows);
       setPlans(Object.fromEntries(rows.map((row) => [row._id, buildPlan(row, row.additionalInfo?.divingPlan)])));
     } catch (error) {
@@ -130,11 +142,11 @@ export default function DivingActionPlanPage() {
       const plan = buildPlan(item, plans[item._id]);
       const showPlatformHeight = /跳台/.test(String(item.event || '')) && ['U12', 'U10'].includes(rule.group);
       return <Paper key={item._id} sx={{ p: 2, mb: 2 }}>
-        <Typography fontWeight="bold">{item.competition?.name} · {item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
+        <Typography fontWeight="bold">{item.competition?.name} · {item.additionalInfo?.divingPair ? `${item.name}／${item.additionalInfo.divingPair.partnerName}` : item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
           动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。
         </Typography>
-        {item.additionalInfo?.divingPair && <Typography variant="body2" color="primary">双人 {item.additionalInfo.divingPair.pairCode} · 搭档：{item.additionalInfo.divingPair.partnerName}</Typography>}
+        {item.additionalInfo?.divingPair && <Typography variant="body2" color="primary">双人 {item.additionalInfo.divingPair.pairCode} · 搭档：{item.additionalInfo.divingPair.partnerName} · 只需填写这一份动作表，保存后会自动同步。</Typography>}
         {showPlatformHeight && <TextField
           select fullWidth size="small" required disabled={rule.group === 'U10'} label="实际跳台高度"
           value={plan.takeoffOrHeight}
