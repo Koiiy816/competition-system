@@ -92,6 +92,13 @@ const CompetitionSchema = new mongoose.Schema({
     description: {
       type: String,
       trim: true
+    },
+    // 报名系统据此自动匹配年龄组别；留空时保留旧版按组别名称匹配的逻辑。
+    birthDateStart: {
+      type: Date
+    },
+    birthDateEnd: {
+      type: Date
     }
   }],
   // 年龄组别详细配置 - 已废弃，保留用于兼容旧数据，建议使用 ageGroups

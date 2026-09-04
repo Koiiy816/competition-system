@@ -15,10 +15,28 @@ const participantRosterKey = (participant) => {
 
 const normalizeRuleValue = (value) => String(typeof value === 'object' ? value?.name : value || '').trim();
 const isSynchronizedDivingEventName = (value) => /双人|雙人/.test(String(value || ''));
+const dateOnly = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+};
 
 // 报名页面的筛选只是辅助；这里才是所有报名入口都必须遵守的最终规则。
 const validateRegistrationAgainstCompetition = ({ competition, body }) => {
   if (competition.registrationDeadline && new Date() > new Date(competition.registrationDeadline)) return '报名已截止，只有管理员或主裁判可以代为修改报名资料';
+  const birthDate = dateOnly(body.birthDate);
+  const configuredAgeGroups = (competition.ageGroups || []).filter((group) => group.birthDateStart || group.birthDateEnd);
+  if (configuredAgeGroups.length) {
+    if (!birthDate) return '本赛事已按出生日期设置年龄组别，请填写出生日期';
+    const matchedGroup = configuredAgeGroups.find((group) => {
+      const start = dateOnly(group.birthDateStart);
+      const end = dateOnly(group.birthDateEnd);
+      return (!start || birthDate >= start) && (!end || birthDate <= end);
+    });
+    if (!matchedGroup) return '出生日期不属于本赛事已设置的任何年龄组别';
+    const submittedGroup = normalizeRuleValue(body.ageGroup || body.grade);
+    if (submittedGroup !== normalizeRuleValue(matchedGroup.name)) return `出生日期应报名“${matchedGroup.name}”，不能选择“${submittedGroup || '未填写'}”`;
+  }
   if (!Array.isArray(competition.events) || !competition.events.length) return null;
   const event = competition.events.find((item) => normalizeRuleValue(item.name) === normalizeRuleValue(body.event));
   if (!event) return '所选比赛项目不属于本次比赛，请重新选择';

@@ -115,7 +115,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
   const [error, setError] = useState(null);
   const [formError, setFormError] = useState('');
   const [activeStep, setActiveStep] = useState(0);
-  const [newAgeGroup, setNewAgeGroup] = useState({ name: '', description: '' });
+  const [newAgeGroup, setNewAgeGroup] = useState({ name: '', description: '', birthDateStart: '', birthDateEnd: '' });
   const [selectedFile, setSelectedFile] = useState(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -263,11 +263,16 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
 
   const handleAddAgeGroup = () => {
     if (!newAgeGroup.name.trim()) return;
+    if (newAgeGroup.birthDateStart && newAgeGroup.birthDateEnd && newAgeGroup.birthDateStart > newAgeGroup.birthDateEnd) {
+      setFormError('年龄组别的最早出生日期不能晚于最晚出生日期');
+      return;
+    }
     setCompetition(prev => ({
       ...prev,
       ageGroups: [...(prev.ageGroups || []), { ...newAgeGroup }]
     }));
-    setNewAgeGroup({ name: '', description: '' });
+    setNewAgeGroup({ name: '', description: '', birthDateStart: '', birthDateEnd: '' });
+    setFormError('');
   };
 
   const handleRemoveAgeGroup = (index) => {
@@ -631,11 +636,11 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                   
                   <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>年龄组别配置</Typography>
                   <Typography variant="body2" color="textSecondary" gutterBottom>
-                    在此定义本次比赛的所有适用年龄组别，供后续参考或使用。
+                    设置出生日期范围后，报名者填写出生日期会自动匹配年龄组别，并由系统在提交时再次校验。
                   </Typography>
                   
                   <Grid container spacing={2} alignItems="flex-start">
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12} sm={3}>
                       <TextField
                         fullWidth
                         label="组别名称 (如: 幼儿组 或 U16组)"
@@ -643,16 +648,35 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                         onChange={(e) => setNewAgeGroup({ ...newAgeGroup, name: e.target.value })}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={6}>
+                    <Grid item xs={12} sm={3}>
                       <TextField
                         fullWidth
-                        label="描述 (如: 14-16岁，2009年1月1日至2011年12月31日)"
-                        value={newAgeGroup.description}
-                        onChange={(e) => setNewAgeGroup({ ...newAgeGroup, description: e.target.value })}
-                        helperText="建议格式：年龄范围，具体出生日期区间（用逗号分隔）"
+                        label="最早出生日期"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        value={newAgeGroup.birthDateStart}
+                        onChange={(e) => setNewAgeGroup({ ...newAgeGroup, birthDateStart: e.target.value })}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <TextField
+                        fullWidth
+                        label="最晚出生日期"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        value={newAgeGroup.birthDateEnd}
+                        onChange={(e) => setNewAgeGroup({ ...newAgeGroup, birthDateEnd: e.target.value })}
                       />
                     </Grid>
                     <Grid item xs={12} sm={2}>
+                      <TextField
+                        fullWidth
+                        label="说明（可选）"
+                        value={newAgeGroup.description}
+                        onChange={(e) => setNewAgeGroup({ ...newAgeGroup, description: e.target.value })}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={1}>
                       <Button 
                         variant="contained" 
                         onClick={handleAddAgeGroup} 
@@ -669,7 +693,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                   {competition.ageGroups && competition.ageGroups.map((group, index) => (
                     <Chip
                       key={index}
-                      label={`${group.name} ${group.description ? `(${group.description})` : ''}`}
+                      label={`${group.name}${group.birthDateStart || group.birthDateEnd ? `（${group.birthDateStart ? String(group.birthDateStart).slice(0, 10) : '不限'} 至 ${group.birthDateEnd ? String(group.birthDateEnd).slice(0, 10) : '不限'}）` : ''}${group.description ? ` ${group.description}` : ''}`}
                       onDelete={() => handleRemoveAgeGroup(index)}
                       color="primary"
                       variant="outlined"

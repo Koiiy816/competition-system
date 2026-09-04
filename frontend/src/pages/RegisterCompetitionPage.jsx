@@ -241,6 +241,37 @@ const RegisterCompetitionPage = () => {
     return gradeOption ? gradeOption.group : null;
   };
 
+  // 赛事明确配置出生日期范围时优先使用该规则；未配置范围的旧赛事继续沿用原有 U 组别逻辑。
+  const getAutoAgeGroup = (birthDateValue) => {
+    if (!birthDateValue) return '';
+    const birthDate = String(birthDateValue).slice(0, 10);
+    const groups = competition?.ageGroups || [];
+    const matchedGroup = groups.find((group) => {
+      const start = group.birthDateStart ? String(group.birthDateStart).slice(0, 10) : '';
+      const end = group.birthDateEnd ? String(group.birthDateEnd).slice(0, 10) : '';
+      return (start || end) && (!start || birthDate >= start) && (!end || birthDate <= end);
+    });
+    if (matchedGroup) return matchedGroup.name;
+
+    const year = Number(birthDate.slice(0, 4));
+    if (!year) return '';
+    const age = new Date().getFullYear() - year;
+    if (groups.length) {
+      const availableGroups = groups.map(group => group.name);
+      if (age <= 6 && availableGroups.includes('U6组')) return 'U6组';
+      if (age <= 10 && availableGroups.includes('U10组')) return 'U10组';
+      if (age <= 13 && availableGroups.includes('U13组')) return 'U13组';
+      if (age <= 16 && availableGroups.includes('U16组')) return 'U16组';
+      return availableGroups.find(group => group.includes(String(age))) || availableGroups[0] || '';
+    }
+    if (age <= 6) return 'U6组';
+    if (age <= 9) return 'U9组';
+    if (age <= 11) return 'U11组';
+    if (age <= 13) return 'U13组';
+    if (age <= 16) return 'U16组';
+    return '成人组';
+  };
+
   // 获取当前年级可选的比赛项目
   const getAvailableEvents = () => {
     // 优先使用动态配置的比赛项目
@@ -449,33 +480,7 @@ const RegisterCompetitionPage = () => {
         updates.gender = genderStr;
         updates.event = ''; // 组别或性别变化，清空已选比赛项目
         
-        // 计算年龄组别
-         const birthDate = new Date(birthDateStr);
-         const currentYear = new Date().getFullYear();
-         const age = currentYear - birthDate.getFullYear();
-         
-         let autoGrade = formData.grade;
-         // 根据比赛已有的组别进行智能匹配
-         if (competition && competition.ageGroups && competition.ageGroups.length > 0) {
-           const availableGroups = competition.ageGroups.map(g => g.name);
-           if (age <= 6 && availableGroups.includes('U6组')) autoGrade = 'U6组';
-           else if (age <= 10 && availableGroups.includes('U10组')) autoGrade = 'U10组';
-           else if (age <= 13 && availableGroups.includes('U13组')) autoGrade = 'U13组';
-           else if (age <= 16 && availableGroups.includes('U16组')) autoGrade = 'U16组';
-           else {
-             // 如果没匹配上标准规则，尝试寻找包含当前年龄的组别，或默认选中第一个
-             autoGrade = availableGroups.find(g => g.includes(age.toString())) || availableGroups[0] || '';
-           }
-         } else {
-           if (age <= 6) autoGrade = 'U6组';
-           else if (age <= 9) autoGrade = 'U9组';
-           else if (age <= 11) autoGrade = 'U11组';
-           else if (age <= 13) autoGrade = 'U13组';
-           else if (age <= 16) autoGrade = 'U16组';
-           else autoGrade = '成人组';
-         }
-         
-         updates.grade = autoGrade;
+        updates.grade = getAutoAgeGroup(birthDateStr);
       }
       
       setFormData(prev => ({
@@ -483,32 +488,7 @@ const RegisterCompetitionPage = () => {
         ...updates
       }));
     } else if (name === 'birthDate') {
-      // 根据出生日期自动计算年龄组别
-      let autoGrade = formData.grade;
-      if (value) {
-        const birthDate = new Date(value);
-        const currentYear = new Date().getFullYear();
-        const age = currentYear - birthDate.getFullYear();
-        
-        // 根据比赛已有的组别进行智能匹配
-        if (competition && competition.ageGroups && competition.ageGroups.length > 0) {
-          const availableGroups = competition.ageGroups.map(g => g.name);
-          if (age <= 6 && availableGroups.includes('U6组')) autoGrade = 'U6组';
-          else if (age <= 10 && availableGroups.includes('U10组')) autoGrade = 'U10组';
-          else if (age <= 13 && availableGroups.includes('U13组')) autoGrade = 'U13组';
-          else if (age <= 16 && availableGroups.includes('U16组')) autoGrade = 'U16组';
-          else {
-            autoGrade = availableGroups.find(g => g.includes(age.toString())) || availableGroups[0] || '';
-          }
-        } else {
-          if (age <= 6) autoGrade = 'U6组';
-          else if (age <= 9) autoGrade = 'U9组';
-          else if (age <= 11) autoGrade = 'U11组';
-          else if (age <= 13) autoGrade = 'U13组';
-          else if (age <= 16) autoGrade = 'U16组';
-          else autoGrade = '成人组';
-        }
-      }
+      const autoGrade = value ? getAutoAgeGroup(value) : formData.grade;
 
       setFormData(prev => ({
         ...prev,
@@ -1042,7 +1022,7 @@ const RegisterCompetitionPage = () => {
             value={formData.birthDate}
             onChange={handleFormChange}
             error={!!formErrors.birthDate}
-            helperText={formErrors.birthDate || '选择出生日期自动匹配组别'}
+            helperText={formErrors.birthDate || '选择出生日期后，系统将按赛事设置的出生日期范围自动匹配组别'}
             required
           />
         </Grid>
