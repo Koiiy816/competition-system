@@ -50,6 +50,7 @@ import {
   Edit as EditIcon,
   Photo as PhotoIcon,
   Visibility as VisibilityIcon,
+  ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../contexts/AuthContext';
@@ -658,7 +659,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
       
       // 跳过表头
-      const dataRows = rows.slice(1).filter(row => row.length > 0 && row[0]);
+      const dataRows = rows.slice(1)
+        .map((row, index) => ({ row, excelRow: index + 2 }))
+        .filter(({ row }) => row.length > 0 && row[0]);
       
       if (dataRows.length === 0) {
         throw new Error('未找到有效的数据行');
@@ -669,10 +672,11 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       let successCount = 0;
       let failCount = 0;
       const importedDivingPairs = new Map();
+      const batchParticipants = [];
       const failureDetails = [];
 
       for (let i = 0; i < dataRows.length; i++) {
-        const row = dataRows[i];
+        const { row, excelRow } = dataRows[i];
         setImportProgress(prev => ({ ...prev, current: i + 1 }));
         
         try {
@@ -749,21 +753,19 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             participantData.birthDate = new Date(`${year}-${month}-${day}`);
           }
 
-          const created = await participantService.addParticipant(filters.competitionId, participantData);
-          successCount++;
+          batchParticipants.push({ ...participantData, excelRow });
           const pairCode = String(row[9] || '').trim();
-          const createdId = created?.data?._id;
-          if (pairCode && createdId && /双人|雙人/.test(String(participantData.event || ''))) {
+          if (pairCode && /双人|雙人/.test(String(participantData.event || ''))) {
             const pairKey = [participantData.ageGroup, participantData.event, participantData.schoolName, pairCode].map(value => String(value || '').trim()).join('|');
             const members = importedDivingPairs.get(pairKey) || [];
-            members.push(createdId);
+            members.push(excelRow);
             importedDivingPairs.set(pairKey, members);
           }
         } catch (err) {
           console.error(`第 ${i + 2} 行导入失败:`, err);
           failCount++;
           failureDetails.push({
-            row: i + 2,
+            row: excelRow,
             name: row[0] || '未填写姓名',
             event: row[4] || '未填写项目',
             reason: err.message || err?.response?.data?.message || '服务器未返回具体原因'
@@ -771,9 +773,17 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         }
       }
 
+      const result = await participantService.importParticipants(filters.competitionId, batchParticipants);
+      const importData = result.data || {};
+      successCount = importData.imported || 0;
+      failureDetails.push(...(importData.errorDetails || []));
+      failCount = failureDetails.length;
+      const importedByRow = new Map((importData.importedDetails || []).map((item) => [item.row, item.participant?._id]));
+
       let pairFailCount = 0;
-      for (const memberIds of importedDivingPairs.values()) {
-        if (memberIds.length !== 2) {
+      for (const memberRows of importedDivingPairs.values()) {
+        const memberIds = memberRows.map((rowNumber) => importedByRow.get(rowNumber)).filter(Boolean);
+        if (memberRows.length !== 2 || memberIds.length !== 2) {
           pairFailCount++;
           continue;
         }
@@ -2186,7 +2196,24 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             )}
             {importFailureDetails.length > 0 && (
               <Alert severity="error" sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 0.5 }}>以下报名未导入：</Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 0.5 }}>
+                  <Typography variant="subtitle2">以下报名未导入：</Typography>
+                  <Button
+                    size="small"
+                    startIcon={<ContentCopyIcon />}
+                    onClick={async () => {
+                      const text = importFailureDetails.map((item) => `第 ${item.row} 行：${item.name}／${item.event}。原因：${item.reason}`).join('\n');
+                      try {
+                        await navigator.clipboard.writeText(text);
+                        setSuccessMessage('失败清单已复制');
+                      } catch (_) {
+                        setError('复制失败，请手动选择失败清单');
+                      }
+                    }}
+                  >
+                    复制失败清单
+                  </Button>
+                </Box>
                 {importFailureDetails.map((item) => (
                   <Typography key={`${item.row}-${item.name}-${item.event}`} variant="body2">
                     第 {item.row} 行：{item.name}／{item.event}。原因：{item.reason}

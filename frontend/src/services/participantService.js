@@ -209,7 +209,7 @@ const participantService = {
   /**
    * 批量导入参赛者
    * @param {string} competitionId - 比赛ID
-   * @param {File} file - 包含参赛者数据的CSV或Excel文件
+   * @param {Array<Object>} participants - 已从 Excel 解析的参赛者数据
    * @returns {Promise} - 返回导入结果
    */
   getParticipantPhoto: async (competitionId, participantId) => {
@@ -222,16 +222,9 @@ const participantService = {
     return response.data;
   },
 
-  importParticipants: async (competitionId, file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-
+  importParticipants: async (competitionId, participants) => {
     try {
-      const response = await api.post(`/competitions/${competitionId}/participants/import`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await api.post(`/competitions/${competitionId}/participants/import`, { participants });
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : { message: '导入参赛者失败' };

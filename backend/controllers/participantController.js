@@ -913,22 +913,54 @@ exports.importParticipants = async (req, res, next) => {
       });
     }
 
+    const competition = await Competition.findById(competitionId).select('_id');
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+
     const createdParticipants = [];
-    const errors = [];
+    const errorDetails = [];
+    const importedDetails = [];
+    const importedKeys = new Set();
+    const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
+    const duplicateKey = (participant) => {
+      const idCard = normalize(participant.idCard);
+      if (idCard) return `id:${idCard}`;
+      return `person:${[participant.name, participant.schoolName || participant.teamName, participant.gender, participant.ageGroup || participant.grade, participant.event].map(normalize).join('|')}`;
+    };
+    const readableError = (error) => {
+      if (error?.name === 'ValidationError') return Object.values(error.errors || {}).map((item) => item.message).filter(Boolean).join('；') || '资料格式不正确';
+      if (error?.code === 11000) return '报名编号重复，请重新导入';
+      return error?.message || '导入失败';
+    };
 
     for (let i = 0; i < participants.length; i++) {
+      const source = participants[i] || {};
+      const row = Number(source.excelRow) || i + 2;
+      const name = String(source.name || '').trim();
+      const event = String(source.event || '').trim();
       try {
+        const { excelRow, ...sourceData } = source;
         const participantData = {
-          ...participants[i],
-          competition: competitionId
+          ...sourceData,
+          competition: competitionId,
+          user: req.user.id,
+          members: Array.isArray(sourceData.members) ? sourceData.members : []
         };
-        
+        const key = duplicateKey(participantData);
+        if (importedKeys.has(key)) throw new Error('与本次 Excel 中已成功导入的报名重复');
+        const existingQuery = participantData.idCard
+          ? { competition: competitionId, idCard: participantData.idCard }
+          : { competition: competitionId, name: participantData.name, schoolName: participantData.schoolName, gender: participantData.gender, ageGroup: participantData.ageGroup || participantData.grade, event: participantData.event };
+        if (await Participant.exists(existingQuery)) throw new Error('该报名已成功导入，不能重复导入');
         const participant = await Participant.create(participantData);
         createdParticipants.push(participant);
+        importedKeys.add(key);
+        importedDetails.push({ row, participant });
       } catch (error) {
-        errors.push({
-          row: i + 1,
-          error: error.message
+        errorDetails.push({
+          row,
+          name: name || '未填写姓名',
+          event: event || '未填写项目',
+          reason: readableError(error)
         });
       }
     }
@@ -937,9 +969,11 @@ exports.importParticipants = async (req, res, next) => {
       success: true,
       data: {
         imported: createdParticipants.length,
-        errors: errors.length,
+        failed: errorDetails.length,
+        errors: errorDetails.length,
         participants: createdParticipants,
-        errorDetails: errors
+        importedDetails,
+        errorDetails
       }
     });
   } catch (error) {
