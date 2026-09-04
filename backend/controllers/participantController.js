@@ -563,16 +563,20 @@ exports.updateParticipant = async (req, res, next) => {
       });
     }
 
-    // 确保用户是参赛者本人或管理员/主裁判
+    const isPrivileged = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
+    const isOrganization = req.user.roles?.includes('organization');
+    // 参赛单位只能编辑自己提交、且尚未审核的报名。
     if (
       participant.user?.toString() !== req.user.id &&
-      !req.user.roles?.includes('admin') &&
-      !req.user.roles?.includes('chief_referee')
+      !isPrivileged
     ) {
       return res.status(403).json({
         success: false,
         message: '没有权限更新此参赛信息'
       });
+    }
+    if (isOrganization && !isPrivileged && participant.status !== 'pending') {
+      return res.status(400).json({ success: false, message: '报名审核后不能自行修改，请联系赛事管理员处理' });
     }
 
     // 管理员编辑时可选择上传／替换照片；未选择则保留原照片。
@@ -582,9 +586,30 @@ exports.updateParticipant = async (req, res, next) => {
     delete req.body.competition;
     delete req.body.user;
 
-    // 如果不是管理员或主裁判，不允许更改状态
-    if (!req.user.roles?.includes('admin') && !req.user.roles?.includes('chief_referee')) {
+    // 参赛单位不能借由通用更新接口修改审核、检录、测试或双人配对状态。
+    if (!isPrivileged) {
       delete req.body.status;
+      delete req.body.checkInStatus;
+      delete req.body.isTest;
+      delete req.body.additionalInfo;
+      const allowedFields = new Set(['name', 'teamName', 'members', 'schoolName', 'event', 'manualEventGroup', 'grade', 'ageGroup', 'gender', 'idCard', 'birthDate', 'teamLeader', 'leaderPhone', 'coach', 'coachPhone', 'remark', 'photoFile']);
+      Object.keys(req.body).forEach((key) => {
+        if (!allowedFields.has(key)) delete req.body[key];
+      });
+
+      const competition = await Competition.findById(participant.competition);
+      const registrationError = validateRegistrationAgainstCompetition({ competition, body: { ...participant.toObject(), ...req.body } });
+      if (registrationError) return res.status(400).json({ success: false, message: registrationError });
+
+      const pairingFields = ['schoolName', 'event', 'grade', 'ageGroup', 'gender'];
+      const pairingChanged = pairingFields.some((field) => req.body[field] !== undefined && String(req.body[field]) !== String(participant[field] || ''));
+      const pairId = participant.additionalInfo?.divingPair?.pairId;
+      if (pairingChanged && pairId) {
+        await Participant.updateMany(
+          { competition: participant.competition, 'additionalInfo.divingPair.pairId': pairId, isVirtualTeam: { $ne: true } },
+          { $unset: { 'additionalInfo.divingPair': '' }, $set: { updatedAt: new Date() } }
+        );
+      }
     }
 
     participant = await Participant.findByIdAndUpdate(req.params.id, req.body, {

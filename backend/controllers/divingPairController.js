@@ -9,6 +9,11 @@ exports.setDivingPair = async (req, res, next) => {
     const competitionId = req.params.competitionId;
     const participant = await Participant.findOne({ _id: req.params.id, competition: competitionId, isVirtualTeam: { $ne: true } });
     if (!participant) return res.status(404).json({ success: false, message: '未找到当前报名记录' });
+    const isPrivileged = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
+    const isOrganization = req.user.roles?.includes('organization');
+    if (isOrganization && !isPrivileged && (participant.user?.toString() !== req.user.id || participant.status !== 'pending')) {
+      return res.status(403).json({ success: false, message: '只能修改自己提交的待审核双人报名' });
+    }
 
     const currentPairId = participant.additionalInfo?.divingPair?.pairId;
     const partnerId = String(req.body.partnerId || '').trim();
@@ -26,6 +31,9 @@ exports.setDivingPair = async (req, res, next) => {
     if (!isDoubleDiving(participant.event)) return res.status(400).json({ success: false, message: '只有双人跳水项目可以设置搭档' });
     const partner = await Participant.findOne({ _id: partnerId, competition: competitionId, isVirtualTeam: { $ne: true } });
     if (!partner || partner._id.toString() === participant._id.toString()) return res.status(400).json({ success: false, message: '请选择另一位有效搭档' });
+    if (isOrganization && !isPrivileged && (partner.user?.toString() !== req.user.id || partner.status !== 'pending')) {
+      return res.status(403).json({ success: false, message: '只能选择本单位自己提交且待审核的报名作为搭档' });
+    }
     if (!isDoubleDiving(partner.event)) return res.status(400).json({ success: false, message: '搭档也必须报名同一个双人跳水项目' });
 
     const sameUnit = normalize(participant.schoolName) === normalize(partner.schoolName);

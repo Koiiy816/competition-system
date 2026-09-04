@@ -23,11 +23,14 @@ import {
 } from '@mui/material';
 import competitionService from '../../services/competitionService';
 import participantService from '../../services/participantService';
+import { useAuth } from '../../contexts/AuthContext';
 
 const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
 
 const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManageTestStatus = user?.roles?.includes('admin') || user?.roles?.includes('chief_referee');
   const [competition, setCompetition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -203,7 +206,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     }
 
     if (name === 'idCard') {
-       if (val.length === 18) {
+       // 仅大陆 18 位身份证自动识别资料；港澳及海外证件号码按原样保存。
+       if (/^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(val)) {
           const year = val.substring(6, 10);
           const month = val.substring(10, 12);
           const day = val.substring(12, 14);
@@ -289,10 +293,6 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.event) newErrors.event = '请选择比赛项目';
     // 管理员可不上传照片；上传入口仍保留，之后可补传。
     
-    if (formData.idCard && !/^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(formData.idCard)) {
-      newErrors.idCard = '身份证格式不正确';
-    }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -304,12 +304,12 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     setError('');
     
     try {
-      // 提交的数据，默认状态为已通过
+      // 新增记录沿用管理员直接添加即通过的规则；编辑时不改变原有审核状态。
       const submitData = {
         ...formData,
         grade: formData.grade, // 确保 grade 字段也被正确更新
         ageGroup: formData.grade, // 保持与前台报名一致，保存到 ageGroup 字段
-        status: 'approved'
+        ...(editData ? {} : { status: 'approved' })
       };
 
       // 检查是否为集体项目
@@ -555,12 +555,12 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="身份证号"
+                label="证件号码"
                 name="idCard"
                 value={formData.idCard}
                 onChange={handleChange}
                 error={!!errors.idCard}
-                helperText={errors.idCard || "输入18位身份证号可自动解析生日"}
+                helperText={errors.idCard || "支持身份证、港澳居民身份证、护照等；大陆18位身份证可自动识别出生日期和性别"}
               />
             </Grid>
 
@@ -576,7 +576,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               />
             </Grid>
 
-            <Grid item xs={12}>
+            {canManageTestStatus && <Grid item xs={12}>
               <FormControlLabel
                 control={
                   <Switch
@@ -595,7 +595,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 }
                 label="设为测试人员 (不占用正式名次和团体积分)"
               />
-            </Grid>
+            </Grid>}
 
             <Grid item xs={12}>
               <Divider sx={{ my: 1 }} />
@@ -655,7 +655,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 inputProps={{ maxLength: 1000 }}
                 helperText="仅供管理员记录，最多 1000 字"
               />
-            </Grid>
+            </Grid>}
             {(
               <Grid item xs={12}>
                 <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>

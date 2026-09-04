@@ -52,7 +52,7 @@ router.put(
 router.put(
   '/:id/diving-pair',
   auth,
-  authorize('admin', 'chief_referee'),
+  authorize('admin', 'chief_referee', 'organization'),
   divingPairController.setDivingPair
 );
 
@@ -118,12 +118,12 @@ router.put(
 
 // @route   PUT api/competitions/:competitionId/participants/:id
 // @desc    更新参赛者
-// @access  私有/管理员、主裁
+// @access  私有/管理员、主裁；参赛单位仅能编辑自己的待审核报名
 router.put(
   '/:id',
   [
     auth,
-    authorize('admin', 'chief_referee'),
+    authorize('admin', 'chief_referee', 'organization'),
     uploadParticipantPhoto,
     [
       check('name', '姓名是必填项').optional().not().isEmpty(),

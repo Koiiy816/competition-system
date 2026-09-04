@@ -1457,7 +1457,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         </Tooltip>
                       )}
 
-                      {isAdminOrChiefReferee && (
+                      {(isAdminOrChiefReferee || (myRegistrations && participant.status === 'pending')) && (
                         <Tooltip title="编辑">
                           <IconButton
                             color="primary"
@@ -1657,7 +1657,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                               </Tooltip>
                             )}
 
-                            {isAdminOrChiefReferee && (
+                            {(isAdminOrChiefReferee || (myRegistrations && participant.status === 'pending')) && (
                               <Tooltip title="编辑">
                                 <IconButton
                                   color="primary"
