@@ -655,7 +655,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 inputProps={{ maxLength: 1000 }}
                 helperText="仅供管理员记录，最多 1000 字"
               />
-            </Grid>}
+            </Grid>
             {(
               <Grid item xs={12}>
                 <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>

@@ -645,6 +645,18 @@ exports.getSchedule = async (req, res, next) => {
       });
     }
 
+    if (await normalizeSynchronizedDivingParticipants(schedule)) {
+      await schedule.populate({
+        path: 'participants',
+        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo',
+        populate: [
+          { path: 'user', select: 'name email' },
+          { path: 'teamMembers', select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo' },
+          { path: 'checkedInBy', select: 'name email' }
+        ]
+      });
+    }
+
     res.status(200).json({
       success: true,
       data: schedule
@@ -674,6 +686,86 @@ function normalizeDivingScheduleConfig(body) {
     }
     return { actionCode: String((action && action.actionCode) || '').trim(), actionName, difficulty, source: action && action.source === 'official' ? 'official' : 'custom', notes: String((action && action.notes) || '').trim() };
   });
+}
+
+const isSynchronizedDivingSchedule = (schedule) => schedule?.scoringMode === 'diving' && schedule?.divingFormat === 'synchronized';
+const isSynchronizedDivingName = (value) => /双人|雙人/.test(String(value || '')) && /跳水|跳板|跳台/.test(String(value || ''));
+
+// 兼容此前以两条个人报名记录保存的双人跳水赛程：读取时将已互配的两人转为一个可计分组合。
+// 未完成互配的记录保留原状，不能被误当作双人组合打分。
+async function normalizeSynchronizedDivingParticipants(schedule) {
+  const legacySynchronizedDiving = isSynchronizedDivingName(schedule.name);
+  if (!isSynchronizedDivingSchedule(schedule) && !legacySynchronizedDiving) return false;
+
+  let changed = false;
+  if (legacySynchronizedDiving && !isSynchronizedDivingSchedule(schedule)) {
+    schedule.scoringMode = 'diving';
+    schedule.divingFormat = 'synchronized';
+    schedule.judgeCount = 5;
+    changed = true;
+  }
+
+  const participants = schedule.participants || [];
+  const realEntries = participants.filter((participant) => !participant.isVirtualTeam);
+  const scheduledRealIds = new Set(realEntries.map((participant) => participant._id.toString()));
+  const pairIds = [...new Set(realEntries.map((participant) => String(participant.additionalInfo?.divingPair?.pairId || '').trim()).filter(Boolean))];
+  const allPairMembers = pairIds.length
+    ? await Participant.find({ competition: schedule.competition, isVirtualTeam: { $ne: true }, 'additionalInfo.divingPair.pairId': { $in: pairIds } }).select('_id name schoolName grade ageGroup gender event additionalInfo.divingPair isTest')
+    : [];
+  const entriesByPairId = new Map();
+  allPairMembers.forEach((participant) => {
+    const pairId = String(participant.additionalInfo?.divingPair?.pairId || '').trim();
+    if (!entriesByPairId.has(pairId)) entriesByPairId.set(pairId, []);
+    entriesByPairId.get(pairId).push(participant);
+  });
+  const alreadyGroupedMemberIds = new Set(participants
+    .filter((participant) => participant.isVirtualTeam)
+    .flatMap((participant) => participant.teamMembers || [])
+    .map((member) => member._id?.toString() || member.toString()));
+
+  const replacements = new Map();
+  for (const [pairId, members] of entriesByPairId) {
+    if (members.length !== 2) continue;
+    const [first, second] = members;
+    if (alreadyGroupedMemberIds.has(first._id.toString()) || alreadyGroupedMemberIds.has(second._id.toString())) continue;
+    const reciprocal = first.additionalInfo?.divingPair?.partnerName === second.name
+      && second.additionalInfo?.divingPair?.partnerName === first.name;
+    if (!reciprocal) continue;
+
+    const virtualTeam = await Participant.create({
+      competition: schedule.competition,
+      name: `${first.name}／${second.name}`,
+      teamName: `${first.name}／${second.name}`,
+      schoolName: first.schoolName || second.schoolName || '未填写代表单位',
+      event: schedule.name,
+      ageGroup: first.ageGroup || first.grade || '',
+      gender: first.gender === second.gender ? first.gender : 'mixed',
+      type: 'team',
+      isVirtualTeam: true,
+      teamMembers: [first._id, second._id],
+      status: 'approved',
+      isTest: Boolean(first.isTest || second.isTest),
+      additionalInfo: { source: 'synchronized-diving-schedule-normalization', divingPairId: pairId }
+    });
+    const representative = members.find((member) => scheduledRealIds.has(member._id.toString()));
+    if (!representative) continue;
+    replacements.set(representative._id.toString(), virtualTeam._id);
+    members.filter((member) => member._id.toString() !== representative._id.toString())
+      .filter((member) => scheduledRealIds.has(member._id.toString()))
+      .forEach((member) => replacements.set(member._id.toString(), null));
+    changed = true;
+  }
+
+  if (replacements.size) {
+    schedule.participants = participants.reduce((normalized, participant) => {
+      const replacement = replacements.get(participant._id.toString());
+      if (replacement === undefined) normalized.push(participant._id);
+      else if (replacement) normalized.push(replacement);
+      return normalized;
+    }, []);
+  }
+  if (changed) await schedule.save();
+  return changed;
 }
 
 exports.createSchedule = async (req, res, next) => {

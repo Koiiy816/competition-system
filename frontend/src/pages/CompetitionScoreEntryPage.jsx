@@ -67,6 +67,21 @@ const getParticipantDivingPlan = (participant) => {
   return (participant?.teamMembers || []).find((member) => member.additionalInfo?.divingPlan)?.additionalInfo?.divingPlan || null;
 };
 
+const sameDivingPlan = (left, right) => JSON.stringify((left?.dives || []).map((dive) => ({
+  actionCode: String(dive?.actionCode || '').trim().toUpperCase(),
+  difficulty: Number(dive?.difficulty)
+}))) === JSON.stringify((right?.dives || []).map((dive) => ({
+  actionCode: String(dive?.actionCode || '').trim().toUpperCase(),
+  difficulty: Number(dive?.difficulty)
+})));
+
+const hasUsableDivingPlan = (participant, format) => {
+  if (format !== 'synchronized') return Boolean(getParticipantDivingPlan(participant)?.dives?.length);
+  const members = participant?.teamMembers || [];
+  const [first, second] = members.map((member) => member.additionalInfo?.divingPlan);
+  return members.length === 2 && Boolean(first?.dives?.length) && Boolean(second?.dives?.length) && sameDivingPlan(first, second);
+};
+
 const getParticipantDivingProgram = (participant) => {
   const plan = getParticipantDivingPlan(participant);
   if (plan && Array.isArray(plan.dives) && plan.dives.length) {
@@ -342,7 +357,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const participantProgram = React.useMemo(() => getParticipantDivingProgram(participant), [participant]);
-  const hasParticipantPlan = Boolean(getParticipantDivingPlan(participant));
+  const hasParticipantPlan = hasUsableDivingPlan(participant, format);
   useEffect(() => {
     if (dirty) return;
     const saved = initialResult?.details?.dives || [];
@@ -394,7 +409,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
       <Box sx={{ textAlign: 'right' }}><Typography variant="body2">实时总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '缺席/弃权' : total.toFixed(2)}</Typography><Typography variant="caption">排名：{currentRank || '-'}</Typography></Box>
     </Box>
     {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该参赛对象已标记为缺席。' : '请先完成检录后再打分。'}</Alert>}
-    {!hasParticipantPlan && <Alert severity="warning" sx={{ m: 1.5 }}>该参赛对象还没有跳水动作表，请先补录动作表后再打分。</Alert>}
+    {!hasParticipantPlan && <Alert severity="warning" sx={{ m: 1.5 }}>{format === 'synchronized' ? '该双人组合需要两位搭档共用完全一致的动作表，请先完成配对并补录动作表后再打分。' : '该参赛对象还没有跳水动作表，请先补录动作表后再打分。'}</Alert>}
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell></TableRow></TableHead>
       <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody>
     </Table></TableContainer>
@@ -875,6 +890,12 @@ const CompetitionScoreEntryPage = () => {
     return ranks;
   }, [participants, results]);
 
+  const isSynchronizedDiving = schedule?.scoringMode === 'diving' && schedule?.divingFormat === 'synchronized';
+  const scoringParticipants = isSynchronizedDiving
+    ? participants.filter((participant) => participant.isVirtualTeam && (participant.teamMembers || []).length === 2)
+    : participants;
+  const unpairedSynchronizedCount = isSynchronizedDiving ? participants.length - scoringParticipants.length : 0;
+
   // 找出所有发生重复（并列）的分数
   const duplicateScores = React.useMemo(() => {
     const scoreCounts = {};
@@ -965,7 +986,8 @@ const CompetitionScoreEntryPage = () => {
         <div id="printable-area" style={{ padding: '20px' }}>
           {schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
             <Alert severity="info" sx={{ mb: 2 }}>计分规则：{schedule?.divingFormat === 'synchronized' ? '双人跳水 = 五位裁判分数总和 × 难度系数 × 0.6。' : '个人跳水 = 去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。'} 每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
-            {participants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} />)}
+            {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
+            {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} />)}
           </Box> : <TableContainer sx={{ p: 2 }}>
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>

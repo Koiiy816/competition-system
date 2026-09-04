@@ -628,14 +628,31 @@ const CompetitionScheduleManagementPage = () => {
     try {
       const date = newProject.scheduleDate;
       const selectedMembers = projectCandidates.filter((participant) => selectedProjectParticipantIds.includes(participant._id));
-      const collectiveTeams = newProject.eventMode === 'collective'
+      const isSynchronizedDiving = newProject.scoringMode === 'diving' && newProject.divingFormat === 'synchronized';
+      const collectiveTeams = isSynchronizedDiving
         ? Object.values(selectedMembers.reduce((groups, participant) => {
+          const pair = participant.additionalInfo?.divingPair;
+          const pairId = String(pair?.pairId || '').trim();
+          if (!pairId) return groups;
+          if (!groups[pairId]) groups[pairId] = { teamName: `${participant.name}／${pair.partnerName || '未配对'}`, memberIds: [] };
+          groups[pairId].memberIds.push(participant._id);
+          return groups;
+        }, {}))
+        : (newProject.eventMode === 'collective'
+          ? Object.values(selectedMembers.reduce((groups, participant) => {
           const teamName = String(participant.schoolName || '未填写代表单位').trim() || '未填写代表单位';
           if (!groups[teamName]) groups[teamName] = { teamName, memberIds: [] };
           groups[teamName].memberIds.push(participant._id);
           return groups;
-        }, {}))
-        : undefined;
+          }, {}))
+          : undefined);
+      if (isSynchronizedDiving) {
+        const pairedMemberCount = collectiveTeams.reduce((count, team) => count + team.memberIds.length, 0);
+        if (pairedMemberCount !== selectedMembers.length || collectiveTeams.some((team) => team.memberIds.length !== 2)) {
+          setError('双人跳水只能加入已完成互相配对的两名选手；请先在报名管理中完成配对。');
+          return;
+        }
+      }
       const response = await scheduleService.createSchedule(id, {
         name: newProject.name.trim(),
         participants: newProject.eventMode === 'collective' ? [] : selectedProjectParticipantIds,
@@ -657,7 +674,7 @@ const CompetitionScheduleManagementPage = () => {
       });
       setCreateProjectOpen(false);
       setSuccess(newProject.eventMode === 'collective'
-        ? `已建立「${response.data?.name || newProject.name.trim()}」，并按代表单位组成 ${collectiveTeams.length} 支集体队伍、加入 ${selectedProjectParticipantIds.length} 名队员。`
+        ? `已建立「${response.data?.name || newProject.name.trim()}」，${isSynchronizedDiving ? `按双人配对组成 ${collectiveTeams.length} 对组合` : `并按代表单位组成 ${collectiveTeams.length} 支集体队伍`}、加入 ${selectedProjectParticipantIds.length} 名队员。`
         : `已建立「${response.data?.name || newProject.name.trim()}」，并加入 ${selectedProjectParticipantIds.length} 名选手。`);
       await fetchData();
     } catch (err) {

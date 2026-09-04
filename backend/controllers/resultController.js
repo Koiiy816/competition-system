@@ -143,12 +143,15 @@ exports.submitDivingScore = async (req, res, next) => {
   const lockKey = 'diving_' + scheduleId + '_' + participantId;
   await acquireLock(lockKey);
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount scoringMode divingFormat divingProgram status');
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount scoringMode divingFormat divingProgram status participants');
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
     if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
     const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus additionalInfo');
     if (!participant) return res.status(404).json({ success: false, message: 'Participant not found' });
+    if (!(schedule.participants || []).some((entryId) => entryId.toString() === participant._id.toString())) {
+      return res.status(400).json({ success: false, message: '该参赛对象不在当前赛程中' });
+    }
     const program = getScoringDivingProgram(participant, schedule.divingFormat || 'individual');
     if (!program) return res.status(400).json({ success: false, message: schedule.divingFormat === 'synchronized' ? '双人跳水须由两位搭档补录完全一致的动作与难度后才能打分' : '请先补录完整的跳水动作表（动作代码和难度系数）' });
     if (dives.length !== program.length) return res.status(400).json({ success: false, message: '提交的打分轮次与补录动作表不一致' });
