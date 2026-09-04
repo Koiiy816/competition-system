@@ -100,7 +100,7 @@ router.post(
     uploadParticipantPhoto, // 添加文件上传中间件
     [
       check('name', '姓名是必填项').not().isEmpty(),
-      // 身份证改为非强制，在 Model 层面控制 (虚拟队伍/测试人员不需要)
+      // 证件号码不限制格式，兼容港澳及海外证件；虚拟队伍/测试人员可留空。
       check('idCard').optional(),
     ],
   ],
@@ -127,7 +127,7 @@ router.put(
     uploadParticipantPhoto,
     [
       check('name', '姓名是必填项').optional().not().isEmpty(),
-      check('idCard', '身份证号是必填项').optional().not().isEmpty(),
+      check('idCard', '证件号码是必填项').optional().not().isEmpty(),
     ],
   ],
   participantController.updateParticipant

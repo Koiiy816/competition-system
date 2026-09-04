@@ -432,7 +432,8 @@ const RegisterCompetitionPage = () => {
     } else if (name === 'idCard') {
       let updates = { [name]: value };
       
-      // 自动提取18位身份证信息 (支持15位转18位后的标准18位身份证)
+      // 仅当填写的是大陆 18 位身份证时，才自动提取出生日期和性别；
+      // 港澳居民身份证、护照及其他证件号码按原样保存，由用户自行填写出生日期和性别。
       if (value && value.length === 18 && /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(value)) {
         // 提取出生日期
         const year = value.substring(6, 10);
@@ -737,7 +738,7 @@ const RegisterCompetitionPage = () => {
     // 验证其他必填字段
     // 这里可以根据比赛的具体要求添加更多验证
     
-    if (!isAdmin && !formData.idCard.trim()) errors.idCard = '\u8bf7\u586b\u5199\u8eab\u4efd\u8bc1\u53f7\u7801';
+    if (!isAdmin && !formData.idCard.trim()) errors.idCard = '请填写证件号码';
     if (competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -950,17 +951,17 @@ const RegisterCompetitionPage = () => {
           </FormControl>
         </Grid>
 
-        {/* 身份证号码 */}
+        {/* 证件号码 */}
         <Grid item xs={12} sm={6}>
           <TextField
             fullWidth
-            label="身份证号码"
+            label="证件号码"
             required={!isAdmin}
             name="idCard"
             value={formData.idCard}
             onChange={handleFormChange}
             error={!!formErrors.idCard}
-            helperText={formErrors.idCard || (isAdmin ? '\u7ba1\u7406\u5458\u624b\u52a8\u65b0\u589e\u53ef\u7559\u7a7a' : '\u62a5\u540d\u5fc5\u987b\u586b\u5199\u8eab\u4efd\u8bc1\u53f7\u7801')}
+            helperText={formErrors.idCard || (isAdmin ? '管理员手动新增可留空' : '请填写身份证、港澳居民身份证、护照或其他有效证件号码；大陆身份证可自动识别出生日期和性别')}
           />
         </Grid>
 

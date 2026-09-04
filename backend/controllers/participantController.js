@@ -385,7 +385,7 @@ exports.createParticipant = async (req, res, next) => {
     // 管理员或主裁手动添加可暂不上传照片；参赛单位自主报名仍遵循比赛的照片要求。
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
     if (!isAdmin && !String(req.body.idCard || '').trim()) {
-      return res.status(400).json({ success: false, message: 'ID card number is required for registration' });
+      return res.status(400).json({ success: false, message: '请填写证件号码' });
     }
     if (competition.participantRequirements?.requirePhoto && !req.body.photoFile && !isAdmin) {
       return res.status(400).json({ success: false, message: '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247' });

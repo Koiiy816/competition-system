@@ -60,7 +60,7 @@ const ParticipantSchema = new mongoose.Schema({
     // 移除了 enum: ['male', 'female'] 的严格限制，以兼容 'mixed' 或其他虚拟值
     required: true
   },
-  // 身份证号码
+  // 证件号码（兼容大陆身份证、港澳居民身份证、护照等）
   idCard: {
     type: String,
     trim: true

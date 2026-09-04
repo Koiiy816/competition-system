@@ -106,7 +106,7 @@ router.post(
     [
       check('type', '参赛类型是必填项').isIn(['individual', 'team']),
       check('gender', '性别是必填项').isIn(['male', 'female']),
-      check('idCard', '身份证号码是必填项').not().isEmpty(),
+      check('idCard', '证件号码是必填项').not().isEmpty(),
       check('phone', '联系电话是必填项').not().isEmpty(),
       check('insuranceConfirmed', '必须确认已办理保险').equals('true').toBoolean(),
     ],
