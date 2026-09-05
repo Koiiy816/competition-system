@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, MenuItem, Paper, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, MenuItem, Pagination, Paper, TextField, Typography } from '@mui/material';
 import participantService from '../services/participantService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,7 +64,19 @@ const buildPlan = (participant, currentPlan) => {
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
 };
 
-const INITIAL_VISIBLE_ITEMS = 20;
+const DEFAULT_PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 50];
+
+const searchableParticipantText = (participant) => [
+  participant.name,
+  participant.additionalInfo?.divingPair?.partnerName,
+  participant.competition?.name,
+  participant.event,
+  participant.ageGroup,
+  participant.grade,
+  participant.unit,
+  participant.teamName
+].filter(Boolean).join(' ').toLocaleLowerCase();
 
 const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlanChange, onSave }) {
   const rule = getRule(item);
@@ -137,7 +149,9 @@ export default function DivingActionPlanPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
   const [message, setMessage] = useState(null);
-  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_ITEMS);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,7 +179,7 @@ export default function DivingActionPlanPage() {
       }
       setItems(rows);
       setPlans(Object.fromEntries(rows.map((row) => [row._id, buildPlan(row, row.additionalInfo?.divingPlan)])));
-      setVisibleCount(INITIAL_VISIBLE_ITEMS);
+      setPage(1);
     } catch (error) {
       setMessage({ severity: 'error', text: '加载失败：' + (error.message || '无法读取报名资料') });
     } finally {
@@ -214,16 +228,47 @@ export default function DivingActionPlanPage() {
     });
   }, []);
 
-  const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
+  const filteredItems = useMemo(() => {
+    const normalizedTerm = searchTerm.trim().toLocaleLowerCase();
+    if (!normalizedTerm) return items;
+    return items.filter((item) => searchableParticipantText(item).includes(normalizedTerm));
+  }, [items, searchTerm]);
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [currentPage, filteredItems, pageSize]);
 
   if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
 
   return <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
     <Typography variant="h4" gutterBottom>补录跳水动作表</Typography>
     <Typography color="text.secondary" sx={{ mb: 2 }}>先填写第一个动作代码；需要增加动作时点击“＋ 添加动作”。已收录的动作会自动带出难度，未收录动作可先保存，之后再补录难度。</Typography>
+    <Paper variant="outlined" sx={{ p: 2, mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
+      <TextField
+        fullWidth
+        size="small"
+        label="搜索选手"
+        placeholder="姓名、搭档、比赛、项目、组别或单位"
+        value={searchTerm}
+        onChange={(event) => { setSearchTerm(event.target.value); setPage(1); }}
+        sx={{ flex: '1 1 360px' }}
+      />
+      <TextField
+        select
+        size="small"
+        label="每页人数"
+        value={pageSize}
+        onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
+        sx={{ width: 130 }}
+      >
+        {PAGE_SIZE_OPTIONS.map((size) => <MenuItem key={size} value={size}>{size} 人</MenuItem>)}
+      </TextField>
+    </Paper>
     {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>{focusParticipantId ? '已定位到当前报名项目；完成动作表后可返回参赛者管理继续编辑。' : '管理员模式：这里显示所有比赛的跳水选手，可补填任意选手的动作和难度系数。'}</Alert>}
     {message && <Alert severity={message.severity} sx={{ mb: 2 }} onClose={() => setMessage(null)}>{message.text}</Alert>}
-    {visibleItems.map((item) => <DivingPlanCard
+    {pageItems.map((item) => <DivingPlanCard
       key={item._id}
       item={item}
       plan={plans[item._id]}
@@ -231,10 +276,11 @@ export default function DivingActionPlanPage() {
       onPlanChange={updatePlan}
       onSave={save}
     />)}
-    {visibleItems.length < items.length && <Box sx={{ textAlign: 'center', mb: 2 }}>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>已显示 {visibleItems.length} / {items.length} 名选手</Typography>
-      <Button variant="outlined" onClick={() => setVisibleCount((current) => current + INITIAL_VISIBLE_ITEMS)}>显示更多</Button>
+    {filteredItems.length > 0 && <Box sx={{ textAlign: 'center', mb: 2 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>共匹配 {filteredItems.length} 名选手 · 第 {currentPage} / {totalPages} 页</Typography>
+      {totalPages > 1 && <Pagination count={totalPages} page={currentPage} color="primary" onChange={(_, nextPage) => setPage(nextPage)} sx={{ display: 'inline-flex' }} />}
     </Box>}
     {!items.length && <Alert severity="info">目前没有需要补录动作表的跳水报名。</Alert>}
+    {items.length > 0 && !filteredItems.length && <Alert severity="info">没有找到符合搜索条件的选手。</Alert>}
   </Box>;
 }
