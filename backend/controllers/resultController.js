@@ -110,7 +110,7 @@ const normalizeParticipantDivingProgram = (participant) => {
   if (!Array.isArray(plan?.dives) || !plan.dives.length) return null;
   const program = plan.dives.map((dive, index) => {
     const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
-    const difficulty = isLandDiving(participant) ? 1 : Number(dive?.difficulty);
+    const difficulty = isLandDiving(participant) && (dive?.difficulty === '' || dive?.difficulty == null) ? 1 : Number(dive?.difficulty);
     if (!actionCode || !Number.isFinite(difficulty) || difficulty <= 0) return null;
     return { actionCode, actionName: actionCode, difficulty, source: 'registration-plan', round: index + 1 };
   });

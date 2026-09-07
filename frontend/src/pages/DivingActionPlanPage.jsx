@@ -33,8 +33,8 @@ const customDifficulties = {
 };
 const getDifficulty = (participant, platformHeight, actionCode) => {
   const event = String(participant.event || '');
-  if (isLandDiving(participant)) return 1;
   const code = String(actionCode || '').trim().toUpperCase();
+  if (isLandDiving(participant)) return undefined;
   const custom = customDifficulties[code];
   if (custom !== undefined) return custom;
   if (/跳板/.test(event)) return divingDifficultyTable.board[/3米/.test(event) ? '3m' : '1m']?.[code];
@@ -61,7 +61,7 @@ const buildPlan = (participant, currentPlan) => {
   const rule = getRule(participant);
   const existing = Array.isArray(currentPlan?.dives) ? currentPlan.dives : [];
   const dives = existing.length
-    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: isLandDiving(participant) ? 1 : (dive?.difficulty ?? '') }))
+    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: isLandDiving(participant) && (dive?.difficulty === '' || dive?.difficulty == null) ? 1 : (dive?.difficulty ?? '') }))
     : [{ actionCode: '', difficulty: isLandDiving(participant) ? 1 : '' }];
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
 };
@@ -106,7 +106,7 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
   return <Paper sx={{ p: 2, mb: 2 }}>
     <Typography fontWeight="bold">{item.competition?.name} · {item.additionalInfo?.divingPair ? `${item.name}／${item.additionalInfo.divingPair.partnerName}` : item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-      {landDiving ? '陆上网、陆上板所有动作的难度系数均固定为 1。' : '动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。'}
+      {landDiving ? '陆上网、陆上板动作的难度系数默认是 1，可按实际动作修改。' : '动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。'}
     </Typography>
     {issues.missingActionIndexes.length > 0 && <Alert severity="warning" sx={{ mt: 1.5 }}>待补动作代码：第 {issues.missingActionIndexes.join('、')} 轮。</Alert>}
     {issues.unmatchedDives.length > 0 && <Alert severity={issues.missingDifficultyDives.length ? 'warning' : 'info'} sx={{ mt: 1.5 }}>
@@ -136,10 +136,10 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
           }))}
         />
         <TextField
-          size="small" type="number" label={landDiving ? '难度系数（固定）' : (matchedDifficulty === undefined ? '难度系数（可选）' : '官方难度系数')}
-          value={landDiving ? 1 : (matchedDifficulty ?? dive.difficulty ?? '')} disabled={landDiving || matchedDifficulty !== undefined}
+          size="small" type="number" label={landDiving ? '难度系数（默认 1）' : (matchedDifficulty === undefined ? '难度系数（可选）' : '官方难度系数')}
+          value={matchedDifficulty ?? dive.difficulty ?? ''} disabled={matchedDifficulty !== undefined}
           inputProps={{ min: 0.1, max: 10, step: 0.1 }}
-          helperText={landDiving ? '陆上项目统一按 1 计算' : (matchedDifficulty === undefined ? '未收录动作可暂不填写，之后可补录' : '已自动带出')}
+          helperText={landDiving ? '默认值为 1，可按实际动作修改' : (matchedDifficulty === undefined ? '未收录动作可暂不填写，之后可补录' : '已自动带出')}
           onChange={(event) => onPlanChange(item._id, (current) => ({
             ...current,
             dives: current.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, difficulty: event.target.value } : entry)

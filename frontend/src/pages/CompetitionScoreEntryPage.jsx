@@ -62,8 +62,6 @@ const getResultScore = (result) => (
     : (typeof result?.score === 'number' ? result.score : 0)
 );
 
-const isLandDiving = (participant) => /陆上|陸上/.test(String(participant?.event || ''));
-
 const getParticipantDivingPlan = (participant) => {
   if (participant?.additionalInfo?.divingPlan) return participant.additionalInfo.divingPlan;
   return (participant?.teamMembers || []).find((member) => member.additionalInfo?.divingPlan)?.additionalInfo?.divingPlan || null;
@@ -81,9 +79,7 @@ const hasUsableDivingPlan = (participant, format) => {
   if (format !== 'synchronized') return Boolean(getParticipantDivingPlan(participant)?.dives?.length);
   const members = participant?.teamMembers || [];
   const [first, second] = members.map((member) => member.additionalInfo?.divingPlan);
-  return members.length === 2 && Boolean(first?.dives?.length) && Boolean(second?.dives?.length) && (isLandDiving(participant)
-    ? JSON.stringify(first.dives.map((dive) => String(dive?.actionCode || '').trim().toUpperCase())) === JSON.stringify(second.dives.map((dive) => String(dive?.actionCode || '').trim().toUpperCase()))
-    : sameDivingPlan(first, second));
+  return members.length === 2 && Boolean(first?.dives?.length) && Boolean(second?.dives?.length) && sameDivingPlan(first, second);
 };
 
 const getParticipantDivingProgram = (participant) => {
@@ -92,7 +88,7 @@ const getParticipantDivingProgram = (participant) => {
     return plan.dives.map((dive) => ({
       actionCode: dive?.actionCode || '',
       actionName: dive?.actionName || dive?.posture || dive?.actionCode || '',
-      difficulty: isLandDiving(participant) ? 1 : dive?.difficulty,
+      difficulty: dive?.difficulty === '' || dive?.difficulty == null ? (/陆上|陸上/.test(String(participant?.event || '')) ? 1 : dive?.difficulty) : dive.difficulty,
       source: 'participant-plan'
     }));
   }
