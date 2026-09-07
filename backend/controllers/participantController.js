@@ -1243,6 +1243,8 @@ const getDivingPlanRule = (participant) => {
   return { maxDives: 20 };
 };
 
+const isLandDiving = (participant) => /陆上|陸上/.test(String(participant?.event || ''));
+
 const normalizeDivingPlan = (plan, participant) => {
   const rule = getDivingPlanRule(participant);
   if (!plan || !Array.isArray(plan.dives) || !plan.dives.length || plan.dives.length > rule.maxDives) throw new Error(`请至少填写 1 个动作，最多 ${rule.maxDives} 个`);
@@ -1251,7 +1253,7 @@ const normalizeDivingPlan = (plan, participant) => {
     dives: plan.dives.map((dive, index) => {
       const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
       if (!actionCode) throw new Error(`第 ${index + 1} 个动作不能为空`);
-      const difficulty = dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty);
+      const difficulty = isLandDiving(participant) ? 1 : (dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty));
       if (difficulty !== undefined && (!Number.isFinite(difficulty) || difficulty <= 0 || difficulty > 10)) throw new Error(`第 ${index + 1} 轮难度系数无效`);
       return { actionCode, ...(difficulty === undefined ? {} : { difficulty }) };
     })

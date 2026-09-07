@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
 
 const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''));
+const isLandDiving = (participant) => /陆上|陸上/.test(String(participant.event || ''));
 
 const collapseDivingPairs = (rows) => {
   const seenPairs = new Set();
@@ -32,6 +33,7 @@ const customDifficulties = {
 };
 const getDifficulty = (participant, platformHeight, actionCode) => {
   const event = String(participant.event || '');
+  if (isLandDiving(participant)) return 1;
   const code = String(actionCode || '').trim().toUpperCase();
   const custom = customDifficulties[code];
   if (custom !== undefined) return custom;
@@ -59,8 +61,8 @@ const buildPlan = (participant, currentPlan) => {
   const rule = getRule(participant);
   const existing = Array.isArray(currentPlan?.dives) ? currentPlan.dives : [];
   const dives = existing.length
-    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: dive?.difficulty ?? '' }))
-    : [{ actionCode: '', difficulty: '' }];
+    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: isLandDiving(participant) ? 1 : (dive?.difficulty ?? '') }))
+    : [{ actionCode: '', difficulty: isLandDiving(participant) ? 1 : '' }];
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
 };
 
@@ -80,12 +82,13 @@ const searchableParticipantText = (participant) => [
 
 const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlanChange, onSave }) {
   const rule = getRule(item);
+  const landDiving = isLandDiving(item);
   const showPlatformHeight = /跳台/.test(String(item.event || '')) && ['U12', 'U10'].includes(rule.group);
 
   return <Paper sx={{ p: 2, mb: 2 }}>
     <Typography fontWeight="bold">{item.competition?.name} · {item.additionalInfo?.divingPair ? `${item.name}／${item.additionalInfo.divingPair.partnerName}` : item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-      动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。
+      {landDiving ? '陆上网、陆上板所有动作的难度系数均固定为 1。' : '动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。'}
     </Typography>
     {item.additionalInfo?.divingPair && <Typography variant="body2" color="primary">双人 {item.additionalInfo.divingPair.pairCode} · 搭档：{item.additionalInfo.divingPair.partnerName} · 只需填写这一份动作表，保存后会自动同步。</Typography>}
     {showPlatformHeight && <TextField
@@ -111,10 +114,10 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
           }))}
         />
         <TextField
-          size="small" type="number" label={matchedDifficulty === undefined ? '难度系数（可选）' : '官方难度系数'}
-          value={matchedDifficulty ?? dive.difficulty ?? ''} disabled={matchedDifficulty !== undefined}
+          size="small" type="number" label={landDiving ? '难度系数（固定）' : (matchedDifficulty === undefined ? '难度系数（可选）' : '官方难度系数')}
+          value={landDiving ? 1 : (matchedDifficulty ?? dive.difficulty ?? '')} disabled={landDiving || matchedDifficulty !== undefined}
           inputProps={{ min: 0.1, max: 10, step: 0.1 }}
-          helperText={matchedDifficulty === undefined ? '未收录动作可暂不填写，之后可补录' : '已自动带出'}
+          helperText={landDiving ? '陆上项目统一按 1 计算' : (matchedDifficulty === undefined ? '未收录动作可暂不填写，之后可补录' : '已自动带出')}
           onChange={(event) => onPlanChange(item._id, (current) => ({
             ...current,
             dives: current.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, difficulty: event.target.value } : entry)
@@ -129,7 +132,7 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
     <Box sx={{ mt: 1.5, display: 'flex', gap: 1 }}>
       <Button variant="outlined" disabled={plan.dives.length >= rule.maxDives} onClick={() => onPlanChange(item._id, (current) => ({
         ...current,
-        dives: [...current.dives, { actionCode: '', difficulty: '' }]
+        dives: [...current.dives, { actionCode: '', difficulty: isLandDiving(item) ? 1 : '' }]
       }))}>＋ 添加动作</Button>
       <Button variant="contained" disabled={saving} onClick={() => onSave(item, plan)}>
         {saving ? '保存中…' : '保存动作表'}

@@ -104,12 +104,13 @@ function normalizeDivingScores(scores) {
 function isCompleteDivingScore(scores) {
   return scores.length === 5 && scores.every((score) => Number.isFinite(score));
 }
+const isLandDiving = (participant) => /陆上|陸上/.test(String(participant?.event || ''));
 const normalizeParticipantDivingProgram = (participant) => {
   const plan = participant?.additionalInfo?.divingPlan;
   if (!Array.isArray(plan?.dives) || !plan.dives.length) return null;
   const program = plan.dives.map((dive, index) => {
     const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
-    const difficulty = Number(dive?.difficulty);
+    const difficulty = isLandDiving(participant) ? 1 : Number(dive?.difficulty);
     if (!actionCode || !Number.isFinite(difficulty) || difficulty <= 0) return null;
     return { actionCode, actionName: actionCode, difficulty, source: 'registration-plan', round: index + 1 };
   });
@@ -147,7 +148,7 @@ exports.submitDivingScore = async (req, res, next) => {
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
     if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
-    const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus additionalInfo');
+    const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus additionalInfo event');
     if (!participant) return res.status(404).json({ success: false, message: 'Participant not found' });
     if (!(schedule.participants || []).some((entryId) => entryId.toString() === participant._id.toString())) {
       return res.status(400).json({ success: false, message: '该参赛对象不在当前赛程中' });
