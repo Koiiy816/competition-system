@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, MenuItem, Pagination, Paper, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Pagination, Paper, TextField, Typography } from '@mui/material';
 import participantService from '../services/participantService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
@@ -66,6 +66,23 @@ const buildPlan = (participant, currentPlan) => {
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
 };
 
+const getPlanIssues = (participant, plan) => {
+  const dives = Array.isArray(plan?.dives) ? plan.dives : [];
+  const missingActionIndexes = dives.reduce((indexes, dive, index) => {
+    if (!String(dive?.actionCode || '').trim()) indexes.push(index + 1);
+    return indexes;
+  }, []);
+  if (isLandDiving(participant)) return { missingActionIndexes, unmatchedDives: [], missingDifficultyDives: [] };
+
+  const unmatchedDives = dives.reduce((entries, dive, index) => {
+    const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
+    if (actionCode && getDifficulty(participant, plan?.takeoffOrHeight, actionCode) === undefined) entries.push({ index: index + 1, actionCode, difficulty: dive?.difficulty });
+    return entries;
+  }, []);
+  const missingDifficultyDives = unmatchedDives.filter(({ difficulty }) => !Number.isFinite(Number(difficulty)) || Number(difficulty) <= 0);
+  return { missingActionIndexes, unmatchedDives, missingDifficultyDives };
+};
+
 const DEFAULT_PAGE_SIZE = 20;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50];
 
@@ -83,6 +100,7 @@ const searchableParticipantText = (participant) => [
 const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlanChange, onSave }) {
   const rule = getRule(item);
   const landDiving = isLandDiving(item);
+  const issues = getPlanIssues(item, plan);
   const showPlatformHeight = /跳台/.test(String(item.event || '')) && ['U12', 'U10'].includes(rule.group);
 
   return <Paper sx={{ p: 2, mb: 2 }}>
@@ -90,6 +108,10 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
       {landDiving ? '陆上网、陆上板所有动作的难度系数均固定为 1。' : '动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。'}
     </Typography>
+    {issues.missingActionIndexes.length > 0 && <Alert severity="warning" sx={{ mt: 1.5 }}>待补动作代码：第 {issues.missingActionIndexes.join('、')} 轮。</Alert>}
+    {issues.unmatchedDives.length > 0 && <Alert severity={issues.missingDifficultyDives.length ? 'warning' : 'info'} sx={{ mt: 1.5 }}>
+      未匹配官方难度：{issues.unmatchedDives.map(({ index, actionCode }) => `第 ${index} 轮「${actionCode}」`).join('、')}。{issues.missingDifficultyDives.length ? `其中第 ${issues.missingDifficultyDives.map(({ index }) => index).join('、')} 轮还未手填难度系数。` : '已使用手填难度系数。'}
+    </Alert>}
     {item.additionalInfo?.divingPair && <Typography variant="body2" color="primary">双人 {item.additionalInfo.divingPair.pairCode} · 搭档：{item.additionalInfo.divingPair.partnerName} · 只需填写这一份动作表，保存后会自动同步。</Typography>}
     {showPlatformHeight && <TextField
       select fullWidth size="small" required disabled={rule.group === 'U10'} label="实际跳台高度"
@@ -153,6 +175,7 @@ export default function DivingActionPlanPage() {
   const [savingId, setSavingId] = useState('');
   const [message, setMessage] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [issueFilter, setIssueFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
@@ -233,9 +256,24 @@ export default function DivingActionPlanPage() {
 
   const filteredItems = useMemo(() => {
     const normalizedTerm = searchTerm.trim().toLocaleLowerCase();
-    if (!normalizedTerm) return items;
-    return items.filter((item) => searchableParticipantText(item).includes(normalizedTerm));
-  }, [items, searchTerm]);
+    return items.filter((item) => {
+      const plan = plans[item._id];
+      const issues = getPlanIssues(item, plan);
+      const matchesSearch = !normalizedTerm || searchableParticipantText(item).includes(normalizedTerm);
+      const matchesIssue = issueFilter === 'all'
+        || (issueFilter === 'missing-action' && issues.missingActionIndexes.length > 0)
+        || (issueFilter === 'unmatched-difficulty' && issues.unmatchedDives.length > 0)
+        || (issueFilter === 'missing-difficulty' && issues.missingDifficultyDives.length > 0);
+      return matchesSearch && matchesIssue;
+    });
+  }, [items, plans, searchTerm, issueFilter]);
+  const issueSummary = useMemo(() => items.reduce((summary, item) => {
+    const issues = getPlanIssues(item, plans[item._id]);
+    if (issues.missingActionIndexes.length) summary.missingActionPeople += 1;
+    if (issues.unmatchedDives.length) summary.unmatchedDifficultyPeople += 1;
+    if (issues.missingDifficultyDives.length) summary.missingDifficultyPeople += 1;
+    return summary;
+  }, { missingActionPeople: 0, unmatchedDifficultyPeople: 0, missingDifficultyPeople: 0 }), [items, plans]);
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageItems = useMemo(() => {
@@ -261,6 +299,19 @@ export default function DivingActionPlanPage() {
       <TextField
         select
         size="small"
+        label="待处理筛选"
+        value={issueFilter}
+        onChange={(event) => { setIssueFilter(event.target.value); setPage(1); }}
+        sx={{ width: 190 }}
+      >
+        <MenuItem value="all">全部选手</MenuItem>
+        <MenuItem value="missing-action">未填动作代码</MenuItem>
+        <MenuItem value="unmatched-difficulty">未匹配官方难度</MenuItem>
+        <MenuItem value="missing-difficulty">未匹配且未填难度</MenuItem>
+      </TextField>
+      <TextField
+        select
+        size="small"
         label="每页人数"
         value={pageSize}
         onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}
@@ -269,6 +320,12 @@ export default function DivingActionPlanPage() {
         {PAGE_SIZE_OPTIONS.map((size) => <MenuItem key={size} value={size}>{size} 人</MenuItem>)}
       </TextField>
     </Paper>
+    {canManageAll && <Paper variant="outlined" sx={{ p: 1.5, mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+      <Typography variant="body2" fontWeight="bold" sx={{ mr: 0.5 }}>动作表待处理概览</Typography>
+      <Chip color={issueSummary.missingActionPeople ? 'warning' : 'success'} label={`未填动作代码：${issueSummary.missingActionPeople} 人`} />
+      <Chip color={issueSummary.unmatchedDifficultyPeople ? 'warning' : 'success'} label={`未匹配官方难度：${issueSummary.unmatchedDifficultyPeople} 人`} />
+      <Chip color={issueSummary.missingDifficultyPeople ? 'error' : 'success'} label={`未匹配且未填难度：${issueSummary.missingDifficultyPeople} 人`} />
+    </Paper>}
     {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>{focusParticipantId ? '已定位到当前报名项目；完成动作表后可返回参赛者管理继续编辑。' : '管理员模式：这里显示所有比赛的跳水选手，可补填任意选手的动作和难度系数。'}</Alert>}
     {message && <Alert severity={message.severity} sx={{ mb: 2 }} onClose={() => setMessage(null)}>{message.text}</Alert>}
     {pageItems.map((item) => <DivingPlanCard
