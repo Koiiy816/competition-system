@@ -35,6 +35,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
+import { getAutoAgeGroup } from '../utils/ageGroup';
 const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
 const isDivingCompetition = (competition = {}) => /跳水|跳板|跳台/.test([competition.type, competition.name].filter(Boolean).join(' '));
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -239,37 +240,6 @@ const RegisterCompetitionPage = () => {
     }
     const gradeOption = gradeOptions.find(option => option.value === grade);
     return gradeOption ? gradeOption.group : null;
-  };
-
-  // 赛事明确配置出生日期范围时优先使用该规则；未配置范围的旧赛事继续沿用原有 U 组别逻辑。
-  const getAutoAgeGroup = (birthDateValue) => {
-    if (!birthDateValue) return '';
-    const birthDate = String(birthDateValue).slice(0, 10);
-    const groups = competition?.ageGroups || [];
-    const matchedGroup = groups.find((group) => {
-      const start = group.birthDateStart ? String(group.birthDateStart).slice(0, 10) : '';
-      const end = group.birthDateEnd ? String(group.birthDateEnd).slice(0, 10) : '';
-      return (start || end) && (!start || birthDate >= start) && (!end || birthDate <= end);
-    });
-    if (matchedGroup) return matchedGroup.name;
-
-    const year = Number(birthDate.slice(0, 4));
-    if (!year) return '';
-    const age = new Date().getFullYear() - year;
-    if (groups.length) {
-      const availableGroups = groups.map(group => group.name);
-      if (age <= 6 && availableGroups.includes('U6组')) return 'U6组';
-      if (age <= 10 && availableGroups.includes('U10组')) return 'U10组';
-      if (age <= 13 && availableGroups.includes('U13组')) return 'U13组';
-      if (age <= 16 && availableGroups.includes('U16组')) return 'U16组';
-      return availableGroups.find(group => group.includes(String(age))) || availableGroups[0] || '';
-    }
-    if (age <= 6) return 'U6组';
-    if (age <= 9) return 'U9组';
-    if (age <= 11) return 'U11组';
-    if (age <= 13) return 'U13组';
-    if (age <= 16) return 'U16组';
-    return '成人组';
   };
 
   // 获取当前年级可选的比赛项目
@@ -480,7 +450,7 @@ const RegisterCompetitionPage = () => {
         updates.gender = genderStr;
         updates.event = ''; // 组别或性别变化，清空已选比赛项目
         
-        updates.grade = getAutoAgeGroup(birthDateStr);
+        updates.grade = getAutoAgeGroup(birthDateStr, competition?.ageGroups || []);
       }
       
       setFormData(prev => ({
@@ -488,7 +458,7 @@ const RegisterCompetitionPage = () => {
         ...updates
       }));
     } else if (name === 'birthDate') {
-      const autoGrade = value ? getAutoAgeGroup(value) : formData.grade;
+      const autoGrade = value ? getAutoAgeGroup(value, competition?.ageGroups || []) : formData.grade;
 
       setFormData(prev => ({
         ...prev,
