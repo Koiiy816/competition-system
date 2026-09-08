@@ -35,7 +35,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
-const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
+const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
 const isDivingCompetition = (competition = {}) => /跳水|跳板|跳台/.test([competition.type, competition.name].filter(Boolean).join(' '));
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));

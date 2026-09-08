@@ -1244,6 +1244,7 @@ const getDivingPlanRule = (participant) => {
 };
 
 const isLandDiving = (participant) => /陆上|陸上/.test(String(participant?.event || ''));
+const isStrengthEvent = (participant) => /素质力量/.test(String(participant?.event || ''));
 
 const normalizeDivingPlan = (plan, participant) => {
   const rule = getDivingPlanRule(participant);
@@ -1251,9 +1252,9 @@ const normalizeDivingPlan = (plan, participant) => {
   return {
     takeoffOrHeight: String(plan.takeoffOrHeight || '').trim().slice(0, 100),
     dives: plan.dives.map((dive, index) => {
-      const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
+      const actionCode = String(dive?.actionCode || '').normalize('NFKC').trim().toUpperCase().replace(/\s+/g, '');
       if (!actionCode) throw new Error(`第 ${index + 1} 个动作不能为空`);
-      const difficulty = isLandDiving(participant) && (dive?.difficulty === '' || dive?.difficulty == null) ? 1 : (dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty));
+      const difficulty = isStrengthEvent(participant) ? undefined : (isLandDiving(participant) && (dive?.difficulty === '' || dive?.difficulty == null) ? 1 : (dive?.difficulty === '' || dive?.difficulty == null ? undefined : Number(dive.difficulty)));
       if (difficulty !== undefined && (!Number.isFinite(difficulty) || difficulty <= 0 || difficulty > 10)) throw new Error(`第 ${index + 1} 轮难度系数无效`);
       return { actionCode, ...(difficulty === undefined ? {} : { difficulty }) };
     })
@@ -1264,7 +1265,7 @@ exports.saveDivingPlan = async (req, res, next) => {
   try {
     const participant = await Participant.findOne({ _id: req.params.id, competition: req.params.competitionId, isVirtualTeam: { $ne: true } });
     if (!participant) return res.status(404).json({ success: false, message: '未找到该报名记录' });
-    if (!/跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test(String(participant.event || ''))) return res.status(400).json({ success: false, message: '仅跳水项目可以补录动作表' });
+    if (!/跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant.event || ''))) return res.status(400).json({ success: false, message: '仅跳水项目可以补录动作表' });
     if (participant.user?.toString() !== req.user.id && !req.user.roles?.some((role) => ['admin', 'chief_referee'].includes(role))) return res.status(403).json({ success: false, message: '没有权限补录该报名的动作表' });
 
     let divingPlan;

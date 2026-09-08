@@ -6,8 +6,10 @@ import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
 
-const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test(String(participant.event || ''));
+const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant.event || ''));
 const isLandDiving = (participant) => /陆上|陸上/.test(String(participant.event || ''));
+const isStrengthEvent = (participant) => /素质力量/.test(String(participant.event || ''));
+const strengthActions = ['垫上两头起10次', '肋木举腿5次', '立定跳远', '提膝跳5次', '提膝跳10次', '引体控20秒', '引体控40秒'];
 
 const collapseDivingPairs = (rows) => {
   const seenPairs = new Set();
@@ -34,6 +36,7 @@ const customDifficulties = {
   '向后冰棍C': 0.7,
   '前倒A': 1,
   '前倒B': 1,
+  '向前站倒B': 1,
   '坐倒B': 1,
   '坐倒C': 1,
   '后倒A': 1,
@@ -42,15 +45,24 @@ const customDifficulties = {
   '三弹101B': 1.3,
   '三弹101C': 1.2
 };
+const getActionCode = (value) => String(value || '').normalize('NFKC').trim().toUpperCase().replace(/\s+/g, '');
+const getCompatibleDifficulties = (event, platformHeight) => {
+  const boardHeight = /3米跳板/.test(event) ? '3m' : '1m';
+  const primary = /跳板/.test(event)
+    ? divingDifficultyTable.board[boardHeight]
+    : (/跳台/.test(event) && platformHeight ? divingDifficultyTable.platform[platformHeight] : null);
+  const sources = /跳板/.test(event)
+    ? [primary, divingDifficultyTable.board[boardHeight === '3m' ? '1m' : '3m'], ...Object.values(divingDifficultyTable.platform)]
+    : [primary, ...Object.values(divingDifficultyTable.platform), ...Object.values(divingDifficultyTable.board)];
+  return sources.filter(Boolean);
+};
 const getDifficulty = (participant, platformHeight, actionCode) => {
   const event = String(participant.event || '');
-  const code = String(actionCode || '').trim().toUpperCase();
+  const code = getActionCode(actionCode);
   if (isLandDiving(participant)) return undefined;
   const custom = customDifficulties[code];
   if (custom !== undefined) return custom;
-  if (/跳板/.test(event)) return divingDifficultyTable.board[/3米/.test(event) ? '3m' : '1m']?.[code];
-  if (/跳台/.test(event) && platformHeight) return divingDifficultyTable.platform[platformHeight]?.[code];
-  return undefined;
+  return getCompatibleDifficulties(event, platformHeight).find((actions) => actions[code] !== undefined)?.[code];
 };
 
 const groupKey = (participant) => {
@@ -72,7 +84,7 @@ const buildPlan = (participant, currentPlan) => {
   const rule = getRule(participant);
   const existing = Array.isArray(currentPlan?.dives) ? currentPlan.dives : [];
   const dives = existing.length
-    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: isLandDiving(participant) && (dive?.difficulty === '' || dive?.difficulty == null) ? 1 : (dive?.difficulty ?? '') }))
+    ? existing.map((dive) => ({ actionCode: dive?.actionCode || '', difficulty: isStrengthEvent(participant) ? '' : (isLandDiving(participant) && (dive?.difficulty === '' || dive?.difficulty == null) ? 1 : (dive?.difficulty ?? '')) }))
     : [{ actionCode: '', difficulty: isLandDiving(participant) ? 1 : '' }];
   return { takeoffOrHeight: currentPlan?.takeoffOrHeight || rule.platformHeight || '', dives };
 };
@@ -83,10 +95,10 @@ const getPlanIssues = (participant, plan) => {
     if (!String(dive?.actionCode || '').trim()) indexes.push(index + 1);
     return indexes;
   }, []);
-  if (isLandDiving(participant)) return { missingActionIndexes, unmatchedDives: [], missingDifficultyDives: [] };
+  if (isLandDiving(participant) || isStrengthEvent(participant)) return { missingActionIndexes, unmatchedDives: [], missingDifficultyDives: [] };
 
   const unmatchedDives = dives.reduce((entries, dive, index) => {
-    const actionCode = String(dive?.actionCode || '').trim().toUpperCase();
+    const actionCode = getActionCode(dive?.actionCode);
     if (actionCode && getDifficulty(participant, plan?.takeoffOrHeight, actionCode) === undefined) entries.push({ index: index + 1, actionCode, difficulty: dive?.difficulty });
     return entries;
   }, []);
@@ -111,13 +123,14 @@ const searchableParticipantText = (participant) => [
 const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlanChange, onSave }) {
   const rule = getRule(item);
   const landDiving = isLandDiving(item);
+  const strengthEvent = isStrengthEvent(item);
   const issues = getPlanIssues(item, plan);
   const showPlatformHeight = /跳台/.test(String(item.event || '')) && ['U12', 'U10'].includes(rule.group);
 
   return <Paper sx={{ p: 2, mb: 2 }}>
     <Typography fontWeight="bold">{item.competition?.name} · {item.additionalInfo?.divingPair ? `${item.name}／${item.additionalInfo.divingPair.partnerName}` : item.name} · {item.event} · {item.ageGroup || item.grade}</Typography>
     <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-      {landDiving ? '陆上网、陆上板动作的难度系数默认是 1，可按实际动作修改。' : '动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。'}
+      {strengthEvent ? '请选择比赛动作；素质力量项目不设置难度系数。' : (landDiving ? '陆上网、陆上板动作的难度系数默认是 1，可按实际动作修改。' : '动作数量可按实际参赛轮次添加；未收录动作的难度系数可暂时留空。')}
     </Typography>
     {issues.missingActionIndexes.length > 0 && <Alert severity="warning" sx={{ mt: 1.5 }}>待补动作代码：第 {issues.missingActionIndexes.join('、')} 轮。</Alert>}
     {issues.unmatchedDives.length > 0 && <Alert severity={issues.missingDifficultyDives.length ? 'warning' : 'info'} sx={{ mt: 1.5 }}>
@@ -138,15 +151,18 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
     </TextField>}
     {plan.dives.map((dive, index) => {
       const matchedDifficulty = getDifficulty(item, plan.takeoffOrHeight, dive.actionCode);
-      return <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 180px auto' }, gap: 1, mt: 1 }}>
+      return <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: strengthEvent ? '1fr auto' : '1fr 180px auto' }, gap: 1, mt: 1 }}>
         <TextField
-          fullWidth size="small" required label={'第 ' + (index + 1) + ' 个动作'} value={dive.actionCode || ''}
+          select={strengthEvent} fullWidth size="small" required label={'第 ' + (index + 1) + ' 个动作'} value={dive.actionCode || ''}
           onChange={(event) => onPlanChange(item._id, (current) => ({
             ...current,
-            dives: current.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, actionCode: event.target.value.toUpperCase() } : entry)
+            dives: current.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, actionCode: event.target.value } : entry)
           }))}
-        />
-        <TextField
+        >
+          {strengthEvent && <MenuItem value="">请选择动作</MenuItem>}
+          {strengthEvent && strengthActions.map((action) => <MenuItem key={action} value={action}>{action}</MenuItem>)}
+        </TextField>
+        {!strengthEvent && <TextField
           size="small" type="number" label={landDiving ? '难度系数（默认 1）' : (matchedDifficulty === undefined ? '难度系数（可选）' : '官方难度系数')}
           value={matchedDifficulty ?? dive.difficulty ?? ''} disabled={matchedDifficulty !== undefined}
           inputProps={{ min: 0.1, max: 10, step: 0.1 }}
@@ -155,7 +171,7 @@ const DivingPlanCard = memo(function DivingPlanCard({ item, plan, saving, onPlan
             ...current,
             dives: current.dives.map((entry, diveIndex) => diveIndex === index ? { ...entry, difficulty: event.target.value } : entry)
           }))}
-        />
+        />}
         <Button color="error" disabled={plan.dives.length === 1} onClick={() => onPlanChange(item._id, (current) => ({
           ...current,
           dives: current.dives.filter((_, diveIndex) => diveIndex !== index)
@@ -296,7 +312,7 @@ export default function DivingActionPlanPage() {
 
   return <Box sx={{ maxWidth: 900, mx: 'auto', p: 3 }}>
     <Typography variant="h4" gutterBottom>补录跳水动作表</Typography>
-    <Typography color="text.secondary" sx={{ mb: 2 }}>先填写第一个动作代码；需要增加动作时点击“＋ 添加动作”。已收录的动作会自动带出难度，未收录动作可先保存，之后再补录难度。</Typography>
+    <Typography color="text.secondary" sx={{ mb: 2 }}>先填写第一个动作代码；需要增加动作时点击“＋ 添加动作”。系统会优先按当前项目匹配难度，其他已收录项目的动作也会自动适配；未收录动作可先保存，之后再补录难度。</Typography>
     <Paper variant="outlined" sx={{ p: 2, mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
       <TextField
         fullWidth

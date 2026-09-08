@@ -25,8 +25,9 @@ import competitionService from '../../services/competitionService';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
 
-const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test([participant.event, participant.category].filter(Boolean).join(' '));
+const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([participant.event, participant.category].filter(Boolean).join(' '));
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
+const isStrengthEntry = (participant = {}) => /素质力量/.test([participant.event, participant.category].filter(Boolean).join(' '));
 
 const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData }) => {
   const navigate = useNavigate();
@@ -406,7 +407,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                       <Box key={index} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '70px 1fr 150px' }, gap: 1, py: 0.75, borderTop: index ? 1 : 0, borderColor: 'divider' }}>
                         <Typography variant="body2">第 {index + 1} 个</Typography>
                         <Typography variant="body2">动作：{dive.actionCode || '-'}</Typography>
-                        <Typography variant="body2">难度：{dive.difficulty === '' || dive.difficulty == null ? (isLandDivingEntry(editData) ? 1 : '待配置') : dive.difficulty}</Typography>
+                        <Typography variant="body2">难度：{isStrengthEntry(editData) ? '不设难度系数' : (dive.difficulty === '' || dive.difficulty == null ? (isLandDivingEntry(editData) ? 1 : '待配置') : dive.difficulty)}</Typography>
                       </Box>
                     ))
                   ) : <Alert severity="info">该选手尚未提交跳水动作表。</Alert>}

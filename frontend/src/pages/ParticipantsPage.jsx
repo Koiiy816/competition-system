@@ -134,6 +134,8 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   // 检查用户是否是管理员或比赛主裁判
   const isAdminOrChiefReferee = user?.roles?.includes('admin') || user?.roles?.includes('chief_referee');
+  const selectedCompetition = competitions.find((competition) => competition._id === filters.competitionId);
+  const isDivingCompetition = /跳水|跳板|跳台/.test([selectedCompetition?.type, selectedCompetition?.name].filter(Boolean).join(' '));
   
   // 决定是否能查看标签页和列表（管理员/主裁 或 开启了"我的报名"功能）
   const canViewParticipants = isAdminOrChiefReferee || myRegistrations;
@@ -620,6 +622,82 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     } finally {
       setActionLoading(false);
       setTimeout(() => setSuccessMessage(''), 3000);
+    }
+  };
+
+  const handleExportDivingActionPlans = async () => {
+    if (!filters.competitionId) {
+      setError('请先选择一个比赛');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const response = await participantService.getParticipants(filters.competitionId, { limit: 10000 });
+      const divingParticipants = (response.data || []).filter((participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant.event || '')));
+      if (!divingParticipants.length) throw new Error('当前比赛没有可导出的跳水报名记录');
+
+      const formatGender = (gender) => gender === 'male' ? '男' : (gender === 'female' ? '女' : (gender || ''));
+      const athletesByKey = new Map();
+      divingParticipants.forEach((participant) => {
+        const identity = String(participant.idCard || '').trim();
+        const key = identity ? `id:${identity}` : `name:${participant.name || ''}:${participant.schoolName || participant.teamName || ''}:${participant.gender || ''}`;
+        const athlete = athletesByKey.get(key) || { participant, entries: [] };
+        athlete.entries.push(participant);
+        athletesByKey.set(key, athlete);
+      });
+      const athletes = Array.from(athletesByKey.values()).sort((a, b) => String(a.participant.name || '').localeCompare(String(b.participant.name || ''), 'zh-CN'));
+      const border = { style: 'thin', color: { rgb: '000000' } };
+      const cellStyle = { alignment: { vertical: 'center', horizontal: 'center', wrapText: true }, font: { name: 'Microsoft YaHei', sz: 10 }, border: { top: border, bottom: border, left: border, right: border } };
+      const titleStyle = { ...cellStyle, font: { name: 'Microsoft YaHei', sz: 16, bold: true } };
+      const headerStyle = { ...cellStyle, font: { name: 'Microsoft YaHei', sz: 10, bold: true }, fill: { fgColor: { rgb: 'EAF2F8' } } };
+      const workbook = XLSX.utils.book_new();
+      const usedSheetNames = new Set();
+      athletes.forEach(({ participant, entries }, athleteIndex) => {
+        const rows = [
+          [`${selectedCompetition?.name || '比赛'}跳水项目动作表`],
+          [`姓名：${participant.name || participant.teamName || ''}`, `参赛单位：${participant.schoolName || participant.teamName || ''}`, `性别：${formatGender(participant.gender)}`, `组别：${participant.ageGroup || participant.grade || ''}`]
+        ];
+        const sectionRows = new Set();
+        const headerRows = new Set();
+        entries.forEach((entry, eventIndex) => {
+          sectionRows.add(rows.length);
+          rows.push([`项目 ${eventIndex + 1}：${entry.event || ''}`]);
+          headerRows.add(rows.length);
+          rows.push(['轮次', '起跳方式或高度', '动作代码', '难度系数']);
+          const dives = entry.additionalInfo?.divingPlan?.dives || [];
+          const rounds = Math.max(1, dives.length);
+          for (let round = 0; round < rounds; round += 1) {
+            rows.push([round + 1, round === 0 ? (entry.additionalInfo?.divingPlan?.takeoffOrHeight || '') : '', dives[round]?.actionCode || '', dives[round]?.difficulty ?? '']);
+          }
+          if (eventIndex < entries.length - 1) rows.push([]);
+        });
+
+        const worksheet = XLSX.utils.aoa_to_sheet(rows);
+        rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+          const address = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+          if (!worksheet[address]) worksheet[address] = { t: 's', v: value ?? '' };
+          worksheet[address].s = rowIndex === 0 ? titleStyle : (headerRows.has(rowIndex) ? headerStyle : cellStyle);
+        }));
+        worksheet['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+          ...Array.from(sectionRows, (row) => ({ s: { r: row, c: 0 }, e: { r: row, c: 3 } }))
+        ];
+        worksheet['!cols'] = [{ wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 12 }];
+        worksheet['!rows'] = [{ hpt: 28 }];
+        let sheetName = String(participant.name || participant.teamName || `选手${athleteIndex + 1}`).replace(/[\\/:*?"<>|\[\]]/g, '_').slice(0, 28) || `选手${athleteIndex + 1}`;
+        while (usedSheetNames.has(sheetName)) sheetName = `${sheetName.slice(0, 28)}_${usedSheetNames.size}`;
+        usedSheetNames.add(sheetName);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      });
+      const fileName = `${String(selectedCompetition?.name || '比赛').replace(/[\\/:*?"<>|]/g, '_')}-跳水项目动作表.xlsx`;
+      XLSX.writeFile(workbook, fileName, { compression: true });
+      setSuccessMessage(`已生成 ${athletes.length} 名选手的跳水项目动作表并开始下载。`);
+    } catch (exportError) {
+      console.error('跳水动作表导出失败:', exportError);
+      setError(exportError.message || '跳水动作表导出失败');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -1946,6 +2024,11 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     )}
                     {isAdminOrChiefReferee && (
                       <Button variant="contained" color="info" startIcon={<PhotoIcon />} onClick={handleExportPhotos} disabled={actionLoading}>{'\u5bfc\u51fa\u62a5\u540d\u8d44\u6599\u53ca\u7167\u7247'}</Button>
+                    )}
+                    {isAdminOrChiefReferee && isDivingCompetition && (
+                      <Button variant="contained" color="primary" startIcon={<DownloadIcon />} onClick={handleExportDivingActionPlans} disabled={actionLoading}>
+                        导出跳水动作表 (Excel)
+                      </Button>
                     )}
                     {isAdminOrChiefReferee && (
                       <Button
