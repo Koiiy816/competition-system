@@ -25,7 +25,7 @@ import competitionService from '../../services/competitionService';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
 
-const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
+const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test([participant.event, participant.category].filter(Boolean).join(' '));
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
 
 const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData }) => {

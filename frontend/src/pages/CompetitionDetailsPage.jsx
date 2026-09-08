@@ -45,6 +45,16 @@ const divingEvent = (name, ageGroups, genderRestriction, subcategory) => ({
 });
 
 const DIVING_REGULATION_EVENTS = [
+  divingEvent('男子倒下动作', ['U12组', 'U10组', 'U8组', 'U7组'], 'male', '倒下'),
+  divingEvent('女子倒下动作', ['U12组', 'U10组', 'U8组', 'U7组'], 'female', '倒下'),
+  divingEvent('男子倒下动作双人', ['U12组', 'U10组', 'U8组', 'U7组'], 'male', '倒下'),
+  divingEvent('女子倒下动作双人', ['U12组', 'U10组', 'U8组', 'U7组'], 'female', '倒下'),
+  divingEvent('男女混合倒下动作双人', ['U12组', 'U10组', 'U8组', 'U7组'], 'both', '倒下'),
+  divingEvent('男子冰棍动作', ['U12组', 'U10组', 'U8组', 'U7组'], 'male', '冰棍'),
+  divingEvent('女子冰棍动作', ['U12组', 'U10组', 'U8组', 'U7组'], 'female', '冰棍'),
+  divingEvent('男子冰棍动作双人', ['U12组', 'U10组', 'U8组', 'U7组'], 'male', '冰棍'),
+  divingEvent('女子冰棍动作双人', ['U12组', 'U10组', 'U8组', 'U7组'], 'female', '冰棍'),
+  divingEvent('男女混合冰棍动作双人', ['U12组', 'U10组', 'U8组', 'U7组'], 'both', '冰棍'),
   divingEvent('男子1米跳板', ['U12组', 'U10组', 'U8组', 'U7组'], 'male', '跳板'),
   divingEvent('女子1米跳板', ['U12组', 'U10组', 'U8组', 'U7组'], 'female', '跳板'),
   divingEvent('男子3米跳板', ['U12组', 'U10组'], 'male', '跳板'),

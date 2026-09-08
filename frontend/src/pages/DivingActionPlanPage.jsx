@@ -6,7 +6,7 @@ import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
 
-const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''));
+const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test(String(participant.event || ''));
 const isLandDiving = (participant) => /陆上|陸上/.test(String(participant.event || ''));
 
 const collapseDivingPairs = (rows) => {
@@ -26,8 +26,19 @@ const customDifficulties = {
   '向后立定C': 1,
   '三弹冰棍A': 0.5,
   '三弹冰棍B': 0.7,
+  '向前冰棍A': 0.5,
+  '向前冰棍B': 0.7,
+  '向前冰棍C': 0.6,
   '向后冰棍A': 0.6,
+  '向后冰棍B': 0.8,
   '向后冰棍C': 0.7,
+  '前倒A': 1,
+  '前倒B': 1,
+  '坐倒B': 1,
+  '坐倒C': 1,
+  '后倒A': 1,
+  '后倒B': 1,
+  '后倒C': 1,
   '三弹101B': 1.3,
   '三弹101C': 1.2
 };

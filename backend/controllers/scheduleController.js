@@ -689,7 +689,7 @@ function normalizeDivingScheduleConfig(body) {
 }
 
 const isSynchronizedDivingSchedule = (schedule) => schedule?.scoringMode === 'diving' && schedule?.divingFormat === 'synchronized';
-const isSynchronizedDivingName = (value) => /双人|雙人/.test(String(value || '')) && /跳水|跳板|跳台/.test(String(value || ''));
+const isSynchronizedDivingName = (value) => /双人|雙人/.test(String(value || '')) && /跳水|跳板|跳台|冰棍|倒下/.test(String(value || ''));
 
 // 兼容此前以两条个人报名记录保存的双人跳水赛程：读取时将已互配的两人转为一个可计分组合。
 // 未完成互配的记录保留原状，不能被误当作双人组合打分。

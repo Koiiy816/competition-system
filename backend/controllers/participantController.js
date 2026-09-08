@@ -1264,7 +1264,7 @@ exports.saveDivingPlan = async (req, res, next) => {
   try {
     const participant = await Participant.findOne({ _id: req.params.id, competition: req.params.competitionId, isVirtualTeam: { $ne: true } });
     if (!participant) return res.status(404).json({ success: false, message: '未找到该报名记录' });
-    if (!/跳水|跳板|跳台|陆上|陸上/.test(String(participant.event || ''))) return res.status(400).json({ success: false, message: '仅跳水项目可以补录动作表' });
+    if (!/跳水|跳板|跳台|陆上|陸上|冰棍|倒下/.test(String(participant.event || ''))) return res.status(400).json({ success: false, message: '仅跳水项目可以补录动作表' });
     if (participant.user?.toString() !== req.user.id && !req.user.roles?.some((role) => ['admin', 'chief_referee'].includes(role))) return res.status(403).json({ success: false, message: '没有权限补录该报名的动作表' });
 
     let divingPlan;
