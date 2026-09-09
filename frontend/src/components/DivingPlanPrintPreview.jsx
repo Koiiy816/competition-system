@@ -5,12 +5,14 @@ import { toDivingPlanPrintRecord } from '../utils/divingPlanPrint';
 
 const genderText = (gender) => gender === '男女混合' ? '☑男　☑女（男女混合）' : `☑${gender || '　'}　□${gender === '男' ? '女' : '男'}`;
 
-const DivingPlanItem = ({ participant }) => {
+const DivingPlanItem = ({ participant, serialNumber, competitionDate }) => {
   const record = toDivingPlanPrintRecord(participant);
   const rows = record.dives.length ? record.dives : [{}];
   return <Box className="diving-plan-print-item">
     <Box className="diving-plan-print-meta">
+      {serialNumber && <span>序号：{serialNumber}</span>}
       <span>姓名：{record.name}</span><span>参赛单位：{record.unit}</span><span>性别：{genderText(record.gender)}</span>
+      {competitionDate && <span>比赛时间：{competitionDate}</span>}
       <span>组别：{record.group}</span><span className="diving-plan-print-event">项目：{record.event}{record.takeoffOrHeight ? `　（${record.takeoffOrHeight}）` : ''}</span>
     </Box>
     <Table className="diving-plan-print-table" size="small">
@@ -24,14 +26,20 @@ const DivingPlanItem = ({ participant }) => {
   </Box>;
 };
 
-const DivingPlanSection = ({ title, participants }) => participants.length ? <Box className="diving-plan-print-section">
+const DivingPlanSection = ({ title, participants, startSerialNumber, competitionDate }) => participants.length ? <Box className="diving-plan-print-section">
   <Typography className="diving-plan-print-subtitle">{title}</Typography>
-  {participants.map((participant) => <DivingPlanItem key={participant._id} participant={participant} />)}
+  {participants.map((participant, index) => <DivingPlanItem key={participant._id} participant={participant} serialNumber={startSerialNumber ? startSerialNumber + index : null} competitionDate={competitionDate} />)}
 </Box> : null;
 
 const competitionKey = (participant) => String(participant?.competition?._id || participant?.competition || 'default');
+const formatCompetitionDate = (competition) => {
+  const formatDate = (value) => value ? new Date(value).toLocaleDateString('zh-CN') : '';
+  const startDate = formatDate(competition?.startDate);
+  const endDate = formatDate(competition?.endDate);
+  return startDate && endDate && startDate !== endDate ? `${startDate} 至 ${endDate}` : (startDate || endDate);
+};
 
-export default function DivingPlanPrintPreview({ open, onClose, participants }) {
+export default function DivingPlanPrintPreview({ open, onClose, participants, showSerialAndCompetitionDate = false }) {
   const handlePrint = () => window.print();
   const competitionGroups = Array.from(participants.reduce((groups, participant) => {
     const key = competitionKey(participant);
@@ -60,10 +68,11 @@ export default function DivingPlanPrintPreview({ open, onClose, participants }) 
     <DialogContent dividers>{competitionGroups.map((group) => {
       const pairParticipants = group.filter((participant) => participant?.additionalInfo?.divingPair);
       const individualParticipants = group.filter((participant) => !participant?.additionalInfo?.divingPair);
+      const competitionDate = showSerialAndCompetitionDate ? formatCompetitionDate(group[0]?.competition) : '';
       return <Box className="diving-plan-print-document" key={competitionKey(group[0])}>
         <Typography className="diving-plan-print-title">{toDivingPlanPrintRecord(group[0]).competitionName}</Typography>
-        <DivingPlanSection title="双人项目动作表" participants={pairParticipants} />
-        <DivingPlanSection title="单人项目动作表" participants={individualParticipants} />
+        <DivingPlanSection title="双人项目动作表" participants={pairParticipants} startSerialNumber={showSerialAndCompetitionDate ? 1 : null} competitionDate={competitionDate} />
+        <DivingPlanSection title="单人项目动作表" participants={individualParticipants} startSerialNumber={showSerialAndCompetitionDate ? pairParticipants.length + 1 : null} competitionDate={competitionDate} />
       </Box>;
     })}</DialogContent>
     <DialogActions className="no-print"><Button onClick={onClose}>取消</Button><Button variant="contained" startIcon={<PrintIcon />} onClick={handlePrint}>打印/另存为 PDF</Button></DialogActions>
