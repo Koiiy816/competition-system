@@ -1,10 +1,13 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Pagination, Paper, TextField, Typography } from '@mui/material';
+import PrintIcon from '@mui/icons-material/Print';
 import participantService from '../services/participantService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
+import DivingPlanPrintPreview from '../components/DivingPlanPrintPreview';
+import { isCompletedDivingPlan } from '../utils/divingPlanPrint';
 
 const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant.event || ''));
 const isLandDiving = (participant) => /陆上|陸上/.test(String(participant.event || ''));
@@ -205,6 +208,7 @@ export default function DivingActionPlanPage() {
   const [issueFilter, setIssueFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [printOpen, setPrintOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -302,6 +306,7 @@ export default function DivingActionPlanPage() {
     return summary;
   }, { missingActionPeople: 0, unmatchedDifficultyPeople: 0, missingDifficultyPeople: 0 }), [items, plans]);
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const canPrint = items.length > 0 && items.every(isCompletedDivingPlan);
   const currentPage = Math.min(page, totalPages);
   const pageItems = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -346,6 +351,8 @@ export default function DivingActionPlanPage() {
       >
         {PAGE_SIZE_OPTIONS.map((size) => <MenuItem key={size} value={size}>{size} 人</MenuItem>)}
       </TextField>
+      <Button variant="contained" startIcon={<PrintIcon />} disabled={!canPrint} onClick={() => setPrintOpen(true)}>打印全部动作表</Button>
+      {items.length > 0 && !canPrint && <Typography variant="caption" color="text.secondary">完成本单位全部项目的动作补录后可打印。</Typography>}
     </Paper>
     {canManageAll && <Paper variant="outlined" sx={{ p: 1.5, mb: 2, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
       <Typography variant="body2" fontWeight="bold" sx={{ mr: 0.5 }}>动作表待处理概览</Typography>
@@ -369,5 +376,6 @@ export default function DivingActionPlanPage() {
     </Box>}
     {!items.length && <Alert severity="info">目前没有需要补录动作表的跳水报名。</Alert>}
     {items.length > 0 && !filteredItems.length && <Alert severity="info">没有找到符合搜索条件的选手。</Alert>}
+    <DivingPlanPrintPreview open={printOpen} onClose={() => setPrintOpen(false)} participants={items} />
   </Box>;
 }
