@@ -196,7 +196,7 @@ function CourtPanel({ panel, showPrizeLevels }) {
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)' }}>
     <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-        <Typography sx={{ color: '#f7c948', fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 25 : 36 } }}>{panel.court}</Typography>
+        <Typography sx={{ color: '#f7c948', fontWeight: 800, fontSize: { xs: 15, md: 20 } }}>{panel.court}</Typography>
         <Stack direction="row" spacing={1}>
           {shouldAutoScroll && <Chip label="自动滚动显示全部" sx={{ bgcolor: '#12385a', color: '#9ed8ff', fontWeight: 800, fontSize: 14 }} />}
           {!panel.isDiving && <Chip label={panel.live ? '正在打分' : '最近成绩'} sx={{ bgcolor: panel.live ? '#1d7f5f' : '#3b5875', color: '#fff', fontWeight: 800, fontSize: 15 }} />}
