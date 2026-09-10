@@ -59,6 +59,6 @@ export const toDivingStartOrderRecord = (participant, schedule) => {
     name,
     unit: participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-',
     dives,
-    totalDifficulty: Number(totalDifficulty.toFixed(2))
+    totalDifficulty: /素质力量/.test(String(schedule?.name || '')) ? '-' : Number(totalDifficulty.toFixed(2))
   };
 };
