@@ -8,6 +8,7 @@ import competitionService from '../services/competitionService';
 
 const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 8;
+const DIVING_DISPLAYED_RANKS = 6;
 const AUTO_SCROLL_START_PAUSE = 3000;
 const AUTO_SCROLL_END_PAUSE = 5000;
 const AUTO_SCROLL_STEP_INTERVAL = 2500;
@@ -17,6 +18,7 @@ const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value.
 const timestamp = (value) => { const number = new Date(value || 0).getTime(); return Number.isFinite(number) ? number : 0; };
 const scoreOf = (value) => { const number = Number(value); return Number.isFinite(number) ? number : null; };
 const showScore = (value) => { const number = scoreOf(value); return number === null ? '待评分' : number.toFixed(2); };
+const divingCumulativeScore = (result, publishedRound) => (result?.details?.dives || []).slice(0, publishedRound).reduce((total, dive) => total + (scoreOf(dive?.score) || 0), 0);
 const participantName = (participant) => participant?.teamName || participant?.name || participant?.user?.name || participant?.schoolName || '未关联选手';
 const participantUnit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '—';
 const membersOf = (participant) => Array.isArray(participant?.teamMembers)
@@ -97,17 +99,23 @@ export default function LiveScoreboardPage() {
       const scored = courtSchedules.filter((schedule) => (resultMap.get(idOf(schedule)) || []).length > 0);
       const candidates = ongoing.length ? ongoing : scored;
       const currentSchedule = [...candidates].sort((a, b) => activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0];
-      // 大屏仅展示裁判长/管理员已确认的正式成绩，普通裁判保存的待确认分数不会外显。
-      const scoredRows = currentSchedule
-        ? [...(resultMap.get(idOf(currentSchedule)) || [])].filter((result) => result.status === 'verified')
-        : [];
-      scoredRows.sort((a, b) => (scoreOf(b.score) ?? -Infinity) - (scoreOf(a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
+      const isDiving = currentSchedule?.scoringMode === 'diving';
+      const rawRows = currentSchedule ? [...(resultMap.get(idOf(currentSchedule)) || [])] : [];
+      // 跳水只使用裁判长按轮确认后的 publishedRound；未确认的后续动作不会参与累计分或排名。
+      const publishedRound = isDiving ? Math.max(0, ...rawRows.map((result) => Number(result.details?.publishedRound || 0))) : 0;
+      const scoredRows = isDiving
+        ? rawRows.filter((result) => Number(result.details?.publishedRound || 0) > 0 && !result.details?.isAbsent)
+          .map((result) => ({ ...result, displayScore: divingCumulativeScore(result, Math.min(publishedRound, Number(result.details?.publishedRound || 0))) }))
+        : rawRows.filter((result) => result.status === 'verified');
+      scoredRows.sort((a, b) => (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
       return {
         court,
         schedule: currentSchedule,
         rows: scoredRows,
         completedParticipantCount: scoredRows.filter((result) => !result.details?.isAbsent).length,
-        live: Boolean(currentSchedule && currentSchedule.status === 'ongoing')
+        live: Boolean(currentSchedule && currentSchedule.status === 'ongoing'),
+        isDiving,
+        publishedRound
       };
     }).sort((a, b) => courtOrder(a.court) - courtOrder(b.court) || a.court.localeCompare(b.court, 'zh-CN'));
   }, [results, schedules]);
@@ -130,16 +138,15 @@ export default function LiveScoreboardPage() {
         <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} sx={{ mb: 3 }}>
           <Stack direction="row" spacing={1} alignItems="center">
             <Button startIcon={<ArrowBack />} onClick={() => navigate('/results')} sx={{ color: '#9ec5ff' }}>返回成绩管理</Button>
-            <Typography sx={{ color: '#f7c948', fontWeight: 800, fontSize: { xs: 24, md: 40 }, letterSpacing: 2 }}>大屏即时成绩</Typography>
+            <Typography sx={{ color: '#f7c948', fontWeight: 800, fontSize: { xs: 18, md: 27 }, letterSpacing: 1 }}>大屏即时成绩</Typography>
           </Stack>
           <Stack direction="row" spacing={1}>
-            <Tooltip title="立即刷新"><IconButton onClick={() => load(true)} sx={{ color: '#f7c948' }}><Refresh /></IconButton></Tooltip>
-            <Tooltip title={fullScreen ? '退出全屏' : '全屏显示'}><IconButton onClick={toggleFullScreen} sx={{ color: '#f7c948' }}>{fullScreen ? <FullscreenExit /> : <Fullscreen />}</IconButton></Tooltip>
+            <Tooltip title="立即刷新"><IconButton size="small" onClick={() => load(true)} sx={{ color: '#f7c948' }}><Refresh fontSize="small" /></IconButton></Tooltip>
+            <Tooltip title={fullScreen ? '退出全屏' : '全屏显示'}><IconButton size="small" onClick={toggleFullScreen} sx={{ color: '#f7c948' }}>{fullScreen ? <FullscreenExit fontSize="small" /> : <Fullscreen fontSize="small" />}</IconButton></Tooltip>
           </Stack>
         </Stack>
         <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ md: 'center' }} spacing={2} sx={{ borderTop: '1px solid #24466d', borderBottom: '1px solid #24466d', py: 2, mb: 3 }}>
-          <Typography sx={{ fontSize: { xs: 18, md: 30 }, fontWeight: 700 }}>{competition?.name || '比赛即时成绩'}</Typography>
-          <Chip label={`每 ${REFRESH_INTERVAL / 1000} 秒自动更新`} sx={{ bgcolor: '#12385a', color: '#9ed8ff', fontWeight: 700, fontSize: 16 }} />
+          <Typography sx={{ fontSize: { xs: 16, md: 22 }, fontWeight: 700 }}>{competition?.name || '比赛即时成绩'}</Typography>
         </Stack>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mb: 3, gap: 1 }}>
@@ -156,16 +163,18 @@ export default function LiveScoreboardPage() {
 }
 
 function CourtPanel({ panel, showPrizeLevels }) {
-  const displayRows = showPrizeLevels ? panel.rows : panel.rows.slice(0, DISPLAYED_RANKS);
-  const shouldAutoScroll = showPrizeLevels && displayRows.length > DISPLAYED_RANKS;
+  const displayLimit = panel.isDiving ? DIVING_DISPLAYED_RANKS : DISPLAYED_RANKS;
+  const usePrizeLevels = showPrizeLevels && !panel.isDiving;
+  const displayRows = panel.isDiving ? panel.rows : (showPrizeLevels ? panel.rows : panel.rows.slice(0, displayLimit));
+  const shouldAutoScroll = displayRows.length > displayLimit;
   const [windowStart, setWindowStart] = useState(0);
-  const visibleRows = shouldAutoScroll ? displayRows.slice(windowStart, windowStart + DISPLAYED_RANKS) : displayRows;
+  const visibleRows = shouldAutoScroll ? displayRows.slice(windowStart, windowStart + displayLimit) : displayRows;
 
   useEffect(() => {
     setWindowStart(0);
     if (!shouldAutoScroll) return undefined;
 
-    const maxStart = Math.max(displayRows.length - DISPLAYED_RANKS, 0);
+    const maxStart = Math.max(displayRows.length - displayLimit, 0);
     let currentStart = 0;
     let timer;
     const advance = () => {
@@ -182,23 +191,23 @@ function CourtPanel({ panel, showPrizeLevels }) {
 
     timer = window.setTimeout(advance, AUTO_SCROLL_START_PAUSE);
     return () => window.clearTimeout(timer);
-  }, [shouldAutoScroll]);
+  }, [shouldAutoScroll, displayLimit, displayRows.length]);
 
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)' }}>
     <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
-        <Typography sx={{ color: '#f7c948', fontWeight: 900, fontSize: { xs: 24, md: 36 } }}>{panel.court}</Typography>
+        <Typography sx={{ color: '#f7c948', fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 25 : 36 } }}>{panel.court}</Typography>
         <Stack direction="row" spacing={1}>
           {shouldAutoScroll && <Chip label="自动滚动显示全部" sx={{ bgcolor: '#12385a', color: '#9ed8ff', fontWeight: 800, fontSize: 14 }} />}
-          <Chip label={panel.live ? '正在打分' : '最近成绩'} sx={{ bgcolor: panel.live ? '#1d7f5f' : '#3b5875', color: '#fff', fontWeight: 800, fontSize: 15 }} />
+          {!panel.isDiving && <Chip label={panel.live ? '正在打分' : '最近成绩'} sx={{ bgcolor: panel.live ? '#1d7f5f' : '#3b5875', color: '#fff', fontWeight: 800, fontSize: 15 }} />}
         </Stack>
       </Stack>
-      <Typography sx={{ mt: .5, minHeight: 44, fontWeight: 800, fontSize: { xs: 20, md: 26 }, lineHeight: 1.25 }}>{panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
-      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: 16 }}>{panel.schedule.period || '比赛时段未设置'}</Typography>}
+      <Typography sx={{ mt: .5, minHeight: panel.isDiving ? 32 : 44, fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 32 : 26 }, lineHeight: 1.25 }}>{panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
+      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: panel.isDiving ? 21 : 16, fontWeight: panel.isDiving ? 800 : 400 }}>{panel.isDiving ? `成绩列表 - 第 ${panel.publishedRound} 轮` : (panel.schedule.period || '比赛时段未设置')}</Typography>}
     </Box>
     {displayRows.length ? <Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: 18 } }}>
-        {showPrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>运动员 / 队伍</span><span>代表单位</span><span style={{ textAlign: 'right' }}>分数</span>
+      <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: panel.isDiving ? 1 : 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: panel.isDiving ? 24 : 18 } }}>
+        {usePrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>{panel.isDiving ? '姓名／双人组合' : '运动员 / 队伍'}</span><span>单位</span><span style={{ textAlign: 'right' }}>{panel.isDiving ? '累计实得分' : '分数'}</span>
       </Box>
       <Box key={windowStart} sx={{ animation: shouldAutoScroll ? 'live-scoreboard-window-in .35s ease-out' : 'none', '@keyframes live-scoreboard-window-in': { from: { opacity: .55, transform: 'translateY(10px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>
       {visibleRows.map((result, index) => {
@@ -209,11 +218,11 @@ function CourtPanel({ panel, showPrizeLevels }) {
         const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
         const awardLevel = absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
         const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
-        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: 2, py: 1, minHeight: 68, borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
-          <Box sx={{ color: showPrizeLevels ? awardColor : (absoluteIndex < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: 30 } }}>{showPrizeLevels ? awardLevel : index + 1}</Box>
-          <Box><Typography sx={{ fontSize: { xs: 19, md: 23 }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: 14 } }}>{teamMembers}</Typography>}</Box>
-          <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: 18 }, pr: 1 }}>{participantUnit(participant)}</Typography>
-          <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: 32 } }}>{showScore(result.score)}</Typography>
+        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: 2, py: panel.isDiving ? 1.35 : 1, minHeight: panel.isDiving ? 104 : 68, borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
+          <Box sx={{ color: usePrizeLevels ? awardColor : (absoluteIndex < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 42 : 30 } }}>{usePrizeLevels ? awardLevel : absoluteIndex + 1}</Box>
+          <Box><Typography sx={{ fontSize: { xs: 19, md: panel.isDiving ? 38 : 23 }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: panel.isDiving ? 18 : 14 } }}>{teamMembers}</Typography>}</Box>
+          <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: panel.isDiving ? 27 : 18 }, pr: 1 }}>{participantUnit(participant)}</Typography>
+          <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 45 : 32 } }}>{showScore(result.displayScore ?? result.score)}</Typography>
         </Box>;
       })}
       </Box>

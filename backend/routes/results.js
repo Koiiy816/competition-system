@@ -65,6 +65,14 @@ router.post(
   resultController.submitDivingScore
 );
 
+// @route   POST api/competitions/:competitionId/results/publish-diving-round
+// @desc    Chief referee confirms a completed diving round for public scoreboard display
+router.post(
+  '/publish-diving-round',
+  [auth, authorize('admin', 'chief_referee')],
+  resultController.publishDivingRound
+);
+
 // @route   POST api/competitions/:competitionId/results/submit
 // @desc    提交成绩
 // @access  私有/管理员、主裁或裁判

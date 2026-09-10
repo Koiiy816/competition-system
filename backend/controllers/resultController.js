@@ -180,7 +180,9 @@ exports.submitDivingScore = async (req, res, next) => {
     });
     const totalScore = Math.round(savedDives.reduce((sum, dive) => sum + dive.score, 0) * 100) / 100;
     const allCompleted = savedDives.every((dive) => dive.completed);
-    const resultData = { competition: req.params.competitionId, schedule: scheduleId, participant: participantId, score: checkInStatus === 'absent' ? 0 : totalScore, details: { scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives, isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted }, submittedBy: req.user.id, status: isChiefOrAdmin && (checkInStatus === 'absent' || allCompleted) ? 'verified' : 'pending', updatedAt: new Date() };
+    // publishedRound 只能由裁判长通过“确认并公开本轮”操作推进；普通裁判保存后绝不影响大屏。
+    const publishedRound = Number(result?.details?.publishedRound || 0);
+    const resultData = { competition: req.params.competitionId, schedule: scheduleId, participant: participantId, score: checkInStatus === 'absent' ? 0 : totalScore, details: { scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives, isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted, publishedRound }, submittedBy: req.user.id, status: isChiefOrAdmin && (checkInStatus === 'absent' || allCompleted) ? 'verified' : 'pending', updatedAt: new Date() };
     result = result ? await Result.findByIdAndUpdate(result._id, resultData, { new: true, runValidators: true }) : await Result.create(resultData);
     if (schedule.status === 'scheduled') {
       schedule.status = 'ongoing';
@@ -191,6 +193,37 @@ exports.submitDivingScore = async (req, res, next) => {
     next(error);
   } finally {
     releaseLock(lockKey);
+  }
+};
+
+// 裁判长按轮确认跳水成绩后，才允许大屏展示该轮的累计实得分。
+exports.publishDivingRound = async (req, res, next) => {
+  const { scheduleId, round } = req.body;
+  const roundNumber = Number(round);
+  if (!scheduleId || !Number.isInteger(roundNumber) || roundNumber < 1) return res.status(400).json({ success: false, message: '请提供有效的跳水轮次' });
+  try {
+    const schedule = await Schedule.findById(scheduleId).select('competition scoringMode divingFormat status participants');
+    if (!schedule || schedule.competition.toString() !== req.params.competitionId) return res.status(404).json({ success: false, message: '未找到跳水赛程' });
+    if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: '当前赛程不是跳水项目' });
+    const participants = await Participant.find({ _id: { $in: schedule.participants } }).populate('teamMembers', 'isCheckedIn checkInStatus');
+    const activeParticipantIds = participants.filter((participant) => getEffectiveCheckInStatus(participant) === 'checked').map((participant) => participant._id.toString());
+    if (!activeParticipantIds.length) return res.status(400).json({ success: false, message: '当前赛程没有已检录的参赛对象' });
+    const results = await Result.find({ schedule: scheduleId, participant: { $in: activeParticipantIds } });
+    const resultByParticipant = new Map(results.map((result) => [result.participant.toString(), result]));
+    const incomplete = activeParticipantIds.filter((participantId) => !resultByParticipant.get(participantId)?.details?.dives?.[roundNumber - 1]?.completed);
+    if (incomplete.length) return res.status(400).json({ success: false, message: `第${roundNumber}轮尚有${incomplete.length}名运动员未完成五位裁判打分，不能公开` });
+    for (const result of results) {
+      const details = { ...(result.details || {}) };
+      details.publishedRound = Math.max(Number(details.publishedRound || 0), roundNumber);
+      result.details = details;
+      result.verifiedBy = req.user.id;
+      result.verifiedAt = new Date();
+      await result.save();
+    }
+    if (schedule.status === 'scheduled') { schedule.status = 'ongoing'; await schedule.save(); }
+    res.status(200).json({ success: true, data: { scheduleId, publishedRound: roundNumber }, message: `第${roundNumber}轮已确认并公开到大屏` });
+  } catch (error) {
+    next(error);
   }
 };
 

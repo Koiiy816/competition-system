@@ -148,6 +148,15 @@ const resultService = {
     }
   },
 
+  publishDivingRound: async (competitionId, scoreData) => {
+    try {
+      const response = await api.post(`/competitions/${competitionId}/results/publish-diving-round`, scoreData);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '确认跳水轮次失败' };
+    }
+  },
+
   exportResults: async (competitionId, format = 'csv') => {
     try {
       const response = await api.get(`/competitions/${competitionId}/results/export?format=${format}`, {

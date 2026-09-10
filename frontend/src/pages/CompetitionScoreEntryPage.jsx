@@ -433,6 +433,7 @@ const CompetitionScoreEntryPage = () => {
   const [nextSchedule, setNextSchedule] = useState(null);
   const [prevSchedule, setPrevSchedule] = useState(null);
   const [checkInUpdatingId, setCheckInUpdatingId] = useState(null);
+  const [publishingRound, setPublishingRound] = useState(false);
   
   const [printModalOpen, setPrintModalOpen] = useState(false);
 
@@ -696,6 +697,19 @@ const CompetitionScoreEntryPage = () => {
     }
   };
 
+  const handlePublishDivingRound = async (round) => {
+    setPublishingRound(true);
+    try {
+      const response = await resultService.publishDivingRound(id, { scheduleId, round });
+      await fetchResultsOnly();
+      alert(response.message || `第${round}轮已确认并公开到大屏`);
+    } catch (err) {
+      alert(err.message || '确认并公开本轮失败');
+    } finally {
+      setPublishingRound(false);
+    }
+  };
+
   const handleInlineCheckIn = async (participant, status) => {
     setCheckInUpdatingId(participant._id);
     setError('');
@@ -895,6 +909,15 @@ const CompetitionScoreEntryPage = () => {
     ? participants.filter((participant) => participant.isVirtualTeam && (participant.teamMembers || []).length === 2)
     : participants;
   const unpairedSynchronizedCount = isSynchronizedDiving ? participants.length - scoringParticipants.length : 0;
+  const divingPublication = React.useMemo(() => {
+    if (schedule?.scoringMode !== 'diving') return { publishedRound: 0, nextRound: 1, maxRounds: 0 };
+    const activeParticipants = scoringParticipants.filter((participant) => getParticipantCheckInStatus(participant) === 'checked');
+    const maxRounds = Math.max(0, ...activeParticipants.map((participant) => results[participant._id]?.details?.dives?.length || getParticipantDivingProgram(participant).length));
+    const publishedRound = activeParticipants.length
+      ? Math.min(...activeParticipants.map((participant) => Number(results[participant._id]?.details?.publishedRound || 0)))
+      : 0;
+    return { publishedRound, nextRound: publishedRound + 1, maxRounds };
+  }, [schedule?.scoringMode, scoringParticipants, results]);
 
   // 找出所有发生重复（并列）的分数
   const duplicateScores = React.useMemo(() => {
@@ -986,6 +1009,12 @@ const CompetitionScoreEntryPage = () => {
         <div id="printable-area" style={{ padding: '20px' }}>
           {schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
             <Alert severity="info" sx={{ mb: 2 }}>计分规则：{schedule?.divingFormat === 'synchronized' ? '双人跳水 = 五位裁判分数总和 × 难度系数 × 0.6。' : '个人跳水 = 去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。'} 每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
+            {isChiefOrAdmin && divingPublication.nextRound <= divingPublication.maxRounds && <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={publishingRound || schedule?.status === 'completed'} onClick={() => handlePublishDivingRound(divingPublication.nextRound)}>
+                {publishingRound ? '确认中…' : `确认并公开第${divingPublication.nextRound}轮`}
+              </Button>
+              <Typography variant="body2" color="text.secondary">已公开至第 {divingPublication.publishedRound} 轮；确认前会校验所有已检录运动员均完成该轮五位裁判打分。</Typography>
+            </Box>}
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
             {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} />)}
           </Box> : <TableContainer sx={{ p: 2 }}>
