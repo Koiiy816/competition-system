@@ -26,6 +26,7 @@ import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { useAuth } from '../contexts/AuthContext';
+import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
 
 const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -1091,10 +1092,6 @@ const CompetitionScheduleManagementPage = () => {
               background-color: white;
               display: block !important;
             }
-            @page {
-              size: A4;
-              margin: 1.5cm 2cm;
-            }
             table {
               border-collapse: collapse;
             }
@@ -1109,12 +1106,15 @@ const CompetitionScheduleManagementPage = () => {
             footer, .footer, [class*="footer"], #footer {
               display: none !important;
             }
+            .screen-schedule-content {
+              display: none !important;
+            }
           }
         `}
       </style>
 
       {/* 屏幕显示区域 */}
-      <Box sx={{ '@media print': { display: 'none' } }}>
+      <Box className="screen-schedule-content" sx={{ '@media print': { display: 'none' } }}>
         <Button startIcon={<ArrowBackIcon />} onClick={() => navigate(`/competitions/${id}`)} sx={{ mb: 2 }}>
           返回比赛详情
         </Button>
@@ -1462,6 +1462,8 @@ const CompetitionScheduleManagementPage = () => {
         )}
       </Box>
 
+      <DivingStartOrderPrint competitionName={competition?.name} schedules={schedules} />
+
       <Dialog open={createProjectOpen} onClose={() => !projectCreating && setCreateProjectOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>新建比赛项目</DialogTitle>
         <DialogContent dividers>
@@ -1660,113 +1662,6 @@ const CompetitionScheduleManagementPage = () => {
         <DialogActions><Button onClick={() => setGroupPreviewOpen(false)}>关闭</Button></DialogActions>
       </Dialog>
 
-      {/* 打印专用区域 */}
-      <Box 
-        sx={{ 
-          display: 'none', 
-          '@media print': { 
-            display: 'block',
-            '& *': {
-              visibility: 'visible',
-            },
-            width: '100%',
-            backgroundColor: '#fff',
-            m: 0,
-            p: 0,
-            // 隐藏全局 Footer
-            '& ~ footer, & ~ .footer, & ~ div[class*="footer"]': {
-              display: 'none !important'
-            }
-          } 
-        }}
-      >
-        <Typography variant="h4" align="center" sx={{ fontWeight: 'bold', mb: 2, fontFamily: '"SimHei", "黑体", sans-serif' }}>
-          上场顺序
-        </Typography>
-
-        {/* 动态渲染所有已分配场地的赛程 */}
-        {Object.entries(
-          schedules
-            .filter(s => s.scheduleDate && s.timeSlot && s.court && s.participants && s.participants.length > 0)
-            .sort((a, b) => {
-              if (a.scheduleDate !== b.scheduleDate) return a.scheduleDate.localeCompare(b.scheduleDate);
-              const slotOrder = { 'morning': 1, 'afternoon': 2, 'evening': 3 };
-              if (slotOrder[a.timeSlot] !== slotOrder[b.timeSlot]) return slotOrder[a.timeSlot] - slotOrder[b.timeSlot];
-              if (a.court !== b.court) return a.court.localeCompare(b.court);
-              return 0;
-            })
-            .reduce((acc, schedule) => {
-              const dateStr = new Date(schedule.scheduleDate).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
-              
-              // 判断具体的 timeSlot 并映射为中文
-              let slotStr = '';
-              if (schedule.timeSlot === 'morning' || schedule.timeSlot === '上午') slotStr = '上午';
-              else if (schedule.timeSlot === 'afternoon' || schedule.timeSlot === '下午') slotStr = '下午';
-              else if (schedule.timeSlot === 'evening' || schedule.timeSlot === '晚上') slotStr = '晚上';
-              else slotStr = schedule.timeSlot; // 如果是自定义输入的，直接显示
-              
-              // 提取具体的时间段（如果排程时填了时间）
-              let exactTimeStr = schedule.exactTime ? ` ${schedule.exactTime} ` : ' ';
-              let courtStr = schedule.court || '';
-              
-              const headerKey = `${dateStr} ${slotStr}${exactTimeStr}${courtStr}`; 
-              
-              if (!acc[headerKey]) {
-                acc[headerKey] = [];
-              }
-              acc[headerKey].push(schedule);
-              return acc;
-            }, {})
-        ).map(([headerKey, groupSchedules], groupIndex) => (
-          <Box key={groupIndex} sx={{ mb: 4 }}>
-            <Typography variant="h6" align="center" sx={{ fontWeight: 'bold', mb: 2, mt: groupIndex === 0 ? 0 : 4, fontFamily: '"SimHei", "黑体", sans-serif', fontSize: '18px' }}>
-              {headerKey}
-            </Typography>
-
-            {groupSchedules.map((schedule, sIndex) => {
-              const isGroupEvent = (schedule.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(schedule.name || '').includes('集体');
-              
-              const participantCount = isGroupEvent
-                ? `${schedule.participants?.length || 0}队`
-                : `${schedule.participants?.length || 0}人`;
-
-              return (
-                <Box key={schedule._id} sx={{ mb: 2 }}>
-                  <Typography variant="subtitle1" sx={{ fontFamily: '"SimSun", "宋体", serif', mb: 0.5, fontWeight: 'bold', fontSize: '16px' }}>
-                    {sIndex + 1}. {schedule.name} ({participantCount})
-                  </Typography>
-                  <TableContainer sx={{ border: '1px solid #ccc', overflow: 'visible' }}>
-                    <Table size="small">
-                      <TableBody>
-                        {schedule.participants.map((p, index) => {
-                          let displayNameContent = p.name || (p.user && p.user.name) || '';
-                          if (p.isVirtualTeam && p.teamMembers && p.teamMembers.length > 0) {
-                            displayNameContent = p.teamMembers.map(m => m.name).join('、');
-                          }
-
-                          return (
-                            <TableRow key={p._id || index} sx={{ '& td': { borderBottom: '1px dotted #ccc', py: 1 } }}>
-                              <TableCell width="15%" align="center" sx={{ fontSize: '16px', fontFamily: '"SimSun", "宋体", serif' }}>
-                                {index + 1}
-                              </TableCell>
-                              <TableCell width="40%" sx={{ fontSize: '16px', fontFamily: '"SimSun", "宋体", serif', wordBreak: 'break-all', whiteSpace: 'normal' }}>
-                                {displayNameContent}
-                              </TableCell>
-                              <TableCell width="45%" align="center" sx={{ fontSize: '16px', fontFamily: '"SimSun", "宋体", serif' }}>
-                                {p.schoolName || p.teamName || (p.user && p.user.schoolName) || ''}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Box>
-              );
-            })}
-          </Box>
-        ))}
-      </Box>
     </Container>
   );
 };

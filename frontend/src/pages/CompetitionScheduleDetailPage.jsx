@@ -17,6 +17,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
+import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
 
 const CompetitionScheduleDetailPage = () => {
   const { id, scheduleId } = useParams();
@@ -516,45 +517,7 @@ const CompetitionScheduleDetailPage = () => {
         </Box>
       </Box>
 
-      {/* 打印专用区域 */}
-      <Box id="print-area" sx={{ display: 'none', '@media print': { display: 'block' } }}>
-        <Typography variant="h3" align="center" gutterBottom sx={{ mb: 6, pt: 2, fontWeight: 'bold', fontFamily: '"SimHei", "黑体", sans-serif' }}>
-          上场顺序
-        </Typography>
-        
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold', fontFamily: '"SimSun", "宋体", serif', mb: 1, fontSize: '18px' }}>
-            1. {schedule.name} ({participants.length} 人)
-          </Typography>
-          
-          <TableContainer sx={{ border: '1px solid #ccc' }}>
-            <Table size="small">
-              <TableBody>
-                {participants.map((p, index) => {
-                  let displayNameContent = p.name || (p.user && p.user.name) || '';
-                  if (p.isVirtualTeam && p.teamMembers && p.teamMembers.length > 0) {
-                    displayNameContent = p.teamMembers.map(m => m.name).join('、');
-                  }
-                    
-                  return (
-                    <TableRow key={p._id} sx={{ '& td': { borderBottom: '1px dotted #ccc', py: 1 } }}>
-                      <TableCell width="15%" align="center" sx={{ fontSize: '16px', fontFamily: '"SimSun", "宋体", serif' }}>
-                        {index + 1}
-                      </TableCell>
-                      <TableCell width="40%" sx={{ fontSize: '16px', fontFamily: '"SimSun", "宋体", serif', wordBreak: 'break-all', whiteSpace: 'normal' }}>
-                        {displayNameContent}
-                      </TableCell>
-                      <TableCell width="45%" align="center" sx={{ fontSize: '16px', fontFamily: '"SimSun", "宋体", serif' }}>
-                        {p.schoolName || p.teamName || (p.user && p.user.schoolName) || ''}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      </Box>
+      <DivingStartOrderPrint competitionName={competition?.name} schedules={[{ ...schedule, participants }]} />
 
       <Dialog
         open={addDialogOpen}

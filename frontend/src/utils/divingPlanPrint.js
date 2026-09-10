@@ -24,3 +24,41 @@ export const toDivingPlanPrintRecord = (participant) => {
     })
   };
 };
+
+const getDivingPlan = (participant, schedule) => {
+  const teamPlan = (participant?.teamMembers || [])
+    .map((member) => member?.additionalInfo?.divingPlan)
+    .find((plan) => Array.isArray(plan?.dives) && plan.dives.length);
+  const plan = participant?.additionalInfo?.divingPlan || teamPlan || {};
+  const dives = Array.isArray(plan.dives) && plan.dives.length ? plan.dives : (schedule?.divingProgram || []);
+  return dives.map((dive) => ({
+    actionCode: String(dive?.actionCode || '').trim() || '-',
+    difficulty: dive?.difficulty ?? ''
+  }));
+};
+
+export const isDivingStartOrderSchedule = (schedule) => schedule?.scoringMode === 'diving'
+  || (schedule?.participants || []).some((participant) => {
+    if (Array.isArray(participant?.additionalInfo?.divingPlan?.dives)) return true;
+    return (participant?.teamMembers || []).some((member) => Array.isArray(member?.additionalInfo?.divingPlan?.dives));
+  });
+
+export const toDivingStartOrderRecord = (participant, schedule) => {
+  const isTeam = participant?.isVirtualTeam || participant?.type === 'team';
+  const teamMembers = participant?.teamMembers || [];
+  const teamMemberNames = teamMembers.map((member) => member?.name || member?.user?.name).filter(Boolean);
+  const name = isTeam && teamMemberNames.length
+    ? teamMemberNames.join('／')
+    : (participant?.name || participant?.user?.name || '-');
+  const dives = getDivingPlan(participant, schedule);
+  const totalDifficulty = dives.reduce((total, dive) => {
+    const difficulty = Number(dive.difficulty);
+    return Number.isFinite(difficulty) ? total + difficulty : total;
+  }, 0);
+  return {
+    name,
+    unit: participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-',
+    dives,
+    totalDifficulty: Number(totalDifficulty.toFixed(2))
+  };
+};
