@@ -50,3 +50,10 @@ test('uses a synchronized team member plan when the team has no direct plan', ()
     name: '甲／乙', unit: '深圳队', dives: [{ actionCode: '5253B', difficulty: 3.4 }], totalDifficulty: 3.4
   });
 });
+
+test('prints a dash instead of a total for physical-strength events', () => {
+  const participant = {
+    name: '余宇鑫', additionalInfo: { divingPlan: { dives: [{ actionCode: '垫上两头起10次' }, { actionCode: '立定跳远' }] } }
+  };
+  assert.equal(toDivingStartOrderRecord(participant, { name: 'U7组 男子 男子素质力量' }).totalDifficulty, '-');
+});
