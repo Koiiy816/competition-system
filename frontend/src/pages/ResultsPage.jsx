@@ -1138,11 +1138,12 @@ const ResultsPage = () => {
 
   const handlePrint = (scheduleName, scheduleResults) => {
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
+    const sourceSchedule = schedules.find((schedule) => schedule.name === scheduleName);
 
     const virtualSchedule = {
       name: scheduleName,
-      startTime: selectedCompetition?.startDate || new Date(),
-      location: selectedCompetition?.location || '',
+      startTime: sourceSchedule?.startTime || selectedCompetition?.startDate || new Date(),
+      location: sourceSchedule?.location || selectedCompetition?.location || '',
       showPrizeLevels: isPercentAwardCompetition(selectedCompetition),
       competitionName: selectedCompetition?.name || '比赛',
       scoringMode: scheduleResults.some((result) => result.details?.scoringType === 'diving') ? 'diving' : 'standard'
