@@ -27,7 +27,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   React.useEffect(() => {
     if (open && schedule) {
       const isDiving = schedule.scoringMode === 'diving';
-      setTitle(isDiving ? (schedule.competitionName || '比赛') : `${schedule.name || '比赛'} - 成绩公告`);
+      setTitle(isDiving ? (schedule.competition?.name || schedule.competitionName || '比赛') : `${schedule.name || '比赛'} - 成绩公告`);
       setSubTitle(isDiving ? `成绩记录 | ${schedule.name || ''}` : `日期：${schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} | 地点：${schedule.location || ''}`);
     }
   }, [open, schedule]);
@@ -333,12 +333,12 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
               lineHeight: 1.5,
               fontFamily: isTeamRanking ? '"SimHei", "黑体", sans-serif' : 'inherit' // 标题使用黑体更显正式
             }}>
-              {isDivingPrint ? schedule.competitionName : title}
+              {title}
             </Typography>
             {isDivingPrint ? <>
               <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>成绩记录</Typography>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontFamily: '"SimSun", "宋体", serif' }}>
-                <span>跳水</span><span>{schedule.name}</span><span>{schedule.location || ''}</span>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: 1, alignItems: 'center', fontSize: '12px', fontFamily: '"SimSun", "宋体", serif' }}>
+                <span style={{ textAlign: 'left' }}>跳水</span><span>{schedule.name}</span><span style={{ textAlign: 'right' }}>{schedule.location || ''}</span>
               </Box>
             </> : <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>{subTitle}</Typography>}
           </Box>
