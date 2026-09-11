@@ -127,6 +127,17 @@ const parseStartOrderExcel = (file) => new Promise((resolve, reject) => {
   reader.readAsArrayBuffer(file);
 });
 
+// 场地按编号自然排序，避免中文字符串排序把“二号场地”排在“一号场地”之前。
+const courtSortOrder = (court) => {
+  const match = String(court || '').match(/第\s*([一二三四五六七八九十\d]+)\s*[场場]地/);
+  if (!match) return Number.MAX_SAFE_INTEGER;
+  const chineseNumbers = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
+  return /^\d+$/.test(match[1]) ? Number(match[1]) : (chineseNumbers[match[1]] || Number.MAX_SAFE_INTEGER);
+};
+
+const compareCourts = (first, second) => courtSortOrder(first) - courtSortOrder(second)
+  || String(first || '').localeCompare(String(second || ''), 'zh-CN');
+
 // 提取弹窗组件以避免父组件在输入时重新渲染
 const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSave }) => {
   const [form, setForm] = useState({
@@ -717,7 +728,7 @@ const CompetitionScheduleManagementPage = () => {
   const handleExportStartOrderExcel = () => {
     const orderedSchedules = [...schedules]
       .filter((schedule) => schedule.scheduleDate && schedule.timeSlot && schedule.court)
-      .sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.timeSlot || '').localeCompare(String(b.timeSlot || ''), 'zh-CN') || String(a.court || '').localeCompare(String(b.court || ''), 'zh-CN') || (a.order || 0) - (b.order || 0));
+      .sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.timeSlot || '').localeCompare(String(b.timeSlot || ''), 'zh-CN') || compareCourts(a.court, b.court) || (a.order || 0) - (b.order || 0));
     if (!orderedSchedules.length) {
       setError('暂无已排程的出场顺序可导出。');
       return;
@@ -759,12 +770,6 @@ const CompetitionScheduleManagementPage = () => {
         rowTypes.push(type);
       };
       const formatDate = (value) => String(value || '').replace(/T.*$/, '');
-      const courtSortOrder = (court) => {
-        const match = String(court || '').match(/第\s*([一二三四五六七八九十\d]+)\s*[场場]地/);
-        if (!match) return Number.MAX_SAFE_INTEGER;
-        const chineseNumbers = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-        return /^\d+$/.test(match[1]) ? Number(match[1]) : (chineseNumbers[match[1]] || Number.MAX_SAFE_INTEGER);
-      };
       const formatGender = (gender) => {
         const value = String(gender || '').trim().toLowerCase();
         if (['male', 'm', '男', '男性'].includes(value)) return '男';
@@ -799,7 +804,7 @@ const CompetitionScheduleManagementPage = () => {
       dates.forEach((date) => {
         appendMergedRow(date, 'section', 25);
         const daySchedules = orderedSchedules.filter((schedule) => formatDate(schedule.scheduleDate) === date);
-        const courts = [...new Set(daySchedules.map((schedule) => schedule.court))].sort((a, b) => courtSortOrder(a) - courtSortOrder(b) || String(a).localeCompare(String(b), 'zh-CN'));
+        const courts = [...new Set(daySchedules.map((schedule) => schedule.court))].sort(compareCourts);
         courts.forEach((court) => {
           appendMergedRow(court, 'section', 25);
           slots.forEach((timeSlot) => {
@@ -860,7 +865,7 @@ const CompetitionScheduleManagementPage = () => {
   const handleExportScheduleExcel = () => {
     const assigned = schedules
       .filter((schedule) => schedule.scheduleDate && schedule.timeSlot && schedule.court)
-      .sort((a, b) => String(a.scheduleDate).localeCompare(String(b.scheduleDate)) || String(a.court || '').localeCompare(String(b.court || ''), 'zh-CN') || (a.order || 0) - (b.order || 0));
+      .sort((a, b) => String(a.scheduleDate).localeCompare(String(b.scheduleDate)) || compareCourts(a.court, b.court) || (a.order || 0) - (b.order || 0));
     if (!assigned.length) {
       setError('暂无已排程的比赛日程可导出。');
       return;
@@ -878,7 +883,7 @@ const CompetitionScheduleManagementPage = () => {
       dates.forEach((date, index) => {
         const dateSchedules = assigned.filter((schedule) => schedule.scheduleDate === date);
         const courts = [...new Set(dateSchedules.map((schedule) => schedule.court))]
-          .sort((a, b) => String(a).localeCompare(String(b), 'zh-CN'));
+          .sort(compareCourts);
         const rows = [
           [`${competition?.name || '比赛'} - 比赛日程表`],
           [date]
@@ -1294,7 +1299,7 @@ const CompetitionScheduleManagementPage = () => {
               const assigned = schedules.filter(s => s.scheduleDate && s.timeSlot && s.court).sort((a, b) => (a.order || 0) - (b.order || 0));
               const dates = [...new Set(assigned.map(s => s.scheduleDate))].sort();
               const timeSlots = ['上午', '下午', '晚上'];
-              const courts = [...new Set(assigned.map(s => s.court))].sort();
+              const courts = [...new Set(assigned.map(s => s.court))].sort(compareCourts);
 
               if (assigned.length === 0) {
                 return (
