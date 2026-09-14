@@ -199,10 +199,11 @@ const isLuohuExcludedTeamScoreEvent = (scheduleName = '') => {
   return normalizedScheduleName.includes('集体武术操') || normalizedScheduleName.includes('幼儿集体拳');
 };
 
-const isPercentAwardCompetition = (competition) => Boolean(competition?.awardRules?.enabled);
+const isPercentAwardCompetition = (competition) => Boolean(competition?.awardRules?.enabled && competition?.awardRules?.mode === 'legacy_percentage');
+const isFixedTopEightCompetition = (competition) => Boolean(competition?.awardRules?.enabled && competition?.awardRules?.mode === 'fixed_top_eight');
 
 const isTop3ThenPercentageCompetition = (competition) => (
-  isPercentAwardCompetition(competition)
+  Boolean(competition?.awardRules?.enabled)
   && competition?.awardRules?.mode === 'top3_then_percentage'
 );
 
@@ -279,6 +280,11 @@ const getPercentAwardLevel = (rank, formalCount, competition) => {
   if (rank <= firstLimit) return '\u4e00\u7b49\u5956';
   if (rank <= secondLimit) return '\u4e8c\u7b49\u5956';
   return '\u4e09\u7b49\u5956';
+};
+
+const getFixedTopEightAwardLevel = (rank, completedCount) => {
+  if (!rank || rank === '-' || rank === '测试' || rank > Math.min(8, completedCount)) return null;
+  return ['金牌', '银牌', '铜牌'][rank - 1] || '获奖证书';
 };
 
 const isIndividualScoringSchedule = (scheduleName = '') => !/(\u96c6\u4f53|\u53cc\u4eba|\u5bf9\u7ec3)/.test(scheduleName);
@@ -808,13 +814,15 @@ const ResultsPage = () => {
         }
       const percentAwardMode = isPercentAwardCompetition(selectedCompetition);
       const top3ThenPercentageMode = isTop3ThenPercentageCompetition(selectedCompetition);
+      const fixedTopEightMode = isFixedTopEightCompetition(selectedCompetition);
       if (percentAwardMode) basePoints = selectedCompetition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
+      if (fixedTopEightMode) basePoints = selectedCompetition.awardRules?.teamPoints || [13, 11, 10, 9, 8, 7, 6, 5];
 
       const formalCount = getFormalResultCount(scheduleResults);
       const completedFormalCount = getCompletedFormalResultCount(scheduleResults);
       const admissionCount = top3ThenPercentageMode
         ? Math.min(Number(selectedCompetition.awardRules?.rankAwardCount ?? 3), completedFormalCount)
-        : (percentAwardMode ? Math.min(8, formalCount) : getAdmissionCount(selectedCompetition, scheduleName, scheduleResults));
+        : (fixedTopEightMode ? Math.min(8, completedFormalCount) : (percentAwardMode ? Math.min(8, formalCount) : getAdmissionCount(selectedCompetition, scheduleName, scheduleResults)));
       const luohuTeamRule = shouldCountForTeamRanking(selectedCompetition, scheduleName, scheduleResults);
 
       let currentRankIndex = 0; // 0-7，对应1-8名
@@ -867,14 +875,14 @@ const ResultsPage = () => {
           const displayRank = currentRankIndex + 1;
           const awardLevel = top3ThenPercentageMode
             ? getTop3ThenPercentageAwardLevel(displayRank, completedFormalCount, selectedCompetition)
-            : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null);
-          const isWithinAdmissionRange = percentAwardMode ? Boolean(awardLevel) : displayRank <= admissionCount;
+            : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null));
+          const isWithinAdmissionRange = (percentAwardMode || fixedTopEightMode) ? Boolean(awardLevel) : displayRank <= admissionCount;
           const top3TeamPoints = top3ThenPercentageMode
             ? getTop3ThenPercentageTeamPoints(displayRank, awardLevel, selectedCompetition)
             : null;
           const isWithinTeamPointsRange = top3ThenPercentageMode
             ? top3TeamPoints > 0
-            : (percentAwardMode ? displayRank <= 8 : isWithinAdmissionRange);
+            : ((percentAwardMode || fixedTopEightMode) ? displayRank <= 8 : isWithinAdmissionRange);
           let totalPointsForTies = 0;
           let actualPointsAwarded = 0;
 
@@ -910,7 +918,7 @@ const ResultsPage = () => {
               shouldCountForTeam = isIndividualScoringSchedule(scheduleName)
                 && eligibleTeamParticipantKeys.has(getParticipantScoreKey(result.participant))
                 && averagePoints > 0;
-            } else if (percentAwardMode) {
+            } else if (percentAwardMode || fixedTopEightMode) {
               shouldCountForTeam = isIndividualScoringSchedule(scheduleName) && averagePoints > 0;
             } else if (isLuohuTraditionalCompetition(selectedCompetition)) {
               shouldCountForTeam = luohuTeamRule === true && averagePoints > 0;
@@ -1069,6 +1077,7 @@ const ResultsPage = () => {
     // 过滤掉测试人员
     const validResults = scheduleResults.filter(r => !r.participant?.isTest);
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
+    const fixedTopEightModeForExport = isFixedTopEightCompetition(selectedCompetition);
     const showPrizeLevelsForExport = isPercentAwardCompetition(selectedCompetition);
     const ruleSummary = getScheduleRuleSummary(selectedCompetition, scheduleName, validResults);
     const completedParticipantCount = validResults.filter(result => !result.details?.isAbsent).length;
@@ -1109,6 +1118,7 @@ const ResultsPage = () => {
         '代表队/学校': p?.schoolName || p?.teamName || (p?.user && p?.user.schoolName) || '-',
         '是否录取': r.isAwarded ? '是' : '否'
       };
+      if (fixedTopEightModeForExport) rowData['奖励'] = r.awardLevel || '-';
 
       // 动态插入子项目成绩列
       if (isCombined && subEventsList.length > 0) {

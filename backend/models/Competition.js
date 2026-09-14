@@ -270,9 +270,10 @@ const CompetitionSchema = new mongoose.Schema({
     enabled: { type: Boolean, default: false },
     // legacy_percentage: all completed competitors are divided into award levels by rank.
     // top3_then_percentage: ranks 1-3 are named places; the rest receive graded awards.
+    // fixed_top_eight: actual competitors up to eighth place are admitted with fixed medals/certificates.
     mode: {
       type: String,
-      enum: ['legacy_percentage', 'top3_then_percentage'],
+      enum: ['legacy_percentage', 'top3_then_percentage', 'fixed_top_eight'],
       default: 'legacy_percentage'
     },
     rankAwardCount: { type: Number, default: 3 },

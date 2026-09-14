@@ -34,6 +34,10 @@ function remainingAwardCounts(count, rules = {}) {
 }
 
 function awardLevel(rank, total, rules) {
+  if (rules?.mode === 'fixed_top_eight') {
+    if (!rank || rank > Math.min(8, total)) return null;
+    return ['金牌', '银牌', '铜牌'][rank - 1] || '获奖证书';
+  }
   // 「比例錄取」模式：所有正式參賽者依實際參賽人數（集體項目則為實際隊伍數）
   // 分為前 30% 一等、31% 至 60% 二等、其餘三等。
   if (rules?.mode === 'legacy_percentage') {
@@ -128,9 +132,10 @@ exports.getAwards = async (req, res, next) => {
       event.awards.forEach(item => {
         if (!eligible.has(item.recipientKey)) return;
         const percentageMode = competition.awardRules?.mode === 'legacy_percentage';
-        const configuredTopEight = competition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
+        const fixedTopEightMode = competition.awardRules?.mode === 'fixed_top_eight';
+        const configuredTopEight = competition.awardRules?.teamPoints || (fixedTopEightMode ? [13, 11, 10, 9, 8, 7, 6, 5] : [8, 7, 6, 5, 4, 3, 2, 1]);
         const p = competition.awardRules?.teamAwardPoints || {};
-        const points = percentageMode
+        const points = (percentageMode || fixedTopEightMode)
           ? Number(configuredTopEight[item.rank - 1] || 0)
           : (item.awardLevel === '\u7b2c1\u540d' ? Number(p.rank1 ?? 6)
             : item.awardLevel === '\u7b2c2\u540d' ? Number(p.rank2 ?? 5)

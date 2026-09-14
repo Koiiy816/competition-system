@@ -504,7 +504,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                         return <TableCell key={subName} align="center">-</TableCell>;
                       })}
 
-                      {showAwardColumn && <TableCell align="center">{resultObj?.isAwarded ? '录取' : '未录取'}</TableCell>}
+                      {showAwardColumn && <TableCell align="center">{resultObj?.awardLevel || (resultObj?.isAwarded ? '录取' : '未录取')}</TableCell>}
                       <TableCell align="center">
                         {isAbsent ? '弃权' : (finalScore > 0 ? (isTeamRanking ? `${finalScore} 分` : finalScore.toFixed(2)) : '-')}
                       </TableCell>
