@@ -217,7 +217,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
               <TableCell align="center">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
               {[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}
               <TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(participantIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
-              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center" sx={{ borderLeft: '1px solid black !important' }}>{participantRanks[participantIndex]}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{isAbsent || participantRanks[participantIndex] === 1 ? '' : (leaderScore - finalScore).toFixed(2)}</TableCell>}
             </TableRow>;
           });
