@@ -1,6 +1,7 @@
 const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
+const { normalizeParticipantGender, getScheduleGender, formatScheduleName, parseScheduleIdentity } = require('../utils/scheduleNaming');
 
 function mergeUndersizedAgeGroups(groups, competition) {
   const minimum = competition?.awardRules?.mergeGroupsBelow || 0;
@@ -54,7 +55,7 @@ exports.previewGroups = async (req, res, next) => {
       const ageGroup = String(participant.ageGroup || participant.grade || '未填写年龄组').trim();
       const eventConfig = competition.events?.find((event) => event.name === sourceEvent);
       const isMixed = sourceEvent.includes('混合') || sourceEvent.includes('集体') || ageGroup.includes('集体') || eventConfig?.isGroupEvent;
-      const gender = isMixed ? 'mixed' : (participant.gender === 'female' ? 'female' : participant.gender === 'male' ? 'male' : 'unknown');
+      const gender = isMixed ? 'mixed' : getScheduleGender({ eventName: sourceEvent, eventConfig, participantGender: participant.gender });
       const genderLabel = gender === 'male' ? '男子' : gender === 'female' ? '女子' : gender === 'mixed' ? '混合' : '未填写性别';
       const key = [groupEvent, ageGroup, gender].join('|');
       if (!groups.has(key)) {
@@ -71,7 +72,7 @@ exports.previewGroups = async (req, res, next) => {
 
     const data = [...groups.values()]
       .sort((a, b) => a.event.localeCompare(b.event, 'zh-CN') || a.ageGroup.localeCompare(b.ageGroup, 'zh-CN') || a.gender.localeCompare(b.gender))
-      .map((group) => ({ ...group, count: group.participants.length, name: `${group.ageGroup} ${group.gender === 'mixed' ? '' : group.genderLabel} ${group.event}`.replace(/\s+/g, ' ').trim() }));
+      .map((group) => ({ ...group, count: group.participants.length, name: formatScheduleName({ ageGroup: group.ageGroup, eventName: group.event, eventConfig: competition.events?.find((event) => event.name === group.sourceEvent), gender: group.gender }) }));
 
     res.status(200).json({ success: true, data, totalParticipants: participants.length });
   } catch (error) {
@@ -177,11 +178,6 @@ exports.generateStartList = async (req, res, next) => {
       // 容错处理：即使用户在创建比赛时忘记勾选“集体项目”，只要名称或组别里带有“集体”字眼，我们也认为是集体项目
       const isGroup = (eventConfig && eventConfig.isGroupEvent) || event.includes('集体') || ageGroup.includes('集体');
       
-      // 自动为年龄组别补充性别前缀 (如果尚未包含且不是混合项目)
-      let genderStr = '';
-      if (gender === 'male' || gender === '男') genderStr = '男子';
-      else if (gender === 'female' || gender === '女') genderStr = '女子';
-      
       let finalAgeGroup = ageGroup;
       
       // --- 终极规则：集体项目合并策略 ---
@@ -201,11 +197,6 @@ exports.generateStartList = async (req, res, next) => {
          } else {
             finalAgeGroup = strippedAgeGroup;
          }
-      } else {
-        // 对于所有普通项目，如果组别没有写明“男/女/混合”，我们都自动给它加上“男子/女子”前缀
-        if (genderStr && finalAgeGroup && !finalAgeGroup.includes('男') && !finalAgeGroup.includes('女') && !finalAgeGroup.includes('混合')) {
-          finalAgeGroup = `${genderStr}${finalAgeGroup}`;
-        }
       }
 
       // --- 这里原有的 isTeamEvent 逻辑已经被顶部的 isForceMixedGroup 拦截并处理了 ---
@@ -213,9 +204,7 @@ exports.generateStartList = async (req, res, next) => {
 
       // 生成分组 Key
       let key;
-      let normalizedGender = gender;
-      if (gender === '女' || gender === 'female') normalizedGender = 'female';
-      else if (gender === '男' || gender === 'male') normalizedGender = 'male';
+      const normalizedGender = getScheduleGender({ eventName: event, eventConfig, participantGender: gender });
 
       if (finalAgeGroup.includes('混合') || event.includes('混合') || isForceMixedGroup) {
         // 只要明确标明是“混合”的，或者属于强制混合项目，统统无视自身性别，划入 mixed
@@ -240,8 +229,8 @@ exports.generateStartList = async (req, res, next) => {
           groups[key] = {
             event: scheduleEvent,
             sourceEvent: event,
-            ageGroup,
-            gender,
+            ageGroup: finalAgeGroup,
+            gender: normalizedGender,
             participants: []
           };
         }
@@ -314,17 +303,8 @@ exports.generateStartList = async (req, res, next) => {
     // 为每个组创建或更新赛程
     for (const key in groups) {
       const group = groups[key];
-      let genderText = '';
-      if (group.gender === 'male') {
-        genderText = '男子';
-      } else if (group.gender === 'female') {
-        genderText = '女子';
-      } else if (group.gender === 'mixed') {
-        // 如果原本的 ageGroup 已经包含了“混合”，就不再重复添加前缀，或者根据需求留空
-        genderText = ''; 
-      }
-      
-      const name = `${group.ageGroup} ${genderText} ${group.event}`.replace(/\s+/g, ' ').trim();
+      const eventConfig = competition.events?.find(e => e.name === (group.sourceEvent || group.event));
+      const name = formatScheduleName({ ageGroup: group.ageGroup, eventName: group.event, eventConfig, gender: group.gender });
       
       // 区分正式和测试人员，并分别打乱顺序，测试人员永远排在最后
       let normalIds = [];
@@ -358,12 +338,11 @@ exports.generateStartList = async (req, res, next) => {
       const shuffled = [...normalIds, ...testIds];
 
       // 如果是合并项目，需要拆分成独立的子赛程
-      const eventConfig = competition.events?.find(e => e.name === (group.sourceEvent || group.event));
       if (eventConfig && eventConfig.isCombinedEvent && eventConfig.subEvents?.length > 0) {
         for (const subEventName of eventConfig.subEvents) {
           if (!subEventName) continue;
           
-          const subScheduleName = `${group.ageGroup} ${genderText} ${subEventName}`.replace(/\s+/g, ' ').trim();
+          const subScheduleName = formatScheduleName({ ageGroup: group.ageGroup, eventName: subEventName, eventConfig, gender: group.gender });
           newScheduleNames.push(subScheduleName);
           
           // --- 核心修复：如果是合并项目拆分出的子赛程，也必须再次独立打乱，否则太极拳和太极剑顺序一模一样 ---
@@ -1706,37 +1685,32 @@ function normalizeExcelScheduleEvent(value) {
 }
 
 function normalizeExcelScheduleGender(value) {
-  if (value === 'male' || value === '男') return '男';
-  if (value === 'female' || value === '女') return '女';
-  return '';
+  const gender = normalizeParticipantGender(value);
+  return gender === 'unknown' ? '' : gender;
 }
 
 function parseExcelScheduleName(name) {
-  const displayName = String(name || '').trim();
-  const cleanName = displayName.replace(/（.*?）/g, '');
-  const gender = cleanName.startsWith('女子') ? '女' : cleanName.startsWith('男子') ? '男' : '';
-  const ages = [...cleanName.matchAll(/U(\d+)/g)].map((match) => match[1]);
-  const event = cleanName
-    .replace(/^(男子|女子)/, '')
-    .replace(/U\d+(?:[-/]U\d+)*组?/g, '')
-    .trim();
-  return { displayName, gender, ages, event: normalizeExcelScheduleEvent(event) };
+  const parsed = parseScheduleIdentity(name);
+  return { ...parsed, event: normalizeExcelScheduleEvent(parsed.event) };
 }
 
 function participantMatchesExcelSchedule(participant, scheduleItem) {
   const parsed = parseExcelScheduleName(scheduleItem.name);
   const participantAge = String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1];
-  const participantGender = normalizeExcelScheduleGender(participant.gender);
   const events = [participant.event, participant.manualEventGroup]
     .filter(Boolean)
-    .map(normalizeExcelScheduleEvent);
-  const isCollective = parsed.event.includes('集体') || events.some((event) => event.includes('集体'));
+    .map((event) => {
+      const identity = parseScheduleIdentity(event, participant.gender);
+      return { ...identity, event: normalizeExcelScheduleEvent(identity.event) };
+    });
+  const participantGender = events.find((event) => event.gender !== 'unknown')?.gender || normalizeExcelScheduleGender(participant.gender);
+  const isCollective = parsed.event.includes('集体') || events.some((event) => event.event.includes('集体'));
 
-  if (isCollective) return events.some((event) => event.includes('集体'));
+  if (isCollective) return events.some((event) => event.event.includes('集体'));
   return Boolean(
     parsed.gender === participantGender
     && parsed.ages.includes(participantAge)
-    && events.includes(parsed.event)
+    && events.some((event) => event.event === parsed.event && (event.gender === 'unknown' || event.gender === parsed.gender))
   );
 }
 
@@ -1754,8 +1728,9 @@ function rosterRowMatchesSchedule(row, scheduleItem) {
   if (rowScheduleName && rowScheduleName === scheduleName) return true;
   const parsed = parseExcelScheduleName(scheduleItem.name);
   const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
-  const rowGender = normalizeExcelScheduleGender(row.gender);
-  const rowEvent = normalizeExcelScheduleEvent(row.event);
+  const rowIdentity = parseScheduleIdentity(row.event, row.gender);
+  const rowGender = rowIdentity.gender === 'unknown' ? normalizeExcelScheduleGender(row.gender) : rowIdentity.gender;
+  const rowEvent = normalizeExcelScheduleEvent(rowIdentity.event);
   return Boolean(rowEvent && rowEvent === parsed.event && (!rowGender || rowGender === parsed.gender) && (!rowAge || parsed.ages.includes(rowAge)));
 }
 
@@ -1777,7 +1752,7 @@ function buildRosterAssignments(participants, items, rawRoster) {
     const rowGender = normalizeExcelScheduleGender(row.gender);
     const rowAge = String(row.ageGroup || '').match(/U(\d+)/)?.[1];
     const rowSchool = normalizeRosterText(row.schoolName);
-    const rowEvent = normalizeExcelScheduleEvent(row.event);
+    const rowEvent = normalizeExcelScheduleEvent(parseScheduleIdentity(row.event, row.gender).event);
     const parsedTarget = parseExcelScheduleName(target.name);
     const teamKey = String(row.teamKey || `${target.index}|${row.teamName || row.schoolName || '未填写代表单位'}`).trim();
     if (!rosterTeamsBySchedule.has(target.index)) rosterTeamsBySchedule.set(target.index, new Map());
@@ -1803,7 +1778,9 @@ function buildRosterAssignments(participants, items, rawRoster) {
     }
     const scored = candidates.map((participant) => {
       const participantAge = String(participant.ageGroup || participant.grade || '').match(/U(\d+)/)?.[1];
-      const participantEvents = [participant.event, participant.manualEventGroup].filter(Boolean).map(normalizeExcelScheduleEvent);
+      const participantEvents = [participant.event, participant.manualEventGroup]
+        .filter(Boolean)
+        .map((event) => normalizeExcelScheduleEvent(parseScheduleIdentity(event, participant.gender).event));
       let score = 0;
       if (rowSchool && normalizeRosterText(participant.schoolName) === rowSchool) score += 8;
       if (rowGender && normalizeExcelScheduleGender(participant.gender) === rowGender) score += 4;
