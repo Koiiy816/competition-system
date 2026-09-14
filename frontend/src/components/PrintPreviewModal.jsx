@@ -195,8 +195,9 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
     return <TableContainer sx={{ border: '1px solid black' }}>
       <Table size="small" className="diving-detail-table" sx={{
-        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '2px 3px', color: 'black', fontSize: '9px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' },
-        '& .MuiTableCell-root:last-child': { borderRight: 'none' }
+        // “总名次”和“分差”使用 rowSpan；不能移除每行最后一个单元格的右边框，
+        // 否则后续行的“累计分”会与跨行的“总名次”之间断线。
+        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '2px 3px', color: 'black', fontSize: '9px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
       }}>
         <TableHead><TableRow>{headings.map((header) => <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header}</TableCell>)}</TableRow></TableHead>
         <TableBody>{sortedParticipants.flatMap((participant, participantIndex) => {
