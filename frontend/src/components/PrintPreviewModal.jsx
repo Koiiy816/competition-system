@@ -111,6 +111,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const participantRanks = getRanks(sortedParticipants);
   const completedParticipantCount = sortedParticipants.filter((participant) => !getScoreData(participant).isAbsent).length;
   const isDivingPrint = schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives));
+  const isDivingDetailPrint = isDivingPrint && schedule?.divingPrintType === 'detail';
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
     const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
@@ -132,7 +133,6 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const showAwardColumn = !isTeamRanking && !showPrizeLevels && sortedParticipants.some(p => results[p.__printKey || p._id || p]?.isAwarded !== undefined);
   const emptyColSpan = 2 + (isTeamRanking ? 0 : 1) + (showCombinedColumns ? combinedSubEvents.length : 0) + (showAwardColumn ? 1 : 0) + 1;
 
-  // 单项“打印成绩”只输出名次公告；逐跳评分明细仅在总成绩册中输出。
   const renderDivingRankTable = () => {
     const leader = sortedParticipants.find((participant) => !getScoreData(participant).isAbsent);
     const leaderScore = leader ? getScoreData(leader).finalScore : 0;
@@ -169,6 +169,60 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       </Table>
     </TableContainer>
   );
+  };
+
+  const renderDivingDetailTable = () => {
+    const totals = sortedParticipants.map(() => 0);
+    const rounds = Math.max(1, ...sortedParticipants.map((participant) => results[participant.__printKey || participant._id || participant]?.details?.dives?.length || 0));
+    const roundRanks = Array.from({ length: rounds }, (_, roundIndex) => {
+      const rows = sortedParticipants.map((participant, participantIndex) => {
+        const { isAbsent } = getScoreData(participant);
+        const diveScore = Number(results[participant.__printKey || participant._id || participant]?.details?.dives?.[roundIndex]?.score || 0);
+        totals[participantIndex] += diveScore;
+        return { participantIndex, isAbsent, score: totals[participantIndex] };
+      }).sort((a, b) => Number(a.isAbsent) - Number(b.isAbsent) || b.score - a.score);
+      let rank = 0;
+      let previousScore;
+      return new Map(rows.map((row, index) => {
+        if (row.isAbsent) return [row.participantIndex, '-'];
+        if (index === 0 || row.score !== previousScore) rank = index + 1;
+        previousScore = row.score;
+        return [row.participantIndex, rank];
+      }));
+    });
+    const leader = sortedParticipants.find((participant) => !getScoreData(participant).isAbsent);
+    const leaderScore = leader ? getScoreData(leader).finalScore : 0;
+    const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
+    return <TableContainer sx={{ border: '1px solid black' }}>
+      <Table size="small" className="diving-detail-table" sx={{
+        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '2px 3px', color: 'black', fontSize: '9px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' },
+        '& .MuiTableCell-root:last-child': { borderRight: 'none' }
+      }}>
+        <TableHead><TableRow>{headings.map((header) => <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header}</TableCell>)}</TableRow></TableHead>
+        <TableBody>{sortedParticipants.flatMap((participant, participantIndex) => {
+          const { finalScore, isAbsent } = getScoreData(participant);
+          const dives = results[participant.__printKey || participant._id || participant]?.details?.dives || [];
+          const count = Math.max(1, dives.length);
+          const name = participant?.isVirtualTeam ? (participant.teamMembers || []).map((member) => member.name).join('、') : (participant?.teamName || participant?.name || participant?.user?.name || '未知');
+          const unit = participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-';
+          let cumulative = 0;
+          return Array.from({ length: count }, (_, roundIndex) => {
+            const dive = dives[roundIndex];
+            cumulative += Number(dive?.score || 0);
+            return <TableRow key={`${participant._id || participantIndex}-${roundIndex}`}>
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{name}</TableCell>}
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{unit}</TableCell>}
+              <TableCell align="center">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
+              {[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}
+              <TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(participantIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{isAbsent || participantRanks[participantIndex] === 1 ? '' : (leaderScore - finalScore).toFixed(2)}</TableCell>}
+            </TableRow>;
+          });
+        })}</TableBody>
+      </Table>
+    </TableContainer>;
   };
 
   return (
@@ -331,7 +385,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
               {title}
             </Typography>
             {isDivingPrint ? <>
-              <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>名次公告</Typography>
+              <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>{isDivingDetailPrint ? '明细成绩公告' : '名次公告'}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: 1, alignItems: 'center', fontSize: '12px', fontFamily: '"SimSun", "宋体", serif' }}>
                 <span style={{ textAlign: 'left' }}>跳水</span><span>{schedule.name}</span><span style={{ textAlign: 'right' }}>{schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} {schedule.location || ''}</span>
               </Box>
@@ -339,7 +393,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           </Box>
 
           {/* Table */}
-          {isDivingPrint ? renderDivingRankTable() : <TableContainer sx={{ border: '2px solid black' }}>
+          {isDivingPrint ? (isDivingDetailPrint ? renderDivingDetailTable() : renderDivingRankTable()) : <TableContainer sx={{ border: '2px solid black' }}>
             <Table size="medium" sx={{ 
               '& .MuiTableCell-root': { 
                 borderBottom: '1px solid black',

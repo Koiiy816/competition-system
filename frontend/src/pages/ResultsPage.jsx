@@ -1136,7 +1136,7 @@ const ResultsPage = () => {
     XLSX.writeFile(workbook, `${scheduleName} - 成绩公告.xlsx`);
   };
 
-  const handlePrint = (scheduleName, scheduleResults) => {
+  const handlePrint = (scheduleName, scheduleResults, divingPrintType = 'rank') => {
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
     const sourceSchedule = schedules.find((schedule) => schedule.name === scheduleName);
 
@@ -1146,7 +1146,8 @@ const ResultsPage = () => {
       location: sourceSchedule?.location || selectedCompetition?.location || '',
       showPrizeLevels: isPercentAwardCompetition(selectedCompetition),
       competitionName: selectedCompetition?.name || '比赛',
-      scoringMode: scheduleResults.some((result) => result.details?.scoringType === 'diving') ? 'diving' : 'standard'
+      scoringMode: scheduleResults.some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? 'diving' : 'standard',
+      divingPrintType
     };
 
     const vParticipants = [];
@@ -1273,7 +1274,14 @@ const ResultsPage = () => {
                 )}
               </Box>
               <Box>
-                <Button 
+                {filteredGroupedResults[scheduleName].some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? <>
+                  <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => handlePrint(scheduleName, filteredGroupedResults[scheduleName], 'detail')} sx={{ mr: 1 }}>
+                    明细成绩公告
+                  </Button>
+                  <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => handlePrint(scheduleName, filteredGroupedResults[scheduleName], 'rank')} sx={{ mr: 1 }}>
+                    名次公告
+                  </Button>
+                </> : <Button
                   variant="outlined" 
                   size="small" 
                   startIcon={<PrintIcon />} 
@@ -1281,7 +1289,7 @@ const ResultsPage = () => {
                   sx={{ mr: 1 }}
                 >
                   打印成绩
-                </Button>
+                </Button>}
                 <Button 
                   variant="outlined" 
                   size="small" 
@@ -1489,7 +1497,14 @@ const ResultsPage = () => {
                     )}
                   </Box>
                   <Box>
-                    <Button 
+                    {scheduleResults.some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? <>
+                      <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => handlePrint(scheduleName, scheduleResults, 'detail')} sx={{ mr: 1 }}>
+                        明细成绩公告
+                      </Button>
+                      <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => handlePrint(scheduleName, scheduleResults, 'rank')} sx={{ mr: 1 }}>
+                        名次公告
+                      </Button>
+                    </> : <Button
                       variant="outlined" 
                       size="small" 
                       startIcon={<PrintIcon />} 
@@ -1497,7 +1512,7 @@ const ResultsPage = () => {
                       sx={{ mr: 1 }}
                     >
                       打印成绩
-                    </Button>
+                    </Button>}
                     <Button 
                       variant="outlined" 
                       size="small" 
