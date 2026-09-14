@@ -946,7 +946,10 @@ const CompetitionScoreEntryPage = () => {
           <Box>
             {schedule?.scoringMode === 'diving' && isStrengthSchedule(schedule) ? <>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('detail')} sx={{ mr: 1 }}>
-                素质力量成绩打印
+                明细成绩公告
+              </Button>
+              <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('rank')} sx={{ mr: 1 }}>
+                名次公告
               </Button>
             </> : schedule?.scoringMode === 'diving' ? <>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('detail')} sx={{ mr: 1 }}>
