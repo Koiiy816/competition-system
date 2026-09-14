@@ -432,6 +432,7 @@ const CompetitionScoreEntryPage = () => {
   const [publishingRound, setPublishingRound] = useState(false);
   
   const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [divingPrintType, setDivingPrintType] = useState('rank');
 
   // Permission check: Admin, Chief Referee, Referee
   const hasPermission = (roles) => {
@@ -739,7 +740,8 @@ const CompetitionScoreEntryPage = () => {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = (printType = 'rank') => {
+    setDivingPrintType(printType);
     setPrintModalOpen(true);
   };
 
@@ -873,14 +875,21 @@ const CompetitionScoreEntryPage = () => {
             </Typography>
           </Box>
           <Box>
-            <Button 
+            {schedule?.scoringMode === 'diving' ? <>
+              <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('detail')} sx={{ mr: 1 }}>
+                明细成绩公告
+              </Button>
+              <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('rank')} sx={{ mr: 1 }}>
+                名次公告
+              </Button>
+            </> : <Button
               variant="outlined" 
               startIcon={<PrintIcon />} 
               onClick={handlePrint}
               sx={{ mr: 1 }}
             >
               成绩打印
-            </Button>
+            </Button>}
             <Button 
               variant="outlined" 
               startIcon={<DownloadIcon />} 
@@ -1027,8 +1036,8 @@ const CompetitionScoreEntryPage = () => {
       <PrintPreviewModal
         open={printModalOpen}
         onClose={() => setPrintModalOpen(false)}
-        schedule={schedule}
-        participants={participants.filter(p => !p.isTest)}
+        schedule={schedule ? { ...schedule, competitionName: competition?.name || schedule?.competitionName, divingPrintType } : schedule}
+        participants={(schedule?.scoringMode === 'diving' ? scoringParticipants : participants).filter(p => !p.isTest)}
         results={results}
         user={user}
       />
