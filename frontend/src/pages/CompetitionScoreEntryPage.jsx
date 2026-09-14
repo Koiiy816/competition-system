@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Container, CircularProgress, Alert, Chip,
-  TextField
+  TextField, InputAdornment
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -102,11 +102,15 @@ const getStrengthEvents = (participant, schedule) => {
     ? schedule.divingProgram
     : getParticipantDivingProgram(participant);
   return configured.map((action, index) => ({
-    actionCode: action.actionCode || '', actionName: action.actionName || action.actionCode || `小项${index + 1}`,
+    actionCode: action.actionCode || '', actionName: String(action.actionName || action.actionCode || `小项${index + 1}`)
+      .replace(/提膝跳\s*10\s*次/g, '提膝跳')
+      .replace(/引体控\s*40\s*秒/g, '引体控'),
     order: index + 1,
     direction: /立定跳远|立定跳遠|引体控|引體控/.test(String(action.actionName || action.actionCode || '')) ? 'desc' : 'asc'
   }));
 };
+
+const strengthUnit = (actionName) => /立定跳远|立定跳遠/.test(String(actionName)) ? '厘米' : '秒';
 
 const formatScheduleTime = (schedule) => {
   if (schedule?.scheduleDate) {
@@ -454,7 +458,7 @@ const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatu
     {!isChiefOrAdmin && <Alert severity="info" sx={{ m: 1.5 }}>素质力量成绩仅由裁判长录入。</Alert>}
     {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该选手已标记为缺席。' : '请先完成检录后再录入。'}</Alert>}
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>小项/动作</TableCell><TableCell align="center">排名依据</TableCell><TableCell align="center">原始成绩</TableCell><TableCell align="center">小项名次</TableCell><TableCell align="center">积分</TableCell></TableRow></TableHead>
-      <TableBody>{events.map((event, index) => { const saved = initialResult?.details?.events?.find((item) => item.actionName === event.actionName); return <TableRow key={`${event.actionName}-${index}`}><TableCell>{index + 1}. {event.actionName}</TableCell><TableCell align="center">{event.direction === 'asc' ? '用时短优先' : '成绩长/远优先'}</TableCell><TableCell align="center"><TextField size="small" type="number" value={event.rawScore} disabled={!canEnter} onChange={(e) => { setEvents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, rawScore: e.target.value } : item)); setDirty(true); }} inputProps={{ min: 0, step: 0.01, style: { width: 90, textAlign: 'center' } }} /></TableCell><TableCell align="center">{saved?.rank || '-'}</TableCell><TableCell align="center">{saved?.points ?? '-'}</TableCell></TableRow>; })}</TableBody>
+      <TableBody>{events.map((event, index) => { const saved = initialResult?.details?.events?.find((item) => item.actionName === event.actionName); return <TableRow key={`${event.actionName}-${index}`}><TableCell>{index + 1}. {event.actionName}</TableCell><TableCell align="center">{event.direction === 'asc' ? '用时短优先' : '成绩长/远优先'}</TableCell><TableCell align="center"><TextField size="small" type="number" value={event.rawScore} disabled={!canEnter} onChange={(e) => { setEvents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, rawScore: e.target.value } : item)); setDirty(true); }} InputProps={{ endAdornment: <InputAdornment position="end">{strengthUnit(event.actionName)}</InputAdornment> }} inputProps={{ min: 0, step: 0.01, style: { width: 90, textAlign: 'center' } }} /></TableCell><TableCell align="center">{saved?.rank || '-'}</TableCell><TableCell align="center">{saved?.points ?? '-'}</TableCell></TableRow>; })}</TableBody>
     </Table></TableContainer>
     <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || !dirty || events.some((event) => event.rawScore === '')}>{saving ? '保存中…' : '保存并重算排名'}</Button></Box>
   </Paper>;

@@ -4,7 +4,10 @@ const isStrengthSchedule = (schedule, participant) => strengthSchedulePattern.te
   || strengthSchedulePattern.test(String(participant?.event || ''));
 
 const normalizeStrengthEvents = (events) => (Array.isArray(events) ? events : []).map((event, index) => {
-  const actionName = String(event?.actionName || event?.name || event?.actionCode || '').trim();
+  const actionName = String(event?.actionName || event?.name || event?.actionCode || '')
+    .trim()
+    .replace(/提膝跳\s*10\s*次/g, '提膝跳')
+    .replace(/引体控\s*40\s*秒/g, '引体控');
   const rawScore = Number(event?.rawScore);
   if (!actionName || !Number.isFinite(rawScore) || rawScore < 0) return null;
   return {
