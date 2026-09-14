@@ -65,6 +65,12 @@ router.post(
   resultController.submitDivingScore
 );
 
+router.post('/submit-strength', [auth, authorize('admin', 'chief_referee'), [
+  check('scheduleId', '赛程ID是必填项').not().isEmpty(),
+  check('participantId', '参赛者ID是必填项').not().isEmpty(),
+  check('events', '素质力量成绩是必填项').isArray()
+]], resultController.submitStrengthScore);
+
 // @route   POST api/competitions/:competitionId/results/publish-diving-round
 // @desc    Chief referee confirms a completed diving round for public scoreboard display
 router.post(

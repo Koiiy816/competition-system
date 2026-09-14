@@ -148,6 +148,15 @@ const resultService = {
     }
   },
 
+  submitStrengthScore: async (competitionId, scoreData) => {
+    try {
+      const response = await api.post(`/competitions/${competitionId}/results/submit-strength`, scoreData);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '素质力量成绩提交失败' };
+    }
+  },
+
   publishDivingRound: async (competitionId, scoreData) => {
     try {
       const response = await api.post(`/competitions/${competitionId}/results/publish-diving-round`, scoreData);

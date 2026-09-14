@@ -26,9 +26,10 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
 
   React.useEffect(() => {
     if (open && schedule) {
-      const isDiving = schedule.scoringMode === 'diving';
-      setTitle(isDiving ? (schedule.competition?.name || schedule.competitionName || '比赛') : `${schedule.name || '比赛'} - 成绩公告`);
-      setSubTitle(isDiving ? '名次公告' : `日期：${schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} | 地点：${schedule.location || ''}`);
+      const isStrength = /素质力量|素質力量/.test(String(schedule.name || ''));
+      const isDiving = schedule.scoringMode === 'diving' && !isStrength;
+      setTitle(isDiving || isStrength ? (schedule.competition?.name || schedule.competitionName || '比赛') : `${schedule.name || '比赛'} - 成绩公告`);
+      setSubTitle(isDiving || isStrength ? '名次公告' : `日期：${schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} | 地点：${schedule.location || ''}`);
     }
   }, [open, schedule]);
   
@@ -59,6 +60,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     const finalScore = typeof result?.finalScore === 'number' ? result?.finalScore : (result?.score || 0);
     return { scores, deduction, finalScore, isAbsent };
   };
+  const isStrengthPrint = /素质力量|素質力量/.test(String(schedule?.name || '')) || participants.some((participant) => results[participant.__printKey || participant._id || participant]?.details?.scoringType === 'strength');
 
   // Sort participants by final score (descending), absent at the bottom
   const sortedParticipants = (() => {
@@ -72,7 +74,14 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       if (dataA.isAbsent && dataB.isAbsent) return 0;
       if (dataA.isAbsent) return 1;
       if (dataB.isAbsent) return -1;
-      return dataB.finalScore - dataA.finalScore;
+      if (dataB.finalScore !== dataA.finalScore) return dataB.finalScore - dataA.finalScore;
+      if (isStrengthPrint) {
+        for (let place = 1; place <= 20; place += 1) {
+          const count = (participant) => (results[participant.__printKey || participant._id || participant]?.details?.events || []).filter((event) => event.rank === place).length;
+          if (count(b) !== count(a)) return count(b) - count(a);
+        }
+      }
+      return 0;
     });
   })();
 
@@ -96,7 +105,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
         ranks.push(currentRank);
         currentScore = score;
       } else {
-        if (score === currentScore) {
+        if (score === currentScore && !isStrengthPrint) {
           ranks.push(currentRank); // Tie, keep the same rank
         } else {
           currentRank = index + 1; // Not a tie, rank is index + 1
@@ -110,7 +119,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
 
   const participantRanks = getRanks(sortedParticipants);
   const completedParticipantCount = sortedParticipants.filter((participant) => !getScoreData(participant).isAbsent).length;
-  const isDivingPrint = schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives));
+  const isDivingPrint = !isStrengthPrint && (schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives)));
   const isDivingDetailPrint = isDivingPrint && schedule?.divingPrintType === 'detail';
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
@@ -224,6 +233,11 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
         })}</TableBody>
       </Table>
     </TableContainer>;
+  };
+
+  const renderStrengthDetailTable = () => {
+    const eventNames = [...new Set(sortedParticipants.flatMap((participant) => (results[participant.__printKey || participant._id || participant]?.details?.events || []).map((event) => event.actionName)))];
+    return <TableContainer sx={{ border: '1px solid black' }}><Table size="small" sx={{ '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 4px', color: 'black', fontSize: '10px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' } }}><TableHead><TableRow><TableCell align="center">名次</TableCell><TableCell align="center">姓名</TableCell><TableCell align="center">单位</TableCell>{eventNames.flatMap((name) => [<TableCell key={`${name}-raw`} align="center">{name}</TableCell>, <TableCell key={`${name}-points`} align="center">得分</TableCell>])}<TableCell align="center">总分</TableCell><TableCell align="center">备注</TableCell></TableRow></TableHead><TableBody>{sortedParticipants.map((participant, index) => { const result = results[participant.__printKey || participant._id || participant]; const data = getScoreData(participant); const events = result?.details?.events || []; const name = participant?.name || participant?.user?.name || '未知'; const unit = participant?.schoolName || participant?.teamName || '-'; return <TableRow key={participant._id || index}><TableCell align="center">{participantRanks[index]}</TableCell><TableCell align="center">{name}</TableCell><TableCell align="center">{unit}</TableCell>{eventNames.flatMap((eventName) => { const event = events.find((item) => item.actionName === eventName); return [<TableCell key={`${eventName}-raw`} align="center">{data.isAbsent ? '弃权' : (event?.rawScore ?? '-')}</TableCell>, <TableCell key={`${eventName}-points`} align="center">{event?.points ?? '-'}</TableCell>]; })}<TableCell align="center">{data.isAbsent ? '弃权' : data.finalScore}</TableCell><TableCell align="center">{data.isAbsent ? '弃权' : ''}</TableCell></TableRow>; })}</TableBody></Table></TableContainer>;
   };
 
   return (
@@ -374,7 +388,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           }}
         >
           {/* Header */}
-          <Box sx={{ textAlign: 'center', mb: isDivingPrint ? 1.5 : 4 }}>
+          <Box sx={{ textAlign: 'center', mb: (isDivingPrint || isStrengthPrint) ? 1.5 : 4 }}>
             <Typography variant="h4" sx={{ 
               fontWeight: 'bold', 
               mb: 1, 
@@ -385,16 +399,16 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             }}>
               {title}
             </Typography>
-            {isDivingPrint ? <>
-              <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>{isDivingDetailPrint ? '明细成绩公告' : '名次公告'}</Typography>
+            {isDivingPrint || isStrengthPrint ? <>
+              <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>{isStrengthPrint ? '素质力量明细成绩公告' : (isDivingDetailPrint ? '明细成绩公告' : '名次公告')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: 1, alignItems: 'center', fontSize: '12px', fontFamily: '"SimSun", "宋体", serif' }}>
-                <span style={{ textAlign: 'left' }}>跳水</span><span>{schedule.name}</span><span style={{ textAlign: 'right' }}>{schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} {schedule.location || ''}</span>
+                <span style={{ textAlign: 'left' }}>{isStrengthPrint ? '跳水·素质力量' : '跳水'}</span><span>{schedule.name}</span><span style={{ textAlign: 'right' }}>{schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} {schedule.location || ''}</span>
               </Box>
             </> : <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>{subTitle}</Typography>}
           </Box>
 
           {/* Table */}
-          {isDivingPrint ? (isDivingDetailPrint ? renderDivingDetailTable() : renderDivingRankTable()) : <TableContainer sx={{ border: '2px solid black' }}>
+          {isStrengthPrint ? renderStrengthDetailTable() : isDivingPrint ? (isDivingDetailPrint ? renderDivingDetailTable() : renderDivingRankTable()) : <TableContainer sx={{ border: '2px solid black' }}>
             <Table size="medium" sx={{ 
               '& .MuiTableCell-root': { 
                 borderBottom: '1px solid black',
@@ -497,7 +511,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           </TableContainer>}
 
           {/* Footer Signature Area */}
-          {!isDivingPrint && <Box sx={{ mt: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
+          {!isDivingPrint && !isStrengthPrint && <Box sx={{ mt: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               总裁判长签名：
               {signatureImage ? (

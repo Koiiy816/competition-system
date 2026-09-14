@@ -62,6 +62,8 @@ const getResultScore = (result) => (
     : (typeof result?.score === 'number' ? result.score : 0)
 );
 
+const isStrengthSchedule = (schedule) => /素质力量|素質力量/.test(String(schedule?.name || ''));
+
 const getParticipantDivingPlan = (participant) => {
   if (participant?.additionalInfo?.divingPlan) return participant.additionalInfo.divingPlan;
   return (participant?.teamMembers || []).find((member) => member.additionalInfo?.divingPlan)?.additionalInfo?.divingPlan || null;
@@ -93,6 +95,17 @@ const getParticipantDivingProgram = (participant) => {
     }));
   }
   return [];
+};
+
+const getStrengthEvents = (participant, schedule) => {
+  const configured = Array.isArray(schedule?.divingProgram) && schedule.divingProgram.length
+    ? schedule.divingProgram
+    : getParticipantDivingProgram(participant);
+  return configured.map((action, index) => ({
+    actionCode: action.actionCode || '', actionName: action.actionName || action.actionCode || `小项${index + 1}`,
+    order: index + 1,
+    direction: /立定跳远|立定跳遠|引体控|引體控/.test(String(action.actionName || action.actionCode || '')) ? 'desc' : 'asc'
+  }));
 };
 
 const formatScheduleTime = (schedule) => {
@@ -410,6 +423,40 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
       <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody>
     </Table></TableContainer>
     <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || (!dirty && !isChiefOrAdmin)}>{saving ? '保存中…' : (dirty ? '保存本次打分' : '确认成绩')}</Button></Box>
+  </Paper>;
+};
+
+const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatus, canEdit, isChiefOrAdmin, onSave, currentRank, checkInStatus }) => {
+  const configuredEvents = React.useMemo(() => getStrengthEvents(participant, schedule), [participant, schedule]);
+  const [events, setEvents] = useState([]);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (dirty) return;
+    const saved = initialResult?.details?.events || [];
+    setEvents(configuredEvents.map((item) => ({ ...item, rawScore: saved.find((event) => event.actionName === item.actionName)?.rawScore ?? '' })));
+  }, [configuredEvents, initialResult, dirty]);
+  const isAbsent = checkInStatus === 'absent' || initialResult?.details?.isAbsent;
+  const canEnter = canEdit && isChiefOrAdmin && scheduleStatus !== 'completed' && checkInStatus === 'checked' && !isAbsent;
+  const name = participant.name || participant.user?.name || '未知选手';
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(participant._id, events.map((event) => ({ ...event, rawScore: Number(event.rawScore) })));
+      setDirty(false);
+    } finally { setSaving(false); }
+  };
+  return <Paper variant="outlined" sx={{ mb: 2, overflow: 'hidden' }}>
+    <Box sx={{ p: 1.5, bgcolor: 'primary.50', display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+      <Box><Typography fontWeight="bold">{name}</Typography><Typography variant="body2" color="text.secondary">{participant.schoolName || participant.teamName || '-'}</Typography></Box>
+      <Box sx={{ textAlign: 'right' }}><Typography variant="body2">小项积分总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '弃权' : Number(initialResult?.score || 0)}</Typography><Typography variant="caption">总排名：{currentRank || '-'}</Typography></Box>
+    </Box>
+    {!isChiefOrAdmin && <Alert severity="info" sx={{ m: 1.5 }}>素质力量成绩仅由裁判长录入。</Alert>}
+    {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该选手已标记为缺席。' : '请先完成检录后再录入。'}</Alert>}
+    <TableContainer><Table size="small"><TableHead><TableRow><TableCell>小项/动作</TableCell><TableCell align="center">排名依据</TableCell><TableCell align="center">原始成绩</TableCell><TableCell align="center">小项名次</TableCell><TableCell align="center">积分</TableCell></TableRow></TableHead>
+      <TableBody>{events.map((event, index) => { const saved = initialResult?.details?.events?.find((item) => item.actionName === event.actionName); return <TableRow key={`${event.actionName}-${index}`}><TableCell>{index + 1}. {event.actionName}</TableCell><TableCell align="center">{event.direction === 'asc' ? '用时短优先' : '成绩长/远优先'}</TableCell><TableCell align="center"><TextField size="small" type="number" value={event.rawScore} disabled={!canEnter} onChange={(e) => { setEvents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, rawScore: e.target.value } : item)); setDirty(true); }} inputProps={{ min: 0, step: 0.01, style: { width: 90, textAlign: 'center' } }} /></TableCell><TableCell align="center">{saved?.rank || '-'}</TableCell><TableCell align="center">{saved?.points ?? '-'}</TableCell></TableRow>; })}</TableBody>
+    </Table></TableContainer>
+    <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || !dirty || events.some((event) => event.rawScore === '')}>{saving ? '保存中…' : '保存并重算排名'}</Button></Box>
   </Paper>;
 };
 
@@ -745,6 +792,16 @@ const CompetitionScoreEntryPage = () => {
     setPrintModalOpen(true);
   };
 
+  const handleStrengthSave = async (participantId, events) => {
+    try {
+      await resultService.submitStrengthScore(id, { scheduleId, participantId, events });
+      await fetchResultsOnly();
+    } catch (err) {
+      alert(err.message || '保存素质力量成绩失败');
+      throw err;
+    }
+  };
+
   const handleExportScoreSheetPdf = () => {
     window.print();
   };
@@ -760,11 +817,19 @@ const CompetitionScoreEntryPage = () => {
     });
     
     // 按分数降序排列
+    const strength = isStrengthSchedule(schedule);
     const sorted = [...scoresList].sort((a, b) => {
       if (a.isAbsent && b.isAbsent) return 0;
       if (a.isAbsent) return 1;
       if (b.isAbsent) return -1;
-      return b.score - a.score;
+      if (b.score !== a.score) return b.score - a.score;
+      if (strength) {
+        for (let place = 1; place <= 20; place += 1) {
+          const count = (id) => (results[id]?.details?.events || []).filter((event) => event.rank === place).length;
+          if (count(b.id) !== count(a.id)) return count(b.id) - count(a.id);
+        }
+      }
+      return 0;
     });
     
     const ranks = {};
@@ -780,7 +845,7 @@ const CompetitionScoreEntryPage = () => {
         ranks[item.id] = currentRank;
         currentScore = item.score;
       } else {
-        if (item.score === currentScore) {
+        if (item.score === currentScore && !strength) {
           ranks[item.id] = currentRank;
         } else {
           currentRank = index + 1;
@@ -798,7 +863,7 @@ const CompetitionScoreEntryPage = () => {
     });
 
     return ranks;
-  }, [participants, results]);
+  }, [participants, results, schedule]);
 
   const isSynchronizedDiving = schedule?.scoringMode === 'diving' && schedule?.divingFormat === 'synchronized';
   const scoringParticipants = isSynchronizedDiving
@@ -875,7 +940,11 @@ const CompetitionScoreEntryPage = () => {
             </Typography>
           </Box>
           <Box>
-            {schedule?.scoringMode === 'diving' ? <>
+            {schedule?.scoringMode === 'diving' && isStrengthSchedule(schedule) ? <>
+              <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('detail')} sx={{ mr: 1 }}>
+                素质力量成绩打印
+              </Button>
+            </> : schedule?.scoringMode === 'diving' ? <>
               <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => handlePrint('detail')} sx={{ mr: 1 }}>
                 明细成绩公告
               </Button>
@@ -910,7 +979,10 @@ const CompetitionScoreEntryPage = () => {
         </Box>
 
         <div id="printable-area" style={{ padding: '20px' }}>
-          {schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
+          {schedule?.scoringMode === 'diving' && isStrengthSchedule(schedule) ? <Box sx={{ p: 1 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>素质力量按各动作小项录入一次原始成绩并自动排名换算积分：第1名20分、第2名18分、第3名17分，之后依次递减。总分相同时，以取得小项第一名较多者优先。</Alert>
+            {participants.map((participant) => <StrengthScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} onSave={handleStrengthSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} />)}
+          </Box> : schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
             <Box className="diving-score-sheet-header">
               <Typography variant="h4" component="h1">{schedule?.name} - 成绩录入</Typography>
               <Typography variant="subtitle1">{formatScheduleTime(schedule)}</Typography>

@@ -3,6 +3,7 @@ const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const { calculateDivingDiveScore } = require('../utils/divingScoring');
+const { isStrengthSchedule, normalizeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
@@ -184,6 +185,75 @@ exports.submitDivingScore = async (req, res, next) => {
   } finally {
     releaseLock(lockKey);
   }
+};
+
+// 素质力量按小项录入原始成绩。仅裁判长/管理员可录入，保存后重新计算全场小项名次及积分。
+exports.submitStrengthScore = async (req, res, next) => {
+  const { scheduleId, participantId, events } = req.body;
+  if (!scheduleId || !participantId || !Array.isArray(events)) return res.status(400).json({ success: false, message: '缺少素质力量成绩数据' });
+  if (!(req.user.roles || []).some((role) => ['admin', 'chief_referee'].includes(role))) return res.status(403).json({ success: false, message: '素质力量原始成绩仅可由裁判长录入' });
+  const lockKey = `strength_${scheduleId}`;
+  await acquireLock(lockKey);
+  try {
+    const schedule = await Schedule.findById(scheduleId).select('competition name status participants');
+    if (!schedule) return res.status(404).json({ success: false, message: '未找到对应赛程' });
+    const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus');
+    if (!participant || !(schedule.participants || []).some((id) => id.toString() === participantId)) return res.status(400).json({ success: false, message: '参赛对象不在当前赛程中' });
+    if (!isStrengthSchedule(schedule, participant)) return res.status(400).json({ success: false, message: '当前赛程不是素质力量项目' });
+    const checkInStatus = getEffectiveCheckInStatus(participant);
+    if (checkInStatus !== 'checked' && checkInStatus !== 'absent') return res.status(400).json({ success: false, message: '参赛对象尚未检录，暂不能录入成绩' });
+    const normalizedEvents = checkInStatus === 'absent' ? [] : normalizeStrengthEvents(events);
+    if (checkInStatus !== 'absent' && !normalizedEvents.length) return res.status(400).json({ success: false, message: '请录入至少一个有效的小项原始成绩' });
+    const current = await Result.findOne({ schedule: scheduleId, participant: participantId });
+    const data = {
+      competition: req.params.competitionId, schedule: scheduleId, participant: participantId,
+      score: 0,
+      details: { scoringType: 'strength', isAbsent: checkInStatus === 'absent', events: normalizedEvents, completed: true },
+      submittedBy: req.user.id, verifiedBy: req.user.id, verifiedAt: new Date(), status: 'verified', updatedAt: new Date()
+    };
+    if (current) await Result.findByIdAndUpdate(current._id, data, { runValidators: true }); else await Result.create(data);
+
+    const allResults = await Result.find({ schedule: scheduleId });
+    const eventNames = [...new Set(allResults.flatMap((result) => (result.details?.events || []).map((event) => event.actionName)))];
+    const ranksByParticipant = new Map(allResults.map((result) => [result.participant.toString(), {}]));
+    for (const actionName of eventNames) {
+      const rows = allResults.map((result) => ({ result, event: (result.details?.events || []).find((item) => item.actionName === actionName) }))
+        .filter((row) => row.event && !row.result.details?.isAbsent)
+        .sort((a, b) => a.event.direction === 'asc' ? a.event.rawScore - b.event.rawScore : b.event.rawScore - a.event.rawScore);
+      let rank = 0; let previous;
+      rows.forEach((row, index) => {
+        if (index === 0 || row.event.rawScore !== previous) rank = index + 1;
+        previous = row.event.rawScore;
+        ranksByParticipant.get(row.result.participant.toString())[actionName] = { rank, points: pointsForRank(rank) };
+      });
+    }
+    for (const result of allResults) {
+      const details = { ...(result.details || {}) };
+      details.events = (details.events || []).map((event) => ({ ...event, ...(ranksByParticipant.get(result.participant.toString())[event.actionName] || { rank: null, points: 0 }) }));
+      const totalPoints = details.isAbsent ? 0 : details.events.reduce((sum, event) => sum + Number(event.points || 0), 0);
+      details.totalPoints = totalPoints;
+      result.details = details; result.score = totalPoints; result.status = 'verified'; result.verifiedBy = req.user.id; result.verifiedAt = new Date();
+      await result.save();
+    }
+    const strengthRank = (left, right) => {
+      if (left.details?.isAbsent !== right.details?.isAbsent) return left.details?.isAbsent ? 1 : -1;
+      if (right.score !== left.score) return Number(right.score || 0) - Number(left.score || 0);
+      for (let place = 1; place <= eventNames.length; place += 1) {
+        const leftCount = (left.details?.events || []).filter((event) => event.rank === place).length;
+        const rightCount = (right.details?.events || []).filter((event) => event.rank === place).length;
+        if (leftCount !== rightCount) return rightCount - leftCount;
+      }
+      return 0;
+    };
+    const rankedResults = [...allResults].sort(strengthRank);
+    for (let index = 0; index < rankedResults.length; index += 1) {
+      rankedResults[index].rank = rankedResults[index].details?.isAbsent ? null : index + 1;
+      await rankedResults[index].save();
+    }
+    if (schedule.status === 'scheduled') { schedule.status = 'ongoing'; await schedule.save(); }
+    const saved = await Result.findOne({ schedule: scheduleId, participant: participantId });
+    res.status(200).json({ success: true, data: saved });
+  } catch (error) { next(error); } finally { releaseLock(lockKey); }
 };
 
 // 裁判长按轮确认跳水成绩后，才允许大屏展示该轮的累计实得分。
