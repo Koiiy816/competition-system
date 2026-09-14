@@ -135,10 +135,10 @@ router.put(
 
 // @route   PUT api/competitions/:competitionId/participants/:id/check-in
 // @desc    更新参赛者检录状态
-// @access  私有/管理员、主裁、检录员
+// @access  私有/管理员、主裁、裁判、检录员
 router.put(
   '/:id/check-in',
-  auth, authorize('admin', 'chief_referee', 'checkin_clerk'),
+  auth, authorize('admin', 'chief_referee', 'referee', 'checkin_clerk'),
   participantController.updateParticipantCheckInStatus
 );
 

@@ -369,7 +369,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
   );
 };
 
-const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, canEdit, isChiefOrAdmin, allowedIndex, onSave, currentRank, checkInStatus }) => {
+const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, canEdit, isChiefOrAdmin, allowedIndex, onSave, currentRank, checkInStatus, canCheckIn, onCheckIn, isCheckInUpdating }) => {
   const [dives, setDives] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -421,6 +421,11 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
       <Box><Typography fontWeight="bold">{participantName}</Typography><Typography variant="body2" color="text.secondary">{participant.schoolName || participant.teamName || '-'} · {format === 'synchronized' ? '双人跳水' : '个人跳水'}</Typography></Box>
       <Box sx={{ textAlign: 'right' }}><Typography variant="body2">实时总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '缺席/弃权' : total.toFixed(2)}</Typography><Typography variant="caption">排名：{currentRank || '-'}</Typography></Box>
     </Box>
+    {canCheckIn && <Box className="no-print" sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <Typography variant="body2">检录状态：</Typography><Chip size="small" label={getCheckInStatusMeta(checkInStatus).label} color={getCheckInStatusMeta(checkInStatus).color} />
+      {checkInStatus === 'not_checked' && <><Button size="small" variant="contained" color="success" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'checked')}>检录</Button><Button size="small" variant="outlined" color="error" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'absent')}>缺席</Button></>}
+      {['checked', 'absent'].includes(checkInStatus) && <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>撤销检录</Button>}
+    </Box>}
     {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该参赛对象已标记为缺席。' : '请先完成检录后再打分。'}</Alert>}
     {!hasParticipantPlan && <Alert severity="warning" sx={{ m: 1.5 }}>{format === 'synchronized' ? '该双人组合需要两位搭档共用完全一致的动作表，请先完成配对并补录动作表后再打分。' : '该参赛对象还没有跳水动作表，请先补录动作表后再打分。'}</Alert>}
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell></TableRow></TableHead>
@@ -430,7 +435,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
   </Paper>;
 };
 
-const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatus, canEdit, isChiefOrAdmin, onSave, currentRank, checkInStatus }) => {
+const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatus, canEdit, isChiefOrAdmin, onSave, currentRank, checkInStatus, canCheckIn, onCheckIn, isCheckInUpdating }) => {
   const configuredEvents = React.useMemo(() => getStrengthEvents(participant, schedule), [participant, schedule]);
   const [events, setEvents] = useState([]);
   const [dirty, setDirty] = useState(false);
@@ -455,6 +460,11 @@ const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatu
       <Box><Typography fontWeight="bold">{name}</Typography><Typography variant="body2" color="text.secondary">{participant.schoolName || participant.teamName || '-'}</Typography></Box>
       <Box sx={{ textAlign: 'right' }}><Typography variant="body2">小项积分总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '弃权' : Number(initialResult?.score || 0)}</Typography><Typography variant="caption">总排名：{currentRank || '-'}</Typography></Box>
     </Box>
+    {canCheckIn && <Box className="no-print" sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <Typography variant="body2">检录状态：</Typography><Chip size="small" label={getCheckInStatusMeta(checkInStatus).label} color={getCheckInStatusMeta(checkInStatus).color} />
+      {checkInStatus === 'not_checked' && <><Button size="small" variant="contained" color="success" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'checked')}>检录</Button><Button size="small" variant="outlined" color="error" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'absent')}>缺席</Button></>}
+      {['checked', 'absent'].includes(checkInStatus) && <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>撤销检录</Button>}
+    </Box>}
     {!isChiefOrAdmin && <Alert severity="info" sx={{ m: 1.5 }}>素质力量成绩仅由裁判长录入。</Alert>}
     {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该选手已标记为缺席。' : '请先完成检录后再录入。'}</Alert>}
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>小项/动作</TableCell><TableCell align="center">排名依据</TableCell><TableCell align="center">原始成绩</TableCell><TableCell align="center">小项名次</TableCell><TableCell align="center">积分</TableCell></TableRow></TableHead>
@@ -492,7 +502,7 @@ const CompetitionScoreEntryPage = () => {
   
   const canEdit = hasPermission(['admin', 'chief_referee', 'referee']);
   const isChiefOrAdmin = hasPermission(['admin', 'chief_referee']);
-  const canCheckIn = hasPermission(['admin', 'chief_referee']);
+  const canCheckIn = hasPermission(['admin', 'chief_referee', 'referee']);
   
   let allowedIndex = -1;
   // 依然限制普通裁判只能填写自己的格子，不影响他们看到最后得分
@@ -988,7 +998,7 @@ const CompetitionScoreEntryPage = () => {
         <div id="printable-area" style={{ padding: '20px' }}>
           {schedule?.scoringMode === 'diving' && isStrengthSchedule(schedule) ? <Box sx={{ p: 1 }}>
             <Alert severity="info" sx={{ mb: 2 }}>素质力量按各动作小项录入一次原始成绩并自动排名换算积分：第1名20分、第2名18分、第3名17分，之后依次递减。总分相同时，以取得小项第一名较多者优先。</Alert>
-            {participants.map((participant) => <StrengthScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} onSave={handleStrengthSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} />)}
+            {participants.map((participant) => <StrengthScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} onSave={handleStrengthSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
             <Box className="diving-score-sheet-header">
               <Typography variant="h4" component="h1">{schedule?.name} - 成绩录入</Typography>
@@ -1002,7 +1012,7 @@ const CompetitionScoreEntryPage = () => {
               <Typography variant="body2" color="text.secondary">已公开至第 {divingPublication.publishedRound} 轮；确认前会校验所有已检录运动员均完成该轮五位裁判打分。</Typography>
             </Box>}
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
-            {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} />)}
+            {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : <TableContainer sx={{ p: 2 }}>
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
