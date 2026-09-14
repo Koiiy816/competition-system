@@ -9,12 +9,12 @@ import PrintIcon from '@mui/icons-material/Print';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
-import * as XLSX from 'xlsx';
 import competitionService from '../services/competitionService';
 import scheduleService from '../services/scheduleService';
 import resultService from '../services/resultService';
 import { useAuth } from '../contexts/AuthContext';
 import PrintPreviewModal from '../components/PrintPreviewModal';
+import { calculateDivingDiveScore } from '../utils/divingScoring';
 
 const normalizeCheckInStatus = (participant) => {
   if (!participant) return 'not_checked';
@@ -377,11 +377,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
     if (rawScores.length !== 5 || rawScores.some((value) => value === '' || value === null || value === undefined)) return 0;
     const values = rawScores.map(Number);
     if (values.some((value) => !Number.isFinite(value))) return 0;
-    const sum = values.reduce((total, value) => total + value, 0);
-    const score = format === 'synchronized'
-      ? sum * Number(dive.difficulty) * 0.6
-      : (sum - Math.max(...values) - Math.min(...values)) * Number(dive.difficulty);
-    return Math.round(score * 100) / 100;
+    return calculateDivingDiveScore(values, dive.difficulty);
   };
   const total = dives.reduce((sum, dive) => sum + calcDive(dive), 0);
   const updateScore = (diveIndex, judgeIndex, value) => {
@@ -413,7 +409,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell></TableRow></TableHead>
       <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody>
     </Table></TableContainer>
-    <Box sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || (!dirty && !isChiefOrAdmin)}>{saving ? '保存中…' : (dirty ? '保存本次打分' : '确认成绩')}</Button></Box>
+    <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || (!dirty && !isChiefOrAdmin)}>{saving ? '保存中…' : (dirty ? '保存本次打分' : '确认成绩')}</Button></Box>
   </Paper>;
 };
 
@@ -747,110 +743,8 @@ const CompetitionScoreEntryPage = () => {
     setPrintModalOpen(true);
   };
 
-  const handleExportExcel = () => {
-    const normalizeText = (value = '') => String(value).replace(/\s+/g, '');
-    const isLuohuTraditionalCompetition = (competition) => {
-      const competitionName = normalizeText(competition?.name || '');
-      return competitionName.includes('罗湖区青少年传统武术锦标赛竞赛');
-    };
-    const isLuohuExcludedTeamScoreEvent = (scheduleName = '') => {
-      const normalizedScheduleName = normalizeText(scheduleName);
-      return normalizedScheduleName.includes('集体武术操') || normalizedScheduleName.includes('幼儿集体拳');
-    };
-    const getAdmissionCount = (competition, scheduleName, formalCount) => {
-      if (formalCount <= 0) return 0;
-      if (!isLuohuTraditionalCompetition(competition)) return 8;
-
-      if (isLuohuExcludedTeamScoreEvent(scheduleName)) return Math.min(8, formalCount);
-      if (formalCount > 8) return 8;
-      if (formalCount === 1) return 1;
-      return Math.max(formalCount - 1, 1);
-    };
-
-    const selectedCompetition = competition;
-    const scheduleName = schedule?.name || '';
-    const formalCount = participants.filter(p => !p.isTest).length;
-    const admissionCount = getAdmissionCount(selectedCompetition, scheduleName, formalCount);
-    const countsForTeam = isLuohuTraditionalCompetition(selectedCompetition)
-      ? (!isLuohuExcludedTeamScoreEvent(scheduleName) && formalCount >= 3)
-      : null;
-    const admissionNote = isLuohuTraditionalCompetition(selectedCompetition)
-      ? `录取前${admissionCount}名${countsForTeam ? '，计团体总分' : '，不计团体总分'}`
-      : '';
-
-    // 1. 整理数据并按最后得分降序排列，排除测试人员
-    const dataToExport = participants
-      .filter(p => !p.isTest)
-      .map((p, index) => {
-        const result = results[p._id];
-        const finalScore = getResultScore(result);
-        const absent = isParticipantAbsent(p, result);
-        
-        let displayName = p.name || (p.user && p.user.name) || '未知';
-        if (p.isVirtualTeam && p.teamMembers && p.teamMembers.length > 0) {
-          displayName = p.teamMembers.map(m => m.name).join('、');
-        }
-
-        return {
-          '排名': 0, // 占位，等下排序后赋值
-          '姓名': displayName,
-          '代表队/学校': p.schoolName || (p.user && p.user.schoolName) || '-',
-          '是否录取': '否',
-          '最终得分': absent ? '弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '')
-        };
-      });
-
-    // 按最后得分降序，弃权排最后
-    dataToExport.sort((a, b) => {
-      const isAbsentA = a['最终得分'] === '弃权';
-      const isAbsentB = b['最终得分'] === '弃权';
-      if (isAbsentA && isAbsentB) return 0;
-      if (isAbsentA) return 1;
-      if (isAbsentB) return -1;
-
-      const scoreA = parseFloat(a['最终得分']) || 0;
-      const scoreB = parseFloat(b['最终得分']) || 0;
-      return scoreB - scoreA;
-    });
-
-    // 重新编排排名序号 (处理并列情况)
-    let currentRank = 1;
-    let currentScore = -1;
-    
-    dataToExport.forEach((row, idx) => {
-      if (row['最终得分'] === '弃权') {
-        row['排名'] = '-';
-        row['是否录取'] = '否';
-        if (admissionNote) row['录取说明'] = admissionNote;
-        return;
-      }
-      const score = parseFloat(row['最终得分']) || 0;
-      if (idx === 0) {
-        row['排名'] = currentRank;
-        currentScore = score;
-      } else {
-        if (score === currentScore) {
-          row['排名'] = currentRank; // 分数相同，排名相同
-        } else {
-          currentRank = idx + 1; // 分数不同，排名为当前索引+1
-          row['排名'] = currentRank;
-          currentScore = score;
-        }
-      }
-
-      const isAwarded = admissionCount > 0 && typeof row['排名'] === 'number' && row['排名'] <= admissionCount;
-      row['是否录取'] = isAwarded ? '是' : '否';
-      if (admissionNote) row['录取说明'] = admissionNote;
-    });
-
-    // 2. 生成 Excel
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "成绩公告");
-
-    // 3. 导出并下载
-    const fileName = `${schedule?.name || '成绩公告'}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
+  const handleExportScoreSheetPdf = () => {
+    window.print();
   };
 
   // 计算当前的实时排名 (必须放在所有 return 之前，遵循 Hooks 规则)
@@ -990,10 +884,10 @@ const CompetitionScoreEntryPage = () => {
             <Button 
               variant="outlined" 
               startIcon={<DownloadIcon />} 
-              onClick={handleExportExcel}
+              onClick={handleExportScoreSheetPdf}
               sx={{ mr: 1 }}
             >
-              导出Excel
+              导出 PDF
             </Button>
             <Button 
               variant="contained" 
@@ -1008,8 +902,12 @@ const CompetitionScoreEntryPage = () => {
 
         <div id="printable-area" style={{ padding: '20px' }}>
           {schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
-            <Alert severity="info" sx={{ mb: 2 }}>计分规则：{schedule?.divingFormat === 'synchronized' ? '双人跳水 = 五位裁判分数总和 × 难度系数 × 0.6。' : '个人跳水 = 去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。'} 每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
-            {isChiefOrAdmin && divingPublication.nextRound <= divingPublication.maxRounds && <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <Box className="diving-score-sheet-header">
+              <Typography variant="h4" component="h1">{schedule?.name} - 成绩录入</Typography>
+              <Typography variant="subtitle1">{formatScheduleTime(schedule)}</Typography>
+            </Box>
+            <Alert severity="info" sx={{ mb: 2 }}>计分规则：去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
+            {isChiefOrAdmin && divingPublication.nextRound <= divingPublication.maxRounds && <Box className="no-print" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={publishingRound || schedule?.status === 'completed'} onClick={() => handlePublishDivingRound(divingPublication.nextRound)}>
                 {publishingRound ? '确认中…' : `确认并公开第${divingPublication.nextRound}轮`}
               </Button>
@@ -1137,8 +1035,18 @@ const CompetitionScoreEntryPage = () => {
       
       <style>{`
         @media print {
-          /* No specific global print styles needed as PrintPreviewModal handles its own printing */
+          @page { size: A4; margin: 10mm; }
+          body * { visibility: hidden !important; }
+          .print-container, .print-container #printable-area, .print-container #printable-area * { visibility: visible !important; }
+          .print-container { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+          .print-container > .MuiPaper-root { box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+          #printable-area { padding: 0 !important; }
+          .no-print { display: none !important; }
+          .diving-score-sheet-header { display: block !important; margin: 0 0 8mm; text-align: left; }
+          #printable-area .MuiPaper-root { box-shadow: none !important; break-inside: avoid; page-break-inside: avoid; }
+          #printable-area .MuiTableCell-root { color: #000 !important; }
         }
+        .diving-score-sheet-header { display: none; }
       `}</style>
     </Container>
   );

@@ -2,6 +2,7 @@ const Result = require('../models/Result');
 const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
+const { calculateDivingDiveScore } = require('../utils/divingScoring');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
@@ -128,17 +129,6 @@ const getScoringDivingProgram = (participant, format) => {
   const second = normalizeParticipantDivingProgram(members[1]);
   return first && second && sameDivingProgram(first, second) ? first : null;
 };
-function calculateDivingDiveScore(scores, difficulty, format = 'individual') {
-  if (!isCompleteDivingScore(scores)) return 0;
-  const factor = Number(difficulty);
-  if (!Number.isFinite(factor) || factor < 0) return 0;
-  const total = scores.reduce((sum, score) => sum + score, 0);
-  const rawScore = format === 'synchronized'
-    ? total * factor * 0.6
-    : (total - Math.max(...scores) - Math.min(...scores)) * factor;
-  return Math.round(rawScore * 100) / 100;
-}
-
 exports.submitDivingScore = async (req, res, next) => {
   const { scheduleId, participantId, dives } = req.body;
   if (!scheduleId || !participantId || !Array.isArray(dives)) return res.status(400).json({ success: false, message: 'Missing diving score data' });
@@ -176,7 +166,7 @@ exports.submitDivingScore = async (req, res, next) => {
         scores = previous;
       }
       if (checkInStatus === 'absent') scores = [null, null, null, null, null];
-      return { actionCode: action.actionCode || '', actionName: action.actionName, difficulty: action.difficulty, source: action.source || 'custom', scores, score: calculateDivingDiveScore(scores, action.difficulty, schedule.divingFormat), completed: isCompleteDivingScore(scores) };
+      return { actionCode: action.actionCode || '', actionName: action.actionName, difficulty: action.difficulty, source: action.source || 'custom', scores, score: calculateDivingDiveScore(scores, action.difficulty), completed: isCompleteDivingScore(scores) };
     });
     const totalScore = Math.round(savedDives.reduce((sum, dive) => sum + dive.score, 0) * 100) / 100;
     const allCompleted = savedDives.every((dive) => dive.completed);
