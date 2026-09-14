@@ -15,8 +15,8 @@ const normalizeStrengthEvents = (events) => (Array.isArray(events) ? events : []
     actionName,
     rawScore: Math.round(rawScore * 100) / 100,
     order: Number.isFinite(Number(event?.order)) ? Number(event.order) : index + 1,
-    // 计时项目越小越好；立定跳远、引体控（坚持时间）越大越好。
-    direction: /立定跳远|立定跳遠|引体控|引體控/.test(actionName) ? 'desc' : 'asc'
+    // 计时项目越小越好；立定跳远、提膝跳（完成次数）及引体控（坚持时间）越大越好。
+    direction: /立定跳远|立定跳遠|提膝跳|引体控|引體控/.test(actionName) ? 'desc' : 'asc'
   };
 }).filter(Boolean);
 
