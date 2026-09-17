@@ -193,7 +193,16 @@ const MainLayout = () => {
         height: 'auto !important'
       }
     }}>
-      <AppBar position="static" sx={{ display: { print: 'none' } }}>
+      <AppBar
+        position="static"
+        sx={{
+          display: { print: 'none' },
+          backgroundColor: 'rgba(255, 255, 255, 0.96)',
+          color: 'primary.dark',
+          borderBottom: '1px solid',
+          borderColor: 'primary.light',
+        }}
+      >
         <Container maxWidth="xl">
           <Toolbar disableGutters>
             {/* Logo for desktop */}
@@ -281,7 +290,7 @@ const MainLayout = () => {
                 <Button
                   key={page.title}
                   onClick={() => handleMenuClick(page.path)}
-                  sx={{ my: 2, color: 'white', display: 'block' }}
+                  sx={{ my: 2, color: 'inherit', display: 'block' }}
                 >
                   {page.title}
                 </Button>

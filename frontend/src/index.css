@@ -20,7 +20,7 @@ body::before {
   pointer-events: none;
   background: center / min(46vw, 560px) no-repeat url('/assets/saiyitong-logo.png');
   mix-blend-mode: multiply;
-  opacity: 0.045;
+  opacity: 0.12;
 }
 
 #root {
