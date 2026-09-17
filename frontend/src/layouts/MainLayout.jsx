@@ -30,7 +30,7 @@ const BrandLogo = ({ mobile = false }) => (
     aria-label="赛易通首页"
     sx={{
       width: 48,
-      height: 42,
+      height: 40,
       mr: 1,
       overflow: 'hidden',
       display: mobile ? { xs: 'block', md: 'none' } : { xs: 'none', md: 'block' },
@@ -42,9 +42,9 @@ const BrandLogo = ({ mobile = false }) => (
       src="/assets/saiyitong-logo.png"
       alt="赛易通"
       sx={{
-        width: 63,
+        width: 70,
         maxWidth: 'none',
-        transform: 'translate(-7px, -5px)',
+        transform: 'translate(-11px, -5px)',
         mixBlendMode: 'multiply',
       }}
     />
@@ -207,24 +207,6 @@ const MainLayout = () => {
           <Toolbar disableGutters>
             {/* Logo for desktop */}
             <BrandLogo />
-            <Typography
-              variant="h6"
-              noWrap
-              component={RouterLink}
-              to="/"
-              sx={{
-                mr: 2,
-                display: { xs: 'none', md: 'flex' },
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                letterSpacing: '.3rem',
-                color: 'inherit',
-                textDecoration: 'none',
-              }}
-            >
-              赛易通
-            </Typography>
-
             {/* Mobile menu */}
             <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
               <IconButton
@@ -265,25 +247,6 @@ const MainLayout = () => {
 
             {/* Logo for mobile */}
             <BrandLogo mobile />
-            <Typography
-              variant="h5"
-              noWrap
-              component={RouterLink}
-              to="/"
-              sx={{
-                mr: 2,
-                display: { xs: 'flex', md: 'none' },
-                flexGrow: 1,
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                letterSpacing: '.3rem',
-                color: 'inherit',
-                textDecoration: 'none',
-              }}
-            >
-              赛易通
-            </Typography>
-
             {/* Desktop menu */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
               {pages.map((page) => (
