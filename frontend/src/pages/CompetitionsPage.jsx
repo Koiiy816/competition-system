@@ -29,6 +29,7 @@ import SortIcon from '@mui/icons-material/Sort';
 import AddIcon from '@mui/icons-material/Add';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
+import BrandWatermark from '../components/BrandWatermark';
 
 const CompetitionsPage = () => {
   const navigate = useNavigate();
@@ -421,12 +422,13 @@ const CompetitionsPage = () => {
               })}
             </Grid>
           ) : (
-            <Box sx={{ textAlign: 'center', py: 5 }}>
-              <Typography variant="h6" color="text.secondary">
+            <Box sx={{ position: 'relative', overflow: 'hidden', textAlign: 'center', py: 5 }}>
+              <BrandWatermark sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', opacity: 0.09 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ position: 'relative' }}>
                 没有找到符合条件的比赛
               </Typography>
               {Object.values(filters).some(v => v) && (
-                <Button onClick={handleResetFilters} sx={{ mt: 2 }}>
+                <Button onClick={handleResetFilters} sx={{ position: 'relative', mt: 2 }}>
                   清除过滤条件
                 </Button>
               )}

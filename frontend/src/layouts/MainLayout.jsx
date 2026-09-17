@@ -31,7 +31,7 @@ const BrandLogo = ({ mobile = false }) => (
     sx={{
       width: 48,
       height: 40,
-      mr: 1,
+      mr: mobile ? 0 : 1,
       overflow: 'hidden',
       display: mobile ? { xs: 'block', md: 'none' } : { xs: 'none', md: 'block' },
       flexShrink: 0,
@@ -204,7 +204,7 @@ const MainLayout = () => {
         }}
       >
         <Container maxWidth="xl">
-          <Toolbar disableGutters>
+          <Toolbar disableGutters sx={{ position: 'relative' }}>
             {/* Logo for desktop */}
             <BrandLogo />
             {/* Mobile menu */}
@@ -246,7 +246,20 @@ const MainLayout = () => {
             </Box>
 
             {/* Logo for mobile */}
-            <BrandLogo mobile />
+            <Box
+              sx={{
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: { xs: 'flex', md: 'none' },
+                alignItems: 'center',
+              }}
+            >
+              <BrandLogo mobile />
+              <Typography noWrap sx={{ ml: 1, fontWeight: 700, color: 'inherit' }}>
+                赛易通
+              </Typography>
+            </Box>
             {/* Desktop menu */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
               {pages.map((page) => (
@@ -352,6 +365,15 @@ const MainLayout = () => {
           height: 'auto !important'
         }
       }}>
+        {location.pathname.startsWith('/admin') && (
+          <Box
+            component="img"
+            src="/assets/saiyitong-logo.png"
+            alt=""
+            aria-hidden="true"
+            sx={{ position: 'fixed', right: 20, bottom: 20, width: 56, opacity: 0.14, pointerEvents: 'none', mixBlendMode: 'multiply', zIndex: 1 }}
+          />
+        )}
         <Container 
           maxWidth={location.pathname.includes('/admin/participants') ? false : 'lg'} 
           sx={{ 
@@ -381,11 +403,16 @@ const MainLayout = () => {
         }}
       >
         <Container maxWidth="lg">
-          <Typography variant="body2" color="text.secondary" align="center">
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0.5 }}>
+            <Box sx={{ width: 24, height: 22, overflow: 'hidden' }}>
+              <Box component="img" src="/assets/saiyitong-logo.png" alt="赛易通" sx={{ width: 32, maxWidth: 'none', transform: 'translate(-4px, -2px)', mixBlendMode: 'multiply' }} />
+            </Box>
+            <Typography variant="body2" color="text.secondary" align="center">
             {'© '}
             {new Date().getFullYear()}
             {' 赛易通. 保留所有权利。'}
-          </Typography>
+            </Typography>
+          </Box>
         </Container>
       </Box>
     </Box>

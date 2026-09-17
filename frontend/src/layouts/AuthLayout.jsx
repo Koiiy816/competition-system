@@ -33,9 +33,18 @@ const AuthLayout = () => {
             p: 4,
             width: '100%',
             borderRadius: 2,
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          <Outlet />
+          <Box
+            component="img"
+            src="/assets/saiyitong-logo.png"
+            alt=""
+            aria-hidden="true"
+            sx={{ position: 'absolute', right: -20, bottom: -35, width: 190, opacity: 0.08, pointerEvents: 'none', mixBlendMode: 'multiply' }}
+          />
+          <Box sx={{ position: 'relative', zIndex: 1 }}><Outlet /></Box>
         </Paper>
         
         <Box sx={{ mt: 3, textAlign: 'center' }}>

@@ -18,9 +18,9 @@ body::before {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background: center / min(68vw, 780px) no-repeat url('/assets/saiyitong-logo.png');
+  background: center / min(42vw, 480px) no-repeat url('/assets/saiyitong-logo.png');
   mix-blend-mode: multiply;
-  opacity: 0.24;
+  opacity: 0.11;
 }
 
 #root {
