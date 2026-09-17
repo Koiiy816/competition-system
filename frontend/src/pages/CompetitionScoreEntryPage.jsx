@@ -814,6 +814,21 @@ const CompetitionScoreEntryPage = () => {
     }
   };
 
+  const handleResetScheduleResults = async () => {
+    const confirmed = window.confirm(
+      '确定清空本项目的全部测试成绩吗？这会删除所有已录入分数、排名及跳水已公开轮次，并将本场恢复为未开始状态。报名名单、检录状态和跳水动作表会保留；此操作不可恢复。'
+    );
+    if (!confirmed) return;
+    try {
+      const response = await resultService.resetScheduleResults(id, scheduleId);
+      await fetchResultsOnly();
+      setSchedule((current) => current ? { ...current, status: 'scheduled' } : current);
+      alert(response.message || '本项目测试成绩已清空');
+    } catch (err) {
+      alert(err.message || '清空测试成绩失败');
+    }
+  };
+
   const handlePrint = (printType = 'rank') => {
     setDivingPrintType(printType);
     setPrintModalOpen(true);
@@ -994,6 +1009,14 @@ const CompetitionScoreEntryPage = () => {
               sx={{ mr: 1 }}
             >
               重置已公开轮次
+            </Button>}
+            {isAdmin && <Button
+              variant="outlined"
+              color="error"
+              onClick={handleResetScheduleResults}
+              sx={{ mr: 1 }}
+            >
+              清空本场测试成绩
             </Button>}
             <Button 
               variant="contained" 

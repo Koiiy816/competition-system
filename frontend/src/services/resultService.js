@@ -166,6 +166,15 @@ const resultService = {
     }
   },
 
+  resetScheduleResults: async (competitionId, scheduleId) => {
+    try {
+      const response = await api.post(`/competitions/${competitionId}/results/reset-schedule-results`, { scheduleId });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '清空测试成绩失败' };
+    }
+  },
+
   publishDivingRound: async (competitionId, scoreData) => {
     try {
       const response = await api.post(`/competitions/${competitionId}/results/publish-diving-round`, scoreData);

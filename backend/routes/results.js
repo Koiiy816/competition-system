@@ -79,6 +79,14 @@ router.post(
   resultController.resetDivingPublication
 );
 
+// @route   POST api/competitions/:competitionId/results/reset-schedule-results
+// @desc    Clear all test results for one schedule; admin only
+router.post(
+  '/reset-schedule-results',
+  [auth, authorize('admin'), [check('scheduleId', '赛程ID是必填项').not().isEmpty()]],
+  resultController.resetScheduleResults
+);
+
 // @route   POST api/competitions/:competitionId/results/publish-diving-round
 // @desc    Chief referee confirms a completed diving round for public scoreboard display
 router.post(

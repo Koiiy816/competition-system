@@ -338,6 +338,38 @@ exports.resetDivingPublication = async (req, res, next) => {
   }
 };
 
+// 管理员在正式开赛前清除某一个项目的测试成绩。
+// 只删除 Result，保留报名、赛程编排、检录状态及跳水动作表，避免影响同一选手的其他项目。
+exports.resetScheduleResults = async (req, res, next) => {
+  const { scheduleId } = req.body;
+  if (!scheduleId) return res.status(400).json({ success: false, message: '请提供赛程ID' });
+  try {
+    const schedule = await Schedule.findById(scheduleId).select('competition name status');
+    if (!schedule || schedule.competition.toString() !== req.params.competitionId) {
+      return res.status(404).json({ success: false, message: '未找到对应赛程' });
+    }
+
+    const deleted = await Result.deleteMany({
+      competition: req.params.competitionId,
+      schedule: scheduleId
+    });
+
+    // 测试完成后可重新开始正式比赛；不改变已配置的赛程时间、场地和参赛名单。
+    if (schedule.status !== 'scheduled') {
+      schedule.status = 'scheduled';
+      await schedule.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { scheduleId, resetCount: deleted.deletedCount },
+      message: `已清空本项目 ${deleted.deletedCount} 条测试成绩，项目已恢复为未开始状态`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 function calculateFinalScore(scores, deduction, judgeCount) {
   const activeScores = scores.slice(0, judgeCount).filter(score => score > 0);
   if (activeScores.length === 0) return 0;
