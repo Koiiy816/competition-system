@@ -16,13 +16,40 @@ import {
   Tooltip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PersonIcon from '@mui/icons-material/Person';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { useAuth } from '../contexts/AuthContext';
+
+const BrandLogo = ({ mobile = false }) => (
+  <Box
+    component={RouterLink}
+    to="/"
+    aria-label="赛易通首页"
+    sx={{
+      width: 48,
+      height: 40,
+      mr: mobile ? 0 : 1,
+      overflow: 'hidden',
+      display: mobile ? { xs: 'block', md: 'none' } : { xs: 'none', md: 'block' },
+      flexShrink: 0,
+    }}
+  >
+    <Box
+      component="img"
+      src="/assets/saiyitong-logo.png"
+      alt="赛易通"
+      sx={{
+        width: 70,
+        maxWidth: 'none',
+        transform: 'translate(-11px, -5px)',
+        mixBlendMode: 'multiply',
+      }}
+    />
+  </Box>
+);
 
 const MainLayout = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -166,29 +193,20 @@ const MainLayout = () => {
         height: 'auto !important'
       }
     }}>
-      <AppBar position="static" sx={{ display: { print: 'none' } }}>
+      <AppBar
+        position="static"
+        sx={{
+          display: { print: 'none' },
+          backgroundColor: 'rgba(255, 255, 255, 0.96)',
+          color: 'primary.dark',
+          borderBottom: '1px solid',
+          borderColor: 'primary.light',
+        }}
+      >
         <Container maxWidth="xl">
-          <Toolbar disableGutters>
+          <Toolbar disableGutters sx={{ position: 'relative' }}>
             {/* Logo for desktop */}
-            <SportsSoccerIcon sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }} />
-            <Typography
-              variant="h6"
-              noWrap
-              component={RouterLink}
-              to="/"
-              sx={{
-                mr: 2,
-                display: { xs: 'none', md: 'flex' },
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                letterSpacing: '.3rem',
-                color: 'inherit',
-                textDecoration: 'none',
-              }}
-            >
-              赛易通
-            </Typography>
-
+            <BrandLogo />
             {/* Mobile menu */}
             <Box sx={{ flexGrow: 1, display: { xs: 'flex', md: 'none' } }}>
               <IconButton
@@ -228,33 +246,27 @@ const MainLayout = () => {
             </Box>
 
             {/* Logo for mobile */}
-            <SportsSoccerIcon sx={{ display: { xs: 'flex', md: 'none' }, mr: 1 }} />
-            <Typography
-              variant="h5"
-              noWrap
-              component={RouterLink}
-              to="/"
+            <Box
               sx={{
-                mr: 2,
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
                 display: { xs: 'flex', md: 'none' },
-                flexGrow: 1,
-                fontFamily: 'monospace',
-                fontWeight: 700,
-                letterSpacing: '.3rem',
-                color: 'inherit',
-                textDecoration: 'none',
+                alignItems: 'center',
               }}
             >
-              赛易通
-            </Typography>
-
+              <BrandLogo mobile />
+              <Typography noWrap sx={{ ml: 1, fontWeight: 700, color: 'inherit' }}>
+                赛易通
+              </Typography>
+            </Box>
             {/* Desktop menu */}
             <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
               {pages.map((page) => (
                 <Button
                   key={page.title}
                   onClick={() => handleMenuClick(page.path)}
-                  sx={{ my: 2, color: 'white', display: 'block' }}
+                  sx={{ my: 2, color: 'inherit', display: 'block' }}
                 >
                   {page.title}
                 </Button>
@@ -353,6 +365,15 @@ const MainLayout = () => {
           height: 'auto !important'
         }
       }}>
+        {location.pathname.startsWith('/admin') && (
+          <Box
+            component="img"
+            src="/assets/saiyitong-logo.png"
+            alt=""
+            aria-hidden="true"
+            sx={{ position: 'fixed', right: 20, bottom: 20, width: 56, opacity: 0.14, pointerEvents: 'none', mixBlendMode: 'multiply', zIndex: 1 }}
+          />
+        )}
         <Container 
           maxWidth={location.pathname.includes('/admin/participants') ? false : 'lg'} 
           sx={{ 
@@ -382,11 +403,16 @@ const MainLayout = () => {
         }}
       >
         <Container maxWidth="lg">
-          <Typography variant="body2" color="text.secondary" align="center">
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 0.5 }}>
+            <Box sx={{ width: 24, height: 22, overflow: 'hidden' }}>
+              <Box component="img" src="/assets/saiyitong-logo.png" alt="赛易通" sx={{ width: 32, maxWidth: 'none', transform: 'translate(-4px, -2px)', mixBlendMode: 'multiply' }} />
+            </Box>
+            <Typography variant="body2" color="text.secondary" align="center">
             {'© '}
             {new Date().getFullYear()}
             {' 赛易通. 保留所有权利。'}
-          </Typography>
+            </Typography>
+          </Box>
         </Container>
       </Box>
     </Box>

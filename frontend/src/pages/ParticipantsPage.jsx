@@ -61,6 +61,7 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ScienceIcon from '@mui/icons-material/Science'; // Import icon for test participant
 import AddParticipantModal from '../components/participants/AddParticipantModal';
 import DivingPlanPrintPreview from '../components/DivingPlanPrintPreview';
+import BrandWatermark from '../components/BrandWatermark';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -1367,12 +1368,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const renderParticipants = () => {
     if (participants.length === 0) {
       return (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography variant="body1" color="text.secondary">
+        <Box sx={{ position: 'relative', overflow: 'hidden', textAlign: 'center', py: 4 }}>
+          <BrandWatermark sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', opacity: 0.08 }} />
+          <Typography variant="body1" color="text.secondary" sx={{ position: 'relative' }}>
             没有找到符合条件的参赛者
           </Typography>
           {(filters.search || filters.status || filters.type) && (
-            <Button onClick={handleResetFilters} sx={{ mt: 2 }}>
+            <Button onClick={handleResetFilters} sx={{ position: 'relative', mt: 2 }}>
               清除过滤条件
             </Button>
           )}
