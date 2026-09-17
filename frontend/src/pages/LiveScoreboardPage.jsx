@@ -143,29 +143,39 @@ export default function LiveScoreboardPage() {
       const currentSchedule = currentGroup
         ? [...currentGroup.schedules].sort((a, b) => publicActivity(b) - publicActivity(a) || activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0]
         : null;
-      const rawRows = currentSchedule ? [...rowsFor(currentSchedule)] : [];
-      const isDiving = isRoundDiving(currentSchedule, rawRows);
-      // 跳水只显示主裁逐人确认后的公开动作快照；未确认的后续动作不会参与累计分或排名。
-      const publishedRound = isDiving ? Math.max(0, ...rawRows.map((result) => Number(result.details?.publishedRound || 0))) : 0;
-      const scoredRows = isDiving
-        ? rawRows.filter((result) => Number(result.details?.publishedRound || 0) > 0 && !result.details?.isAbsent)
-          .map((result) => {
-            const resultPublishedRound = Number(result.details?.publishedRound || 0);
-            const publicDives = Array.isArray(result.details?.publishedDives) ? result.details.publishedDives : result.details?.dives;
-            return { ...result, displayScore: divingCumulativeScore({ ...result, details: { ...result.details, dives: publicDives } }, resultPublishedRound) };
-          })
-        : rawRows.filter((result) => result.status === 'verified');
-      scoredRows.sort((a, b) => (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
+      const makeScoreboardRows = (schedule) => {
+        const rawRows = schedule ? [...rowsFor(schedule)] : [];
+        const isDivingSchedule = isRoundDiving(schedule, rawRows);
+        const publishedRound = isDivingSchedule ? Math.max(0, ...rawRows.map((result) => Number(result.details?.publishedRound || 0))) : 0;
+        // 跳水只显示主裁逐人确认后的公开动作快照；未确认的后续动作不会参与累计分或排名。
+        const rows = isDivingSchedule
+          ? rawRows.filter((result) => Number(result.details?.publishedRound || 0) > 0 && !result.details?.isAbsent)
+            .map((result) => {
+              const resultPublishedRound = Number(result.details?.publishedRound || 0);
+              const publicDives = Array.isArray(result.details?.publishedDives) ? result.details.publishedDives : result.details?.dives;
+              return { ...result, displayScore: divingCumulativeScore({ ...result, details: { ...result.details, dives: publicDives } }, resultPublishedRound) };
+            })
+          : rawRows.filter((result) => result.status === 'verified');
+        rows.sort((a, b) => (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
+        return { schedule, rows, isDiving: isDivingSchedule, publishedRound, subgroupName: genderLabel(schedule) };
+      };
+      const currentData = makeScoreboardRows(currentSchedule);
+      // 同一大项目内，男子榜完整显示后自动轮播女子榜；没有公开成绩的一方暂不占用大屏。
+      const subgroups = currentGroup?.isDiving
+        ? currentGroup.schedules.map(makeScoreboardRows).filter((subgroup) => subgroup.rows.length > 0)
+          .sort((left, right) => ({ 男子: 0, 女子: 1 }[left.subgroupName] ?? 2) - ({ 男子: 0, 女子: 1 }[right.subgroupName] ?? 2))
+        : [currentData];
       return {
         court,
         schedule: currentSchedule,
         groupName: currentGroup?.name,
-        subgroupName: currentGroup?.isDiving ? genderLabel(currentSchedule) : '',
-        rows: scoredRows,
-        completedParticipantCount: scoredRows.filter((result) => !result.details?.isAbsent).length,
+        subgroupName: currentData.subgroupName,
+        rows: currentData.rows,
+        subgroups: subgroups.length ? subgroups : [currentData],
+        completedParticipantCount: currentData.rows.filter((result) => !result.details?.isAbsent).length,
         live: Boolean(currentSchedule && currentSchedule.status === 'ongoing'),
-        isDiving,
-        publishedRound
+        isDiving: currentData.isDiving,
+        publishedRound: currentData.publishedRound
       };
     }).sort((a, b) => courtOrder(a.court) - courtOrder(b.court) || a.court.localeCompare(b.court, 'zh-CN'));
   }, [results, schedules]);
@@ -213,11 +223,15 @@ export default function LiveScoreboardPage() {
 }
 
 function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
-  const displayLimit = panel.isDiving ? DIVING_DISPLAYED_RANKS : DISPLAYED_RANKS;
-  const usePrizeLevels = showPrizeLevels && !panel.isDiving;
+  const rotationKey = (panel.subgroups || []).map((subgroup) => idOf(subgroup.schedule)).join('|');
+  const [activeSubgroupIndex, setActiveSubgroupIndex] = useState(0);
+  const activeSubgroup = panel.subgroups?.[activeSubgroupIndex] || panel.subgroups?.[0] || { rows: panel.rows, schedule: panel.schedule, isDiving: panel.isDiving, publishedRound: panel.publishedRound, subgroupName: panel.subgroupName };
+  const displayLimit = activeSubgroup.isDiving ? DIVING_DISPLAYED_RANKS : DISPLAYED_RANKS;
+  const usePrizeLevels = showPrizeLevels && !activeSubgroup.isDiving;
   // 武术等常规项目保留原本“最多前八名”的范围，但每屏只展示六人，剩余名次自动滚动。
-  const displayRows = panel.isDiving ? panel.rows : (showPrizeLevels ? panel.rows : panel.rows.slice(0, STANDARD_RANK_LIMIT));
+  const displayRows = activeSubgroup.isDiving ? activeSubgroup.rows : (showPrizeLevels ? activeSubgroup.rows : activeSubgroup.rows.slice(0, STANDARD_RANK_LIMIT));
   const shouldAutoScroll = displayRows.length > displayLimit;
+  const shouldRotateSubgroups = Boolean(activeSubgroup.isDiving && (panel.subgroups?.length || 0) > 1);
   const prominentRows = singlePanel && fullScreen;
   const [windowStart, setWindowStart] = useState(0);
   const visibleRows = shouldAutoScroll ? displayRows.slice(windowStart, windowStart + displayLimit) : displayRows;
@@ -226,7 +240,21 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
 
   useEffect(() => {
     setWindowStart(0);
-    if (!shouldAutoScroll) return undefined;
+    setActiveSubgroupIndex((index) => index >= (panel.subgroups?.length || 1) ? 0 : index);
+  }, [rotationKey]);
+
+  useEffect(() => {
+    const nextSubgroup = () => {
+      if (!shouldRotateSubgroups) return;
+      setWindowStart(0);
+      setActiveSubgroupIndex((index) => (index + 1) % panel.subgroups.length);
+    };
+
+    if (!shouldAutoScroll) {
+      if (!shouldRotateSubgroups) return undefined;
+      const timer = window.setTimeout(nextSubgroup, AUTO_SCROLL_END_PAUSE);
+      return () => window.clearTimeout(timer);
+    }
 
     const maxStart = Math.max(displayRows.length - displayLimit, 0);
     let currentStart = 0;
@@ -235,6 +263,7 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
       if (currentStart >= maxStart) {
         currentStart = 0;
         setWindowStart(0);
+        nextSubgroup();
         timer = window.setTimeout(advance, AUTO_SCROLL_START_PAUSE);
       } else {
         currentStart += 1;
@@ -245,7 +274,7 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
 
     timer = window.setTimeout(advance, AUTO_SCROLL_START_PAUSE);
     return () => window.clearTimeout(timer);
-  }, [shouldAutoScroll, displayLimit, displayRows.length]);
+  }, [shouldAutoScroll, shouldRotateSubgroups, displayLimit, displayRows.length, activeSubgroupIndex, rotationKey]);
 
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)', minHeight: prominentRows ? 'calc(100vh - 175px)' : undefined }}>
     <Box sx={{ position: 'relative', minHeight: { xs: 94, md: 126 }, px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, pr: { xs: 10, md: 21 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
@@ -257,11 +286,11 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
         </Stack>
       </Stack>
       <Typography sx={{ mt: .5, minHeight: panel.isDiving ? 32 : 44, fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 32 : 26 }, lineHeight: 1.25 }}>{panel.groupName || panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
-      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: panel.isDiving ? 21 : 16, fontWeight: panel.isDiving ? 800 : 400 }}>{panel.isDiving ? `${panel.subgroupName ? `${panel.subgroupName} · ` : ''}已确认累计成绩 · 最高第 ${panel.publishedRound} 轮` : (panel.schedule.period || '比赛时段未设置')}</Typography>}
+      {activeSubgroup.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: activeSubgroup.isDiving ? 21 : 16, fontWeight: activeSubgroup.isDiving ? 800 : 400 }}>{activeSubgroup.isDiving ? `${activeSubgroup.subgroupName ? `${activeSubgroup.subgroupName} · ` : ''}已确认累计成绩 · 最高第 ${activeSubgroup.publishedRound} 轮` : (activeSubgroup.schedule.period || '比赛时段未设置')}</Typography>}
     </Box>
     {displayRows.length ? <Box sx={{ minHeight: prominentRows ? 'calc(100vh - 285px)' : undefined }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: panel.isDiving ? 1 : 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: panel.isDiving ? 24 : 18 } }}>
-        {usePrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>{panel.isDiving ? '姓名／双人组合' : '运动员 / 队伍'}</span><span>单位</span><span style={{ textAlign: 'right' }}>{panel.isDiving ? '累计实得分' : '分数'}</span>
+        {usePrizeLevels ? <span>奖项</span> : <span>名次</span>}<span>{activeSubgroup.isDiving ? '姓名／双人组合' : '运动员 / 队伍'}</span><span>单位</span><span style={{ textAlign: 'right' }}>{activeSubgroup.isDiving ? '累计实得分' : '分数'}</span>
       </Box>
       <Box key={windowStart} sx={{ animation: shouldAutoScroll ? 'live-scoreboard-window-in .42s ease-out' : 'none', '@keyframes live-scoreboard-window-in': { from: { opacity: .55, transform: 'translateY(24px)' }, to: { opacity: 1, transform: 'translateY(0)' } } }}>
       {visibleRows.map((result, index) => {
@@ -271,15 +300,15 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
         // 素质力量等项目会在后台保存正式名次；其余旧成绩尚未保存名次时保持原有排序序号，避免出现空白。
         const savedRank = Number(result.rank);
         const displayRank = Number.isFinite(savedRank) && savedRank > 0 ? savedRank : absoluteIndex + 1;
-        const firstPrizeLimit = Math.max(1, Math.ceil(panel.completedParticipantCount * 0.3));
+        const firstPrizeLimit = Math.max(1, Math.ceil(activeSubgroup.rows.filter((row) => !row.details?.isAbsent).length * 0.3));
         const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
         const awardLevel = absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
         const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
-        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: { xs: 1.25, md: 2 }, py: panel.isDiving ? 1.35 : 1.15, minHeight: panel.isDiving ? 104 : (prominentRows ? singlePanelRowHeight : 86), borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
-          <Box sx={{ color: usePrizeLevels ? awardColor : (displayRank <= 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 42 : (prominentRows ? 34 : 29) } }}>{usePrizeLevels ? awardLevel : displayRank}</Box>
-          <Box><Typography sx={{ fontSize: { xs: 19, md: panel.isDiving ? 38 : (prominentRows ? 42 : 32) }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: panel.isDiving ? 18 : (prominentRows ? 20 : 17) } }}>{teamMembers}</Typography>}</Box>
-          <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: panel.isDiving ? 27 : (prominentRows ? 26 : 22) }, pr: 1 }}>{participantUnit(participant)}</Typography>
-          <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 45 : (prominentRows ? 46 : 39) } }}>{showScore(result.displayScore ?? result.score)}</Typography>
+        return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: { xs: 1.25, md: 2 }, py: activeSubgroup.isDiving ? 1.35 : 1.15, minHeight: activeSubgroup.isDiving ? 104 : (prominentRows ? singlePanelRowHeight : 86), borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
+          <Box sx={{ color: usePrizeLevels ? awardColor : (displayRank <= 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: activeSubgroup.isDiving ? 42 : (prominentRows ? 34 : 29) } }}>{usePrizeLevels ? awardLevel : displayRank}</Box>
+          <Box><Typography sx={{ fontSize: { xs: 19, md: activeSubgroup.isDiving ? 38 : (prominentRows ? 42 : 32) }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: activeSubgroup.isDiving ? 18 : (prominentRows ? 20 : 17) } }}>{teamMembers}</Typography>}</Box>
+          <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: activeSubgroup.isDiving ? 27 : (prominentRows ? 26 : 22) }, pr: 1 }}>{participantUnit(participant)}</Typography>
+          <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: activeSubgroup.isDiving ? 45 : (prominentRows ? 46 : 39) } }}>{showScore(result.displayScore ?? result.score)}</Typography>
         </Box>;
       })}
       </Box>
