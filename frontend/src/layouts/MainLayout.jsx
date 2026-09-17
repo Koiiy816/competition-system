@@ -16,13 +16,40 @@ import {
   Tooltip
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import PersonIcon from '@mui/icons-material/Person';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { useAuth } from '../contexts/AuthContext';
+
+const BrandLogo = ({ mobile = false }) => (
+  <Box
+    component={RouterLink}
+    to="/"
+    aria-label="赛易通首页"
+    sx={{
+      width: 48,
+      height: 42,
+      mr: 1,
+      overflow: 'hidden',
+      display: mobile ? { xs: 'block', md: 'none' } : { xs: 'none', md: 'block' },
+      flexShrink: 0,
+    }}
+  >
+    <Box
+      component="img"
+      src="/assets/saiyitong-logo.png"
+      alt="赛易通"
+      sx={{
+        width: 63,
+        maxWidth: 'none',
+        transform: 'translate(-7px, -5px)',
+        mixBlendMode: 'multiply',
+      }}
+    />
+  </Box>
+);
 
 const MainLayout = () => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -170,7 +197,7 @@ const MainLayout = () => {
         <Container maxWidth="xl">
           <Toolbar disableGutters>
             {/* Logo for desktop */}
-            <SportsSoccerIcon sx={{ display: { xs: 'none', md: 'flex' }, mr: 1 }} />
+            <BrandLogo />
             <Typography
               variant="h6"
               noWrap
@@ -228,7 +255,7 @@ const MainLayout = () => {
             </Box>
 
             {/* Logo for mobile */}
-            <SportsSoccerIcon sx={{ display: { xs: 'flex', md: 'none' }, mr: 1 }} />
+            <BrandLogo mobile />
             <Typography
               variant="h5"
               noWrap
