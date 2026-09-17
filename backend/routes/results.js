@@ -71,6 +71,14 @@ router.post('/submit-strength', [auth, authorize('admin', 'chief_referee'), [
   check('events', '素质力量成绩是必填项').isArray()
 ]], resultController.submitStrengthScore);
 
+// @route   POST api/competitions/:competitionId/results/reset-diving-publication
+// @desc    Reset a round-based diving schedule's public confirmation progress; admin only
+router.post(
+  '/reset-diving-publication',
+  [auth, authorize('admin'), [check('scheduleId', '赛程ID是必填项').not().isEmpty()]],
+  resultController.resetDivingPublication
+);
+
 // @route   POST api/competitions/:competitionId/results/publish-diving-round
 // @desc    Chief referee confirms a completed diving round for public scoreboard display
 router.post(

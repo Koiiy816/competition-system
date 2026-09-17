@@ -316,6 +316,28 @@ exports.publishDivingRound = async (req, res, next) => {
   }
 };
 
+// 管理员在正式开赛前清除某场跳水的公开进度；保留原始裁判分和动作表，便于重新从第 1 轮确认。
+exports.resetDivingPublication = async (req, res, next) => {
+  const { scheduleId } = req.body;
+  if (!scheduleId) return res.status(400).json({ success: false, message: '请提供赛程ID' });
+  try {
+    const schedule = await Schedule.findById(scheduleId).select('competition scoringMode name');
+    if (!schedule || schedule.competition.toString() !== req.params.competitionId) return res.status(404).json({ success: false, message: '未找到跳水赛程' });
+    if (schedule.scoringMode !== 'diving' || isStrengthSchedule(schedule)) return res.status(400).json({ success: false, message: '只有按轮次计分的跳水、陆上板或陆上网赛程可以重置公开轮次' });
+
+    const update = await Result.updateMany(
+      { schedule: scheduleId },
+      {
+        $unset: { 'details.publishedRound': 1, 'details.publishedDives': 1 },
+        $set: { status: 'pending', verifiedBy: null, verifiedAt: null, updatedAt: new Date() }
+      }
+    );
+    res.status(200).json({ success: true, data: { scheduleId, resetCount: update.modifiedCount }, message: '本场已公开轮次已重置，原始裁判分未删除' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 function calculateFinalScore(scores, deduction, judgeCount) {
   const activeScores = scores.slice(0, judgeCount).filter(score => score > 0);
   if (activeScores.length === 0) return 0;

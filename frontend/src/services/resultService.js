@@ -157,6 +157,15 @@ const resultService = {
     }
   },
 
+  resetDivingPublication: async (competitionId, scheduleId) => {
+    try {
+      const response = await api.post(`/competitions/${competitionId}/results/reset-diving-publication`, { scheduleId });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '重置已公开轮次失败' };
+    }
+  },
+
   publishDivingRound: async (competitionId, scoreData) => {
     try {
       const response = await api.post(`/competitions/${competitionId}/results/publish-diving-round`, scoreData);

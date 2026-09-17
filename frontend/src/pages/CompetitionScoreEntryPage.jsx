@@ -515,6 +515,7 @@ const CompetitionScoreEntryPage = () => {
   };
   
   const canEdit = hasPermission(['admin', 'chief_referee', 'referee']);
+  const isAdmin = hasPermission(['admin']);
   const isChiefOrAdmin = hasPermission(['admin', 'chief_referee']);
   const canCheckIn = hasPermission(['admin', 'chief_referee', 'referee']);
   
@@ -802,6 +803,17 @@ const CompetitionScoreEntryPage = () => {
     }
   };
 
+  const handleResetDivingPublication = async () => {
+    if (!window.confirm('确定重置本场所有选手的已公开轮次吗？大屏会从第1轮重新开始显示；原始裁判分、动作表和报名资料不会删除。')) return;
+    try {
+      const response = await resultService.resetDivingPublication(id, scheduleId);
+      await fetchResultsOnly();
+      alert(response.message || '本场已公开轮次已重置');
+    } catch (err) {
+      alert(err.message || '重置已公开轮次失败');
+    }
+  };
+
   const handlePrint = (printType = 'rank') => {
     setDivingPrintType(printType);
     setPrintModalOpen(true);
@@ -975,6 +987,14 @@ const CompetitionScoreEntryPage = () => {
             >
               导出 PDF
             </Button>
+            {isAdmin && schedule?.scoringMode === 'diving' && !isStrengthSchedule(schedule) && <Button
+              variant="outlined"
+              color="warning"
+              onClick={handleResetDivingPublication}
+              sx={{ mr: 1 }}
+            >
+              重置已公开轮次
+            </Button>}
             <Button 
               variant="contained" 
               color={schedule?.status === 'completed' ? 'warning' : 'primary'}
