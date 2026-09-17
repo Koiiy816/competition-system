@@ -248,7 +248,8 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
   }, [shouldAutoScroll, displayLimit, displayRows.length]);
 
   return <Box sx={{ border: '1px solid #315a84', borderRadius: 3, overflow: 'hidden', bgcolor: '#0c1a2d', boxShadow: '0 12px 30px rgba(0,0,0,.28)', minHeight: prominentRows ? 'calc(100vh - 175px)' : undefined }}>
-    <Box sx={{ px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
+    <Box sx={{ position: 'relative', minHeight: { xs: 94, md: 126 }, px: { xs: 2, md: 3 }, py: { xs: 1.5, md: 2 }, pr: { xs: 10, md: 21 }, bgcolor: '#103253', borderBottom: '3px solid #f7c948' }}>
+      <Box component="img" src="/assets/saiyitong-logo-watermark.png" alt="赛易通" sx={{ position: 'absolute', top: { xs: 10, md: 12 }, right: { xs: 12, md: 20 }, width: { xs: 62, md: 118 }, height: { xs: 62, md: 108 }, objectFit: 'contain' }} />
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}>
         <Typography sx={{ color: '#f7c948', fontWeight: 800, fontSize: { xs: 13, md: 16 } }}>{panel.court}</Typography>
         <Stack direction="row" spacing={1}>
