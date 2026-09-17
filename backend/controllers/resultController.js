@@ -173,6 +173,7 @@ exports.submitDivingScore = async (req, res, next) => {
     const allCompleted = savedDives.every((dive) => dive.completed);
     const previousPublishedRound = Number(result?.details?.publishedRound || 0);
     let publishedRound = previousPublishedRound;
+    let publishedAt = result?.details?.publishedAt || null;
     // 已公开动作是不可被后续录分改写的快照；大屏只读取它，保证“确认后才上屏”。
     const snapshot = (dive) => ({ ...dive, scores: [...(dive.scores || [])] });
     const previousPublicDives = Array.isArray(result?.details?.publishedDives)
@@ -186,6 +187,8 @@ exports.submitDivingScore = async (req, res, next) => {
       if (!savedDives[nextRound - 1]?.completed) return res.status(400).json({ success: false, message: `第${nextRound}轮尚未完成五位裁判打分，不能公开` });
       publishedRound = nextRound;
       publishedDives.push(snapshot(savedDives[nextRound - 1]));
+      // 大屏用这一个时间识别“刚刚确认”的男子或女子子项目；普通裁判的补录不能改变大屏焦点。
+      publishedAt = new Date();
     }
 
     const resultData = {
@@ -196,7 +199,7 @@ exports.submitDivingScore = async (req, res, next) => {
       details: {
         scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives,
         isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted,
-        publishedRound, publishedDives
+        publishedRound, publishedDives, publishedAt
       },
       submittedBy: req.user.id,
       // 已确认任一轮后，成绩就是可供大屏读取的正式公开快照；未确认的录分仍保持待确认。
