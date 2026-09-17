@@ -19,6 +19,13 @@ const idOf = (value) => !value ? '' : (typeof value === 'object' ? String(value.
 const timestamp = (value) => { const number = new Date(value || 0).getTime(); return Number.isFinite(number) ? number : 0; };
 const scoreOf = (value) => { const number = Number(value); return Number.isFinite(number) ? number : null; };
 const showScore = (value) => { const number = scoreOf(value); return number === null ? '待评分' : number.toFixed(2); };
+// 奖项规则用于录取、证书和团体积分。大屏显示方式可逐场选择；旧的纯比例赛事未配置时继续显示等奖。
+const usesPrizeLevelScoreboard = (competition) => {
+  const rules = competition?.awardRules;
+  if (rules?.scoreboardDisplay === 'prize') return true;
+  if (rules?.scoreboardDisplay === 'rank') return false;
+  return Boolean(rules?.enabled && rules?.mode === 'legacy_percentage');
+};
 const divingCumulativeScore = (result, publishedRound) => (result?.details?.dives || []).slice(0, publishedRound).reduce((total, dive) => total + (scoreOf(dive?.score) || 0), 0);
 const participantName = (participant) => participant?.teamName || participant?.name || participant?.user?.name || participant?.schoolName || '未关联选手';
 const participantUnit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '—';
@@ -155,7 +162,7 @@ export default function LiveScoreboardPage() {
           {panels.map((panel) => <Button size="small" key={panel.court} variant={selectedCourt === panel.court ? 'contained' : 'outlined'} onClick={() => setSelectedCourt(panel.court)} sx={{ fontWeight: 700 }}>{panel.court}</Button>)}
         </Stack>
         <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Math.max(visiblePanels.length, 1), 2)}, minmax(0, 1fr))`, gap: 3 }}>
-          {visiblePanels.map((panel) => <CourtPanel key={panel.court} panel={panel} showPrizeLevels={Boolean(competition?.awardRules?.enabled)} singlePanel={visiblePanels.length === 1} fullScreen={fullScreen} />)}
+          {visiblePanels.map((panel) => <CourtPanel key={panel.court} panel={panel} showPrizeLevels={usesPrizeLevelScoreboard(competition)} singlePanel={visiblePanels.length === 1} fullScreen={fullScreen} />)}
         </Box>
         {!visiblePanels.length && <Box sx={{ py: 12, textAlign: 'center', color: '#93a7bd', fontSize: 26 }}>尚未设置场地或暂时没有成绩</Box>}
       </Box>
@@ -218,12 +225,15 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
         const absoluteIndex = windowStart + index;
         const participant = result.participant || {};
         const teamMembers = membersOf(participant);
+        // 素质力量等项目会在后台保存正式名次；其余旧成绩尚未保存名次时保持原有排序序号，避免出现空白。
+        const savedRank = Number(result.rank);
+        const displayRank = Number.isFinite(savedRank) && savedRank > 0 ? savedRank : absoluteIndex + 1;
         const firstPrizeLimit = Math.max(1, Math.ceil(panel.completedParticipantCount * 0.3));
         const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
         const awardLevel = absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
         const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
         return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: { xs: 1.25, md: 2 }, py: panel.isDiving ? 1.35 : 1.15, minHeight: panel.isDiving ? 104 : (prominentRows ? singlePanelRowHeight : 86), borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
-          <Box sx={{ color: usePrizeLevels ? awardColor : (absoluteIndex < 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 42 : (prominentRows ? 34 : 29) } }}>{usePrizeLevels ? awardLevel : absoluteIndex + 1}</Box>
+          <Box sx={{ color: usePrizeLevels ? awardColor : (displayRank <= 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 42 : (prominentRows ? 34 : 29) } }}>{usePrizeLevels ? awardLevel : displayRank}</Box>
           <Box><Typography sx={{ fontSize: { xs: 19, md: panel.isDiving ? 38 : (prominentRows ? 42 : 32) }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: panel.isDiving ? 18 : (prominentRows ? 20 : 17) } }}>{teamMembers}</Typography>}</Box>
           <Typography sx={{ color: '#d6e4f3', fontSize: { xs: 16, md: panel.isDiving ? 27 : (prominentRows ? 26 : 22) }, pr: 1 }}>{participantUnit(participant)}</Typography>
           <Typography sx={{ textAlign: 'right', color: '#ff766d', fontWeight: 900, fontSize: { xs: 24, md: panel.isDiving ? 45 : (prominentRows ? 46 : 39) } }}>{showScore(result.displayScore ?? result.score)}</Typography>

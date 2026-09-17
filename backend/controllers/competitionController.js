@@ -178,7 +178,7 @@ exports.createCompetition = async (req, res, next) => {
     const competitionData = { ...req.body };
 
     // 尝试解析可能为JSON字符串的字段 (处理FormData上传时的复杂数据)
-    const jsonFields = ['hosts', 'organizers', 'coOrganizers', 'ageGroups', 'events', 'participantRequirements', 'registrationRules', 'scoringRules', 'awards', 'categories', 'tags'];
+    const jsonFields = ['hosts', 'organizers', 'coOrganizers', 'ageGroups', 'events', 'participantRequirements', 'registrationRules', 'scoringRules', 'awardRules', 'awards', 'categories', 'tags'];
     
     jsonFields.forEach(field => {
       if (competitionData[field] && typeof competitionData[field] === 'string') {
@@ -291,7 +291,7 @@ exports.updateCompetition = async (req, res, next) => {
     const competitionData = { ...req.body };
 
     // 尝试解析可能为JSON字符串的字段 (处理FormData上传时的复杂数据)
-    const jsonFields = ['hosts', 'organizers', 'coOrganizers', 'ageGroups', 'events', 'participantRequirements', 'registrationRules', 'scoringRules', 'awards', 'categories', 'tags', 'combinedEvents'];
+    const jsonFields = ['hosts', 'organizers', 'coOrganizers', 'ageGroups', 'events', 'participantRequirements', 'registrationRules', 'scoringRules', 'awardRules', 'awards', 'categories', 'tags', 'combinedEvents'];
     
     jsonFields.forEach(field => {
       if (competitionData[field] && typeof competitionData[field] === 'string') {

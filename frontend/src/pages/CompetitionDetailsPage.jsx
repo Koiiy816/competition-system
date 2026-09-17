@@ -118,6 +118,9 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
       schoolBasedRegistration: true,
       minGroupSize: 1,
       maxGroupSize: 12
+    },
+    awardRules: {
+      scoreboardDisplay: 'rank'
     }
   });
   
@@ -171,6 +174,12 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
         data.startDate = formatDate(data.startDate);
         data.endDate = formatDate(data.endDate);
         data.registrationDeadline = formatDate(data.registrationDeadline);
+        // 旧的纯比例分等奖赛事在没有明确设置时保持原先的大屏展示，其他比赛默认显示名次。
+        data.awardRules = {
+          ...(data.awardRules || {}),
+          scoreboardDisplay: data.awardRules?.scoreboardDisplay
+            || (data.awardRules?.enabled && data.awardRules?.mode === 'legacy_percentage' ? 'prize' : 'rank')
+        };
         setCompetition(data);
       } catch (err) {
         setError('无法加载比赛详情');
@@ -409,7 +418,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
 
     const jsonFields = [
       'hosts', 'organizers', 'coOrganizers', 'ageGroups', 'events', 
-      'participantRequirements', 'registrationRules', 'scoringRules', 
+      'participantRequirements', 'registrationRules', 'scoringRules', 'awardRules',
       'awards', 'categories', 'tags'
     ];
 
@@ -926,6 +935,29 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                      </Grid>
                    </Grid>
                    
+                   <Divider sx={{ my: 3 }} />
+
+                   <Typography variant="h6" sx={{ mb: 2 }}>大屏成绩显示</Typography>
+                   <Grid container spacing={2}>
+                     <Grid item xs={12} sm={6}>
+                       <FormControl fullWidth>
+                         <InputLabel id="scoreboard-display-select-label">大屏主列</InputLabel>
+                         <Select
+                           labelId="scoreboard-display-select-label"
+                           value={competition.awardRules?.scoreboardDisplay || 'rank'}
+                           label="大屏主列"
+                           onChange={(e) => handleNestedChange('awardRules', 'scoreboardDisplay', e.target.value)}
+                         >
+                           <MenuItem value="rank">名次（默认）</MenuItem>
+                           <MenuItem value="prize">等奖</MenuItem>
+                         </Select>
+                         <FormHelperText>
+                           仅改变“大屏即时成绩”的主列显示，不改变录取、奖项、证书或团体积分计算。
+                         </FormHelperText>
+                       </FormControl>
+                     </Grid>
+                   </Grid>
+
                    <Divider sx={{ my: 3 }} />
                    
                    <Typography variant="h6" sx={{ mb: 2 }}>比赛报名表/附件</Typography>

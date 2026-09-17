@@ -276,6 +276,11 @@ const CompetitionSchema = new mongoose.Schema({
       enum: ['legacy_percentage', 'top3_then_percentage', 'fixed_top_eight'],
       default: 'legacy_percentage'
     },
+    // 大屏呈现与奖项计算分开配置；未设置的旧赛事沿用其原有按比例分等奖展示的行为。
+    scoreboardDisplay: {
+      type: String,
+      enum: ['rank', 'prize']
+    },
     rankAwardCount: { type: Number, default: 3 },
     minParticipantsForRanking: { type: Number, default: 3 },
     firstPrizePercent: { type: Number, default: 30 },
