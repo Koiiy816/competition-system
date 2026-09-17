@@ -52,6 +52,7 @@ import Collapse from '@mui/material/Collapse';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
+import BrandWatermark from '../components/BrandWatermark';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -337,12 +338,13 @@ const SchedulePage = () => {
     
     if (dates.length === 0) {
       return (
-        <Box sx={{ textAlign: 'center', py: 4 }}>
-          <Typography variant="body1" color="text.secondary">
+        <Box sx={{ position: 'relative', overflow: 'hidden', textAlign: 'center', py: 4 }}>
+          <BrandWatermark sx={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', opacity: 0.08 }} />
+          <Typography variant="body1" color="text.secondary" sx={{ position: 'relative' }}>
             没有找到符合条件的赛程
           </Typography>
           {(filters.search || filters.competitionId || filters.status || filters.type) && (
-            <Button onClick={handleResetFilters} sx={{ mt: 2 }}>
+            <Button onClick={handleResetFilters} sx={{ position: 'relative', mt: 2 }}>
               清除过滤条件
             </Button>
           )}

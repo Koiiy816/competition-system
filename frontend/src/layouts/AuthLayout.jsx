@@ -1,7 +1,6 @@
 import React from 'react';
 import { Outlet, Link as RouterLink } from 'react-router-dom';
 import { Container, Box, Paper, Typography, Link } from '@mui/material';
-import SportsSoccerIcon from '@mui/icons-material/SportsSoccer';
 
 const AuthLayout = () => {
   return (
@@ -15,7 +14,14 @@ const AuthLayout = () => {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
-          <SportsSoccerIcon sx={{ fontSize: 40, mr: 1, color: 'primary.main' }} />
+          <Box sx={{ width: 40, height: 36, mr: 1, overflow: 'hidden' }}>
+            <Box
+              component="img"
+              src="/assets/saiyitong-logo.png"
+              alt="赛易通"
+              sx={{ width: 53, maxWidth: 'none', transform: 'translate(-6px, -4px)', mixBlendMode: 'multiply' }}
+            />
+          </Box>
           <Typography component="h1" variant="h4" sx={{ fontWeight: 'bold' }}>
             竞赛系统
           </Typography>
@@ -27,9 +33,18 @@ const AuthLayout = () => {
             p: 4,
             width: '100%',
             borderRadius: 2,
+            position: 'relative',
+            overflow: 'hidden',
           }}
         >
-          <Outlet />
+          <Box
+            component="img"
+            src="/assets/saiyitong-logo.png"
+            alt=""
+            aria-hidden="true"
+            sx={{ position: 'absolute', right: -20, bottom: -35, width: 190, opacity: 0.08, pointerEvents: 'none', mixBlendMode: 'multiply' }}
+          />
+          <Box sx={{ position: 'relative', zIndex: 1 }}><Outlet /></Box>
         </Paper>
         
         <Box sx={{ mt: 3, textAlign: 'center' }}>
