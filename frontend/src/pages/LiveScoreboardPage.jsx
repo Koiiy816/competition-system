@@ -38,6 +38,19 @@ const genderLabel = (schedule) => {
 // 跳水赛程以名称区分男女；大屏只在同日、同场地、同一器械项目时把男女归为一个大项目。
 const divingGroupName = (schedule) => String(schedule?.eventName || schedule?.name || '').replace(/男子|女子/g, '').replace(/\s+/g, ' ').trim();
 const divingGroupKey = (schedule) => [schedule?.scheduleDate || '', schedule?.court || '', divingGroupName(schedule)].join('|');
+const TIME_SLOT_ORDER = { 上午: 1, 下午: 2, 晚上: 3 };
+const exactTimeOrder = (value) => {
+  const match = String(value || '').match(/(\d{1,2}):(\d{2})/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : 0;
+};
+// order 会在下午等新的时间段从 1 重新开始，因此大屏必须先比较日期和时间段。
+const compareScheduleTimeline = (left, right) => (
+  String(left?.scheduleDate || '').localeCompare(String(right?.scheduleDate || ''))
+  || (TIME_SLOT_ORDER[left?.timeSlot] || 99) - (TIME_SLOT_ORDER[right?.timeSlot] || 99)
+  || exactTimeOrder(left?.exactTime) - exactTimeOrder(right?.exactTime)
+  || Number(left?.order || 0) - Number(right?.order || 0)
+  || String(left?.name || '').localeCompare(String(right?.name || ''), 'zh-CN')
+);
 const participantName = (participant) => participant?.teamName || participant?.name || participant?.user?.name || participant?.schoolName || '未关联选手';
 const participantUnit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '—';
 const membersOf = (participant) => Array.isArray(participant?.teamMembers)
@@ -130,16 +143,16 @@ export default function LiveScoreboardPage() {
       });
       const groups = [...groupMap.values()].map((group) => ({
         ...group,
-        order: Math.min(...group.schedules.map((schedule) => Number(schedule.order || 0))),
+        firstSchedule: [...group.schedules].sort(compareScheduleTimeline)[0],
         completed: group.schedules.every((schedule) => schedule.status === 'completed'),
         hasOngoing: group.schedules.some((schedule) => schedule.status === 'ongoing'),
         publicActivity: Math.max(0, ...group.schedules.map(publicActivity)),
         activity: Math.max(0, ...group.schedules.map(activity))
       }));
-      // 同一跳水大项目的男女未都结束前，不能跳到下一器械项目。
-      const activeGroups = groups.filter((group) => !group.completed && (group.hasOngoing || group.publicActivity > 0 || group.activity > 0));
-      const currentGroup = [...(activeGroups.length ? activeGroups : groups)]
-        .sort((a, b) => a.order - b.order || b.publicActivity - a.publicActivity || b.activity - a.activity)[0];
+      // 严格沿赛程表推进：前一个大项目的男女均结束后，才能进入下一个大项目。
+      // 不能只按 order 排序，因为下午项目会从第 1 项重新编号。
+      const pendingGroups = groups.filter((group) => !group.completed).sort((a, b) => compareScheduleTimeline(a.firstSchedule, b.firstSchedule));
+      const currentGroup = pendingGroups[0] || [...groups].sort((a, b) => compareScheduleTimeline(b.firstSchedule, a.firstSchedule))[0];
       const currentSchedule = currentGroup
         ? [...currentGroup.schedules].sort((a, b) => publicActivity(b) - publicActivity(a) || activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0]
         : null;
