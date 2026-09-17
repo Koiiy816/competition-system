@@ -27,6 +27,17 @@ const usesPrizeLevelScoreboard = (competition) => {
   return Boolean(rules?.enabled && rules?.mode === 'legacy_percentage');
 };
 const divingCumulativeScore = (result, publishedRound) => (result?.details?.dives || []).slice(0, publishedRound).reduce((total, dive) => total + (scoreOf(dive?.score) || 0), 0);
+const isStrengthScore = (schedule, rows = []) => /素质力量|素質力量/.test(String(schedule?.name || '')) || rows.some((result) => result?.details?.scoringType === 'strength');
+const isRoundDiving = (schedule, rows = []) => schedule?.scoringMode === 'diving' && !isStrengthScore(schedule, rows);
+const genderLabel = (schedule) => {
+  const name = String(schedule?.eventName || schedule?.name || '');
+  if (/男子|男/.test(name)) return '男子';
+  if (/女子|女/.test(name)) return '女子';
+  return '';
+};
+// 跳水赛程以名称区分男女；大屏只在同日、同场地、同一器械项目时把男女归为一个大项目。
+const divingGroupName = (schedule) => String(schedule?.eventName || schedule?.name || '').replace(/男子|女子/g, '').replace(/\s+/g, ' ').trim();
+const divingGroupKey = (schedule) => [schedule?.scheduleDate || '', schedule?.court || '', divingGroupName(schedule)].join('|');
 const participantName = (participant) => participant?.teamName || participant?.name || participant?.user?.name || participant?.schoolName || '未关联选手';
 const participantUnit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '—';
 const membersOf = (participant) => Array.isArray(participant?.teamMembers)
@@ -102,23 +113,54 @@ export default function LiveScoreboardPage() {
       byCourt.set(court, list);
     });
     return [...byCourt.entries()].map(([court, courtSchedules]) => {
-      const activity = (schedule) => Math.max(timestamp(schedule.updatedAt), ...((resultMap.get(idOf(schedule)) || []).map((item) => Math.max(timestamp(item.updatedAt), timestamp(item.submittedAt), timestamp(item.createdAt)))));
-      const ongoing = courtSchedules.filter((schedule) => schedule.status === 'ongoing');
-      const scored = courtSchedules.filter((schedule) => (resultMap.get(idOf(schedule)) || []).length > 0);
-      const candidates = ongoing.length ? ongoing : scored;
-      const currentSchedule = [...candidates].sort((a, b) => activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0];
-      const isDiving = currentSchedule?.scoringMode === 'diving';
-      const rawRows = currentSchedule ? [...(resultMap.get(idOf(currentSchedule)) || [])] : [];
-      // 跳水只使用裁判长按轮确认后的 publishedRound；未确认的后续动作不会参与累计分或排名。
+      const rowsFor = (schedule) => resultMap.get(idOf(schedule)) || [];
+      // 只有主裁“确认并上屏”会更新 publishedAt；普通裁判保存分数不应切换大屏项目。
+      const publicActivity = (schedule) => Math.max(0, ...rowsFor(schedule).map((result) => Number(result.details?.publishedRound || 0) > 0
+        ? timestamp(result.details?.publishedAt || result.updatedAt || result.submittedAt)
+        : 0));
+      const activity = (schedule) => Math.max(publicActivity(schedule), timestamp(schedule.updatedAt), ...rowsFor(schedule).map((item) => Math.max(timestamp(item.updatedAt), timestamp(item.submittedAt), timestamp(item.createdAt))));
+      const groupMap = new Map();
+      courtSchedules.forEach((schedule) => {
+        const rows = rowsFor(schedule);
+        const isDivingSchedule = isRoundDiving(schedule, rows);
+        const key = isDivingSchedule ? divingGroupKey(schedule) : `schedule:${idOf(schedule)}`;
+        const group = groupMap.get(key) || { key, schedules: [], name: isDivingSchedule ? divingGroupName(schedule) : (schedule.eventName || schedule.name), isDiving: isDivingSchedule };
+        group.schedules.push(schedule);
+        groupMap.set(key, group);
+      });
+      const groups = [...groupMap.values()].map((group) => ({
+        ...group,
+        order: Math.min(...group.schedules.map((schedule) => Number(schedule.order || 0))),
+        completed: group.schedules.every((schedule) => schedule.status === 'completed'),
+        hasOngoing: group.schedules.some((schedule) => schedule.status === 'ongoing'),
+        publicActivity: Math.max(0, ...group.schedules.map(publicActivity)),
+        activity: Math.max(0, ...group.schedules.map(activity))
+      }));
+      // 同一跳水大项目的男女未都结束前，不能跳到下一器械项目。
+      const activeGroups = groups.filter((group) => !group.completed && (group.hasOngoing || group.publicActivity > 0 || group.activity > 0));
+      const currentGroup = [...(activeGroups.length ? activeGroups : groups)]
+        .sort((a, b) => a.order - b.order || b.publicActivity - a.publicActivity || b.activity - a.activity)[0];
+      const currentSchedule = currentGroup
+        ? [...currentGroup.schedules].sort((a, b) => publicActivity(b) - publicActivity(a) || activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0]
+        : null;
+      const rawRows = currentSchedule ? [...rowsFor(currentSchedule)] : [];
+      const isDiving = isRoundDiving(currentSchedule, rawRows);
+      // 跳水只显示主裁逐人确认后的公开动作快照；未确认的后续动作不会参与累计分或排名。
       const publishedRound = isDiving ? Math.max(0, ...rawRows.map((result) => Number(result.details?.publishedRound || 0))) : 0;
       const scoredRows = isDiving
         ? rawRows.filter((result) => Number(result.details?.publishedRound || 0) > 0 && !result.details?.isAbsent)
-          .map((result) => ({ ...result, displayScore: divingCumulativeScore(result, Math.min(publishedRound, Number(result.details?.publishedRound || 0))) }))
+          .map((result) => {
+            const resultPublishedRound = Number(result.details?.publishedRound || 0);
+            const publicDives = Array.isArray(result.details?.publishedDives) ? result.details.publishedDives : result.details?.dives;
+            return { ...result, displayScore: divingCumulativeScore({ ...result, details: { ...result.details, dives: publicDives } }, resultPublishedRound) };
+          })
         : rawRows.filter((result) => result.status === 'verified');
       scoredRows.sort((a, b) => (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
       return {
         court,
         schedule: currentSchedule,
+        groupName: currentGroup?.name,
+        subgroupName: currentGroup?.isDiving ? genderLabel(currentSchedule) : '',
         rows: scoredRows,
         completedParticipantCount: scoredRows.filter((result) => !result.details?.isAbsent).length,
         live: Boolean(currentSchedule && currentSchedule.status === 'ongoing'),
@@ -213,8 +255,8 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
           {!panel.isDiving && <Chip label={panel.live ? '正在打分' : '最近成绩'} sx={{ bgcolor: panel.live ? '#1d7f5f' : '#3b5875', color: '#fff', fontWeight: 800, fontSize: 15 }} />}
         </Stack>
       </Stack>
-      <Typography sx={{ mt: .5, minHeight: panel.isDiving ? 32 : 44, fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 32 : 26 }, lineHeight: 1.25 }}>{panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
-      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: panel.isDiving ? 21 : 16, fontWeight: panel.isDiving ? 800 : 400 }}>{panel.isDiving ? `成绩列表 - 第 ${panel.publishedRound} 轮` : (panel.schedule.period || '比赛时段未设置')}</Typography>}
+      <Typography sx={{ mt: .5, minHeight: panel.isDiving ? 32 : 44, fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 32 : 26 }, lineHeight: 1.25 }}>{panel.groupName || panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
+      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: panel.isDiving ? 21 : 16, fontWeight: panel.isDiving ? 800 : 400 }}>{panel.isDiving ? `${panel.subgroupName ? `${panel.subgroupName} · ` : ''}已确认累计成绩 · 最高第 ${panel.publishedRound} 轮` : (panel.schedule.period || '比赛时段未设置')}</Typography>}
     </Box>
     {displayRows.length ? <Box sx={{ minHeight: prominentRows ? 'calc(100vh - 285px)' : undefined }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: panel.isDiving ? 1 : 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: panel.isDiving ? 24 : 18 } }}>
