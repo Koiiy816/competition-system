@@ -27,6 +27,7 @@ const usesPrizeLevelScoreboard = (competition) => {
   return Boolean(rules?.enabled && rules?.mode === 'legacy_percentage');
 };
 const divingCumulativeScore = (result, publishedRound) => (result?.details?.dives || []).slice(0, publishedRound).reduce((total, dive) => total + (scoreOf(dive?.score) || 0), 0);
+const isStrengthScore = (schedule, rows = []) => /素质力量|素質力量/.test(String(schedule?.name || '')) || rows.some((result) => result?.details?.scoringType === 'strength');
 const participantName = (participant) => participant?.teamName || participant?.name || participant?.user?.name || participant?.schoolName || '未关联选手';
 const participantUnit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '—';
 const membersOf = (participant) => Array.isArray(participant?.teamMembers)
@@ -107,13 +108,18 @@ export default function LiveScoreboardPage() {
       const scored = courtSchedules.filter((schedule) => (resultMap.get(idOf(schedule)) || []).length > 0);
       const candidates = ongoing.length ? ongoing : scored;
       const currentSchedule = [...candidates].sort((a, b) => activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0];
-      const isDiving = currentSchedule?.scoringMode === 'diving';
       const rawRows = currentSchedule ? [...(resultMap.get(idOf(currentSchedule)) || [])] : [];
-      // 跳水只使用裁判长按轮确认后的 publishedRound；未确认的后续动作不会参与累计分或排名。
+      // 素质力量虽然使用跳水赛程配置录入，但没有轮次，不能走跳水公开逻辑。
+      const isDiving = currentSchedule?.scoringMode === 'diving' && !isStrengthScore(currentSchedule, rawRows);
+      // 跳水只显示主裁逐人确认后的公开动作快照；未确认的后续动作不会参与累计分或排名。
       const publishedRound = isDiving ? Math.max(0, ...rawRows.map((result) => Number(result.details?.publishedRound || 0))) : 0;
       const scoredRows = isDiving
         ? rawRows.filter((result) => Number(result.details?.publishedRound || 0) > 0 && !result.details?.isAbsent)
-          .map((result) => ({ ...result, displayScore: divingCumulativeScore(result, Math.min(publishedRound, Number(result.details?.publishedRound || 0))) }))
+          .map((result) => {
+            const resultPublishedRound = Number(result.details?.publishedRound || 0);
+            const publicDives = Array.isArray(result.details?.publishedDives) ? result.details.publishedDives : result.details?.dives;
+            return { ...result, displayScore: divingCumulativeScore({ ...result, details: { ...result.details, dives: publicDives } }, resultPublishedRound) };
+          })
         : rawRows.filter((result) => result.status === 'verified');
       scoredRows.sort((a, b) => (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
       return {
@@ -214,7 +220,7 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
         </Stack>
       </Stack>
       <Typography sx={{ mt: .5, minHeight: panel.isDiving ? 32 : 44, fontWeight: 900, fontSize: { xs: 20, md: panel.isDiving ? 32 : 26 }, lineHeight: 1.25 }}>{panel.schedule?.eventName || panel.schedule?.name || '暂无正在进行的项目'}</Typography>
-      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: panel.isDiving ? 21 : 16, fontWeight: panel.isDiving ? 800 : 400 }}>{panel.isDiving ? `成绩列表 - 第 ${panel.publishedRound} 轮` : (panel.schedule.period || '比赛时段未设置')}</Typography>}
+      {panel.schedule && <Typography sx={{ color: '#9ec5ff', fontSize: panel.isDiving ? 21 : 16, fontWeight: panel.isDiving ? 800 : 400 }}>{panel.isDiving ? `已确认累计成绩 · 最高第 ${panel.publishedRound} 轮` : (panel.schedule.period || '比赛时段未设置')}</Typography>}
     </Box>
     {displayRows.length ? <Box sx={{ minHeight: prominentRows ? 'calc(100vh - 285px)' : undefined }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, px: 2, py: panel.isDiving ? 1 : 1.5, bgcolor: '#152b45', color: '#9ec5ff', fontWeight: 800, fontSize: { xs: 15, md: panel.isDiving ? 24 : 18 } }}>

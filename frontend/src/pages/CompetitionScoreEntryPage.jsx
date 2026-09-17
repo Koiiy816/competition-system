@@ -416,10 +416,12 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
       : dive));
     setDirty(true);
   };
-  const save = async () => {
+  const publishedRound = Number(initialResult?.details?.publishedRound || 0);
+  const nextRoundReady = Boolean(dives[publishedRound]?.scores?.length === 5 && dives[publishedRound].scores.every((score) => score !== '' && score !== null && score !== undefined && Number.isFinite(Number(score))));
+  const save = async (confirmNextRound = false) => {
     setSaving(true);
     try {
-      await onSave(participant._id, dives.map((dive) => ({ scores: dive.scores.map((score) => score === '' ? null : Number(score)) })));
+      await onSave(participant._id, dives.map((dive) => ({ scores: dive.scores.map((score) => score === '' ? null : Number(score)) })), { confirmNextRound });
       setDirty(false);
     } finally { setSaving(false); }
   };
@@ -444,7 +446,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell></TableRow></TableHead>
       <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody>
     </Table></TableContainer>
-    <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || (!dirty && !isChiefOrAdmin)}>{saving ? '保存中…' : (dirty ? '保存本次打分' : '确认成绩')}</Button></Box>
+    <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={() => save(isChiefOrAdmin)} disabled={!canEnter || saving || (isChiefOrAdmin ? !nextRoundReady : !dirty)}>{saving ? '保存中…' : (isChiefOrAdmin ? `确认并上屏第${publishedRound + 1}轮` : '保存本次打分')}</Button></Box>
   </Paper>;
 };
 
@@ -503,7 +505,6 @@ const CompetitionScoreEntryPage = () => {
   const [nextSchedule, setNextSchedule] = useState(null);
   const [prevSchedule, setPrevSchedule] = useState(null);
   const [checkInUpdatingId, setCheckInUpdatingId] = useState(null);
-  const [publishingRound, setPublishingRound] = useState(false);
   
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [divingPrintType, setDivingPrintType] = useState('rank');
@@ -758,26 +759,13 @@ const CompetitionScoreEntryPage = () => {
     }
   };
 
-  const handleDivingSave = async (participantId, dives) => {
+  const handleDivingSave = async (participantId, dives, options = {}) => {
     try {
-      const response = await resultService.submitDivingScore(id, { scheduleId, participantId, dives });
+      const response = await resultService.submitDivingScore(id, { scheduleId, participantId, dives, confirmNextRound: Boolean(options.confirmNextRound) });
       setResults((current) => ({ ...current, [participantId]: response.data }));
     } catch (err) {
       alert(err.message || '保存跳水成绩失败');
       throw err;
-    }
-  };
-
-  const handlePublishDivingRound = async (round) => {
-    setPublishingRound(true);
-    try {
-      const response = await resultService.publishDivingRound(id, { scheduleId, round });
-      await fetchResultsOnly();
-      alert(response.message || `第${round}轮已确认并公开到大屏`);
-    } catch (err) {
-      alert(err.message || '确认并公开本轮失败');
-    } finally {
-      setPublishingRound(false);
     }
   };
 
@@ -897,16 +885,6 @@ const CompetitionScoreEntryPage = () => {
     ? participants.filter((participant) => participant.isVirtualTeam && (participant.teamMembers || []).length === 2)
     : participants;
   const unpairedSynchronizedCount = isSynchronizedDiving ? participants.length - scoringParticipants.length : 0;
-  const divingPublication = React.useMemo(() => {
-    if (schedule?.scoringMode !== 'diving') return { publishedRound: 0, nextRound: 1, maxRounds: 0 };
-    const activeParticipants = scoringParticipants.filter((participant) => getParticipantCheckInStatus(participant) === 'checked');
-    const maxRounds = Math.max(0, ...activeParticipants.map((participant) => results[participant._id]?.details?.dives?.length || getParticipantDivingProgram(participant).length));
-    const publishedRound = activeParticipants.length
-      ? Math.min(...activeParticipants.map((participant) => Number(results[participant._id]?.details?.publishedRound || 0)))
-      : 0;
-    return { publishedRound, nextRound: publishedRound + 1, maxRounds };
-  }, [schedule?.scoringMode, scoringParticipants, results]);
-
   // 找出所有发生重复（并列）的分数
   const duplicateScores = React.useMemo(() => {
     const scoreCounts = {};
@@ -1018,12 +996,7 @@ const CompetitionScoreEntryPage = () => {
               <Typography variant="subtitle1">{formatScheduleTime(schedule)}</Typography>
             </Box>
             <Alert severity="info" sx={{ mb: 2 }}>计分规则：去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
-            {isChiefOrAdmin && divingPublication.nextRound <= divingPublication.maxRounds && <Box className="no-print" sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-              <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} disabled={publishingRound || schedule?.status === 'completed'} onClick={() => handlePublishDivingRound(divingPublication.nextRound)}>
-                {publishingRound ? '确认中…' : `确认并公开第${divingPublication.nextRound}轮`}
-              </Button>
-              <Typography variant="body2" color="text.secondary">已公开至第 {divingPublication.publishedRound} 轮；确认前会校验所有已检录运动员均完成该轮五位裁判打分。</Typography>
-            </Box>}
+            {isChiefOrAdmin && <Alert severity="info" sx={{ mb: 2 }}>每位选手完成当前轮五位裁判打分后，点击该选手的“确认并上屏”即可立即公开该轮累计分；无需等待其他选手。</Alert>}
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
             {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : <TableContainer sx={{ p: 2 }}>

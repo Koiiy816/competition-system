@@ -131,7 +131,7 @@ const getScoringDivingProgram = (participant, format) => {
   return first && second && sameDivingProgram(first, second) ? first : null;
 };
 exports.submitDivingScore = async (req, res, next) => {
-  const { scheduleId, participantId, dives } = req.body;
+  const { scheduleId, participantId, dives, confirmNextRound } = req.body;
   if (!scheduleId || !participantId || !Array.isArray(dives)) return res.status(400).json({ success: false, message: 'Missing diving score data' });
   const lockKey = 'diving_' + scheduleId + '_' + participantId;
   await acquireLock(lockKey);
@@ -171,9 +171,38 @@ exports.submitDivingScore = async (req, res, next) => {
     });
     const totalScore = Math.round(savedDives.reduce((sum, dive) => sum + dive.score, 0) * 100) / 100;
     const allCompleted = savedDives.every((dive) => dive.completed);
-    // publishedRound 只能由裁判长通过“确认并公开本轮”操作推进；普通裁判保存后绝不影响大屏。
-    const publishedRound = Number(result?.details?.publishedRound || 0);
-    const resultData = { competition: req.params.competitionId, schedule: scheduleId, participant: participantId, score: checkInStatus === 'absent' ? 0 : totalScore, details: { scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives, isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted, publishedRound }, submittedBy: req.user.id, status: isChiefOrAdmin && (checkInStatus === 'absent' || allCompleted) ? 'verified' : 'pending', updatedAt: new Date() };
+    const previousPublishedRound = Number(result?.details?.publishedRound || 0);
+    let publishedRound = previousPublishedRound;
+    // 已公开动作是不可被后续录分改写的快照；大屏只读取它，保证“确认后才上屏”。
+    const snapshot = (dive) => ({ ...dive, scores: [...(dive.scores || [])] });
+    const previousPublicDives = Array.isArray(result?.details?.publishedDives)
+      ? result.details.publishedDives
+      : (result?.details?.dives || []);
+    let publishedDives = previousPublicDives.slice(0, previousPublishedRound).map(snapshot);
+
+    if (confirmNextRound) {
+      if (!isChiefOrAdmin) return res.status(403).json({ success: false, message: '只有裁判长或管理员可以确认并公开成绩' });
+      const nextRound = previousPublishedRound + 1;
+      if (!savedDives[nextRound - 1]?.completed) return res.status(400).json({ success: false, message: `第${nextRound}轮尚未完成五位裁判打分，不能公开` });
+      publishedRound = nextRound;
+      publishedDives.push(snapshot(savedDives[nextRound - 1]));
+    }
+
+    const resultData = {
+      competition: req.params.competitionId,
+      schedule: scheduleId,
+      participant: participantId,
+      score: checkInStatus === 'absent' ? 0 : totalScore,
+      details: {
+        scoringType: 'diving', format: schedule.divingFormat || 'individual', dives: savedDives,
+        isAbsent: checkInStatus === 'absent', completed: checkInStatus === 'absent' || allCompleted,
+        publishedRound, publishedDives
+      },
+      submittedBy: req.user.id,
+      // 已确认任一轮后，成绩就是可供大屏读取的正式公开快照；未确认的录分仍保持待确认。
+      status: checkInStatus === 'absent' || publishedRound > 0 || (isChiefOrAdmin && allCompleted) ? 'verified' : 'pending',
+      updatedAt: new Date()
+    };
     result = result ? await Result.findByIdAndUpdate(result._id, resultData, { new: true, runValidators: true }) : await Result.create(resultData);
     if (schedule.status === 'scheduled') {
       schedule.status = 'ongoing';
