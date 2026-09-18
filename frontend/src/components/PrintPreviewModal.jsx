@@ -88,12 +88,13 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   };
   const isStrengthPrint = /素质力量|素質力量/.test(String(schedule?.name || '')) || participants.some((participant) => results[participant.__printKey || participant._id || participant]?.details?.scoringType === 'strength');
   const isDivingPrint = !isStrengthPrint && (schedule?.scoringMode === 'diving' || participants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives)));
+  const isUnitLimitedPrint = isDivingPrint || isStrengthPrint;
   const strengthEventNames = [...new Set([
     ...(schedule?.divingProgram || []).map((event) => event.actionName || event.actionCode),
     ...participants.flatMap((participant) => participant?.additionalInfo?.divingPlan?.dives || []),
     ...participants.flatMap((participant) => (results[participant.__printKey || participant._id || participant]?.details?.events || []))
   ].map((event) => normalizeStrengthActionName(typeof event === 'string' ? event : (event?.actionName || event?.actionCode))).filter(Boolean))];
-  const divingRankedParticipants = isDivingPrint ? rankDivingAwardEntries(participants, {
+  const unitLimitedRankedParticipants = isUnitLimitedPrint ? rankDivingAwardEntries(participants, {
     getParticipant: (participant) => participant,
     getScore: (participant) => getScoreData(participant).finalScore,
     isAbsent: (participant) => getScoreData(participant).isAbsent,
@@ -121,8 +122,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       }
       return 0;
     });
-    if (!isDivingPrint) return scoreSorted;
-    return divingRankedParticipants.map(({ entry }) => entry);
+    if (!isUnitLimitedPrint) return scoreSorted;
+    return unitLimitedRankedParticipants.map(({ entry }) => entry);
   })();
 
   // Calculate actual ranks (handling ties)
@@ -157,7 +158,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     return ranks;
   };
 
-  const participantRanks = isDivingPrint ? divingRankedParticipants.map(({ rank }) => rank) : getRanks(sortedParticipants);
+  const participantRanks = isUnitLimitedPrint ? unitLimitedRankedParticipants.map(({ rank }) => rank) : getRanks(sortedParticipants);
   const completedParticipantCount = sortedParticipants.filter((participant) => !getScoreData(participant).isAbsent).length;
   const isDivingDetailPrint = isDivingPrint && schedule?.divingPrintType === 'detail';
   const isStrengthDetailPrint = isStrengthPrint && schedule?.divingPrintType === 'detail';

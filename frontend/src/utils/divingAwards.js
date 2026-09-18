@@ -14,6 +14,11 @@ export const isDivingResult = (result) => !/素质力量|素質力量/.test(Stri
   && result?.details?.scoringType !== 'strength'
   && (result?.schedule?.scoringMode === 'diving' || Array.isArray(result?.details?.dives));
 
+export const isStrengthResult = (result) => /素质力量|素質力量/.test(String(result?.schedule?.name || ''))
+  || result?.details?.scoringType === 'strength';
+
+export const isUnitLimitedAwardResult = (result) => isDivingResult(result) || isStrengthResult(result);
+
 export const rankDivingAwardEntries = (entries, {
   getParticipant = defaultParticipant,
   getScore = defaultScore,
