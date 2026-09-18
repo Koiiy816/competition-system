@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
@@ -516,6 +516,7 @@ const CompetitionScoreEntryPage = () => {
   const [competition, setCompetition] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [results, setResults] = useState({});
+  const scoreRefreshInFlight = useRef(false);
   const [error, setError] = useState('');
   const [nextSchedule, setNextSchedule] = useState(null);
   const [prevSchedule, setPrevSchedule] = useState(null);
@@ -560,17 +561,25 @@ const CompetitionScoreEntryPage = () => {
   
   useEffect(() => {
     fetchData();
-    // 自动轮询刷新分数 (每3秒)，解决裁判长看不到最新分数的问题
+
+    // 普通裁判在自己保存成功后已由响应立即更新本地成绩，不再重复拉取整场资料。
+    // 裁判长/管理员保留轻量同步，以便实时查看其他裁判已经保存的分数。
+    if (!isChiefOrAdmin) return undefined;
     const interval = setInterval(() => {
       fetchResultsOnly();
-      fetchScheduleOnly();
-    }, 3000);
+    }, 2000);
     return () => clearInterval(interval);
-  }, [id, scheduleId]);
+  }, [id, scheduleId, isChiefOrAdmin]);
 
   const fetchResultsOnly = async () => {
+    if (scoreRefreshInFlight.current) return;
+    scoreRefreshInFlight.current = true;
     try {
-      const resRes = await resultService.getResults(id, { scheduleId: scheduleId, limit: 1000 });
+      const resRes = await resultService.getResults(id, {
+        scheduleId: scheduleId,
+        limit: 1000,
+        fields: 'score-refresh'
+      });
       const resMap = {};
       if (resRes.data && Array.isArray(resRes.data)) {
         resRes.data.forEach(r => {
@@ -587,6 +596,8 @@ const CompetitionScoreEntryPage = () => {
       });
     } catch (err) {
       console.error('Auto fetch results failed:', err);
+    } finally {
+      scoreRefreshInFlight.current = false;
     }
   };
 
