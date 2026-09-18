@@ -63,6 +63,7 @@ const getResultScore = (result) => (
 );
 
 const isStrengthSchedule = (schedule) => /素质力量|素質力量/.test(String(schedule?.name || ''));
+const isLandNetOrBoardSchedule = (schedule, participant) => /陆上[网板]|陸上[網板]/.test(`${schedule?.name || ''} ${participant?.event || ''}`);
 
 const getParticipantDivingPlan = (participant) => {
   if (participant?.additionalInfo?.divingPlan) return participant.additionalInfo.divingPlan;
@@ -382,7 +383,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
   );
 };
 
-const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, canEdit, isChiefOrAdmin, allowedIndex, onSave, currentRank, checkInStatus, canCheckIn, onCheckIn, isCheckInUpdating }) => {
+const DivingScoreCard = ({ participant, schedule, initialResult, format, scheduleStatus, canEdit, isChiefOrAdmin, allowedIndex, onSave, currentRank, checkInStatus, canCheckIn, onCheckIn, isCheckInUpdating }) => {
   const [dives, setDives] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -393,12 +394,14 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
     const saved = initialResult?.details?.dives || [];
     setDives((participantProgram || []).map((action, index) => ({
       ...action,
-      scores: Array.from({ length: 5 }, (_, judgeIndex) => saved[index]?.scores?.[judgeIndex] ?? '')
+      scores: Array.from({ length: 5 }, (_, judgeIndex) => saved[index]?.scores?.[judgeIndex] ?? ''),
+      deduction: saved[index]?.deduction ?? ''
     })));
   }, [initialResult, participantProgram, dirty]);
 
   const isAbsent = checkInStatus === 'absent' || initialResult?.details?.isAbsent;
   const canEnter = canEdit && scheduleStatus !== 'completed' && checkInStatus === 'checked' && !isAbsent && hasParticipantPlan;
+  const supportsRoundDeduction = isLandNetOrBoardSchedule(schedule, participant);
   const participantName = participant.isVirtualTeam && participant.teamMembers?.length
     ? participant.teamMembers.map((member) => member.name || member.user?.name).filter(Boolean).join('、')
     : (participant.name || participant.user?.name || '未知选手');
@@ -407,7 +410,7 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
     if (rawScores.length !== 5 || rawScores.some((value) => value === '' || value === null || value === undefined)) return 0;
     const values = rawScores.map(Number);
     if (values.some((value) => !Number.isFinite(value))) return 0;
-    return calculateDivingDiveScore(values, dive.difficulty);
+    return calculateDivingDiveScore(values, dive.difficulty, supportsRoundDeduction ? Number(dive.deduction || 0) : 0);
   };
   const total = dives.reduce((sum, dive) => sum + calcDive(dive), 0);
   const updateScore = (diveIndex, judgeIndex, value) => {
@@ -416,12 +419,19 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
       : dive));
     setDirty(true);
   };
+  const updateDeduction = (diveIndex, value) => {
+    setDives((current) => current.map((dive, index) => index === diveIndex ? { ...dive, deduction: value } : dive));
+    setDirty(true);
+  };
   const publishedRound = Number(initialResult?.details?.publishedRound || 0);
   const nextRoundReady = Boolean(dives[publishedRound]?.scores?.length === 5 && dives[publishedRound].scores.every((score) => score !== '' && score !== null && score !== undefined && Number.isFinite(Number(score))));
   const save = async (confirmNextRound = false) => {
     setSaving(true);
     try {
-      await onSave(participant._id, dives.map((dive) => ({ scores: dive.scores.map((score) => score === '' ? null : Number(score)) })), { confirmNextRound });
+      await onSave(participant._id, dives.map((dive) => ({
+        scores: dive.scores.map((score) => score === '' ? null : Number(score)),
+        deduction: supportsRoundDeduction ? Number(dive.deduction || 0) : 0
+      })), { confirmNextRound });
       setDirty(false);
     } finally { setSaving(false); }
   };
@@ -443,8 +453,8 @@ const DivingScoreCard = ({ participant, initialResult, format, scheduleStatus, c
     </Box>}
     {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该参赛对象已标记为缺席。' : '请先完成检录后再打分。'}</Alert>}
     {!hasParticipantPlan && <Alert severity="warning" sx={{ m: 1.5 }}>{format === 'synchronized' ? '该双人组合需要两位搭档共用完全一致的动作表，请先完成配对并补录动作表后再打分。' : '该参赛对象还没有跳水动作表，请先补录动作表后再打分。'}</Alert>}
-    <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell></TableRow></TableHead>
-      <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell></TableRow>)}</TableBody>
+    <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell>{supportsRoundDeduction && <TableCell align="center">扣分</TableCell>}</TableRow></TableHead>
+      <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell>{supportsRoundDeduction && <TableCell align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={isChiefOrAdmin ? dive.deduction : '***'} disabled={!canEnter || !isChiefOrAdmin} onChange={(event) => updateDeduction(diveIndex, event.target.value)} inputProps={{ min: 0, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>}</TableRow>)}</TableBody>
     </Table></TableContainer>
     <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={() => save(isChiefOrAdmin)} disabled={!canEnter || saving || (isChiefOrAdmin ? !nextRoundReady : !dirty)}>{saving ? '保存中…' : (isChiefOrAdmin ? `确认并上屏第${publishedRound + 1}轮` : '保存本次打分')}</Button></Box>
   </Paper>;
@@ -1041,7 +1051,7 @@ const CompetitionScoreEntryPage = () => {
             <Alert severity="info" sx={{ mb: 2 }}>计分规则：去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
             {isChiefOrAdmin && <Alert severity="info" sx={{ mb: 2 }}>每位选手完成当前轮五位裁判打分后，点击该选手的“确认并上屏”即可立即公开该轮累计分；无需等待其他选手。</Alert>}
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
-            {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
+            {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : <TableContainer sx={{ p: 2 }}>
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
