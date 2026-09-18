@@ -86,7 +86,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
           {entries.flatMap((entry, entryIndex) => {
             const events = entry.result.details?.events || [];
             const count = Math.max(1, events.length);
-            return Array.from({ length: count }, (_, eventIndex) => {
+            const participantRows = Array.from({ length: count }, (_, eventIndex) => {
               const event = events[eventIndex];
               return <TableRow key={`${entry.result._id || entryIndex}-${eventIndex}`}>
                 {eventIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-name-cell">{athlete(entry.result.participant)}</TableCell>}
@@ -98,6 +98,8 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
                 {eventIndex === 0 && <TableCell rowSpan={count} align="center">{entry.absent || entry.rank === 1 ? '' : (leader - entry.score).toFixed(2)}</TableCell>}
               </TableRow>;
             });
+            if (entryIndex < entries.length - 1) participantRows.push(<TableRow key={`${entry.result._id || entryIndex}-spacer`} sx={{ height: 14 }}><TableCell colSpan={headings.length} sx={{ border: 'none !important', p: '0 !important', fontSize: 0 }} /></TableRow>);
+            return participantRows;
           })}
         </TableBody></Table></TableContainer>
       </Box>;
