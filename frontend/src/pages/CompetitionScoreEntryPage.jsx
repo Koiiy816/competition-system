@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
@@ -516,7 +516,6 @@ const CompetitionScoreEntryPage = () => {
   const [competition, setCompetition] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [results, setResults] = useState({});
-  const scoreRefreshInFlight = useRef(false);
   const [error, setError] = useState('');
   const [nextSchedule, setNextSchedule] = useState(null);
   const [prevSchedule, setPrevSchedule] = useState(null);
@@ -561,45 +560,60 @@ const CompetitionScoreEntryPage = () => {
   
   useEffect(() => {
     fetchData();
-
-    // 普通裁判在自己保存成功后已由响应立即更新本地成绩，不再重复拉取整场资料。
-    // 裁判长/管理员保留轻量同步，以便实时查看其他裁判已经保存的分数。
-    if (!isChiefOrAdmin) return undefined;
-    const interval = setInterval(() => {
-      fetchResultsOnly();
-    }, 2000);
-    return () => clearInterval(interval);
   }, [id, scheduleId, isChiefOrAdmin]);
 
-  const fetchResultsOnly = async () => {
-    if (scoreRefreshInFlight.current) return;
-    scoreRefreshInFlight.current = true;
-    try {
-      const resRes = await resultService.getResults(id, {
-        scheduleId: scheduleId,
-        limit: 1000,
-        fields: 'score-refresh'
-      });
-      const resMap = {};
-      if (resRes.data && Array.isArray(resRes.data)) {
-        resRes.data.forEach(r => {
-          const pId = r.participant?._id || r.participant;
-          if (pId) resMap[pId] = r;
+  useEffect(() => {
+    // 普通裁判保存成功后由响应立即更新本地成绩；只有裁判长/管理员连接实时通知流。
+    if (!isChiefOrAdmin || !id || !scheduleId) return undefined;
+
+    let active = true;
+    let controller;
+    let reconnectTimer;
+
+    const connect = async () => {
+      controller = new AbortController();
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/competitions/${id}/results/stream?scheduleId=${encodeURIComponent(scheduleId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: controller.signal
         });
-      }
-      setResults(prev => {
-        // 性能优化：对比前后数据是否一致，如果完全一样则不触发 setResults 重渲染整个打分表格，防止卡顿
-        if (JSON.stringify(prev) !== JSON.stringify(resMap)) {
-          return resMap;
+        if (!response.ok || !response.body) throw new Error(`实时成绩连接失败：${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let pending = '';
+        while (active) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          pending += decoder.decode(value, { stream: true });
+          const messages = pending.split('\n\n');
+          pending = messages.pop() || '';
+          messages.forEach((message) => {
+            const dataLine = message.split('\n').find((line) => line.startsWith('data: '));
+            if (!dataLine) return;
+            try {
+              const { participantId, result } = JSON.parse(dataLine.slice(6));
+              if (participantId && result) setResults((current) => ({ ...current, [participantId]: result }));
+            } catch (error) {
+              console.error('实时成绩消息解析失败:', error);
+            }
+          });
         }
-        return prev;
-      });
-    } catch (err) {
-      console.error('Auto fetch results failed:', err);
-    } finally {
-      scoreRefreshInFlight.current = false;
-    }
-  };
+      } catch (error) {
+        if (active && error.name !== 'AbortError') console.error('实时成绩连接失败:', error);
+      } finally {
+        if (active) reconnectTimer = window.setTimeout(connect, 1000);
+      }
+    };
+
+    connect();
+    return () => {
+      active = false;
+      window.clearTimeout(reconnectTimer);
+      controller?.abort();
+    };
+  }, [id, scheduleId, isChiefOrAdmin]);
 
   const fetchScheduleOnly = async () => {
     try {

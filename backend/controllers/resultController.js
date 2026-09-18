@@ -7,6 +7,20 @@ const { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, points
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
+const scoreStreamClients = new Map();
+
+const scoreStreamKey = (competitionId, scheduleId) => `${competitionId}:${scheduleId}`;
+
+const broadcastScoreUpdate = (competitionId, scheduleId, result) => {
+  const clients = scoreStreamClients.get(scoreStreamKey(competitionId, scheduleId));
+  if (!clients?.size) return;
+
+  const participantId = result?.participant?._id || result?.participant;
+  const payload = `event: score-updated\ndata: ${JSON.stringify({ participantId: String(participantId), result })}\n\n`;
+  for (const client of clients) {
+    if (!client.writableEnded && !client.destroyed) client.write(payload);
+  }
+};
 
 const acquireLock = async (key) => {
   while (scoreLocks[key]) {
@@ -19,6 +33,39 @@ const releaseLock = (key) => {
   delete scoreLocks[key];
 };
 // -----------------------------------------------------------------
+
+// 裁判长和管理员使用一个长连接接收“已保存成绩”的小消息。
+// 没有裁判保存时不读取数据库、不发送轮询请求。
+exports.openScoreStream = (req, res) => {
+  const scheduleId = String(req.query.scheduleId || '');
+  if (!scheduleId) {
+    return res.status(400).json({ success: false, message: '缺少赛程ID' });
+  }
+
+  const key = scoreStreamKey(req.params.competitionId, scheduleId);
+  const clients = scoreStreamClients.get(key) || new Set();
+  scoreStreamClients.set(key, clients);
+
+  res.status(200).set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no'
+  });
+  res.flushHeaders?.();
+  res.write(': connected\n\n');
+  clients.add(res);
+
+  const heartbeat = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) res.write(': keepalive\n\n');
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    clients.delete(res);
+    if (clients.size === 0) scoreStreamClients.delete(key);
+  });
+};
 
 /**
  * @desc    获取成绩状态列表
@@ -222,6 +269,7 @@ exports.submitDivingScore = async (req, res, next) => {
       schedule.status = 'ongoing';
       await schedule.save();
     }
+    broadcastScoreUpdate(req.params.competitionId, scheduleId, result);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -778,6 +826,7 @@ exports.submitScore = async (req, res, next) => {
       await schedule.save();
     }
 
+    broadcastScoreUpdate(req.params.competitionId, scheduleId, result);
     res.status(200).json({
       success: true,
       data: result
