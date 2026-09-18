@@ -107,6 +107,7 @@ function isCompleteDivingScore(scores) {
   return scores.length === 5 && scores.every((score) => Number.isFinite(score));
 }
 const isLandDiving = (participant) => /陆上|陸上/.test(String(participant?.event || ''));
+const isLandNetOrBoard = (schedule, participant) => /陆上[网板]|陸上[網板]/.test(`${schedule?.name || ''} ${participant?.event || ''}`);
 const isStrengthEvent = (participant) => /素质力量/.test(String(participant?.event || ''));
 const normalizeParticipantDivingProgram = (participant) => {
   const plan = participant?.additionalInfo?.divingPlan;
@@ -136,7 +137,7 @@ exports.submitDivingScore = async (req, res, next) => {
   const lockKey = 'diving_' + scheduleId + '_' + participantId;
   await acquireLock(lockKey);
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount scoringMode divingFormat divingProgram status participants');
+    const schedule = await Schedule.findById(scheduleId).select('name judgeCount scoringMode divingFormat divingProgram status participants');
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
     if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
@@ -158,16 +159,26 @@ exports.submitDivingScore = async (req, res, next) => {
     if (!isChiefOrAdmin && (allowedIndex < 0 || allowedIndex >= (schedule.judgeCount || 5))) return res.status(403).json({ success: false, message: 'No assigned judge score column' });
     let result = await Result.findOne({ schedule: scheduleId, participant: participantId });
     const previousDives = result?.details?.dives || [];
+    const supportsRoundDeduction = isLandNetOrBoard(schedule, participant);
     const savedDives = program.map((action, index) => {
       const submitted = dives[index] || {};
       let scores = normalizeDivingScores(submitted.scores);
+      let deduction = 0;
+      if (supportsRoundDeduction) {
+        deduction = isChiefOrAdmin ? Number(submitted.deduction || 0) : Number(previousDives[index]?.deduction || 0);
+        if (!Number.isFinite(deduction) || deduction < 0) {
+          const error = new Error(`第${index + 1}轮扣分必须是非负数`);
+          error.statusCode = 400;
+          throw error;
+        }
+      }
       if (!isChiefOrAdmin && checkInStatus !== 'absent') {
         const previous = normalizeDivingScores(previousDives[index]?.scores);
         previous[allowedIndex] = scores[allowedIndex];
         scores = previous;
       }
       if (checkInStatus === 'absent') scores = [null, null, null, null, null];
-      return { actionCode: action.actionCode || '', actionName: action.actionName, difficulty: action.difficulty, source: action.source || 'custom', scores, score: calculateDivingDiveScore(scores, action.difficulty), completed: isCompleteDivingScore(scores) };
+      return { actionCode: action.actionCode || '', actionName: action.actionName, difficulty: action.difficulty, source: action.source || 'custom', scores, deduction, score: calculateDivingDiveScore(scores, action.difficulty, deduction), completed: isCompleteDivingScore(scores) };
     });
     const totalScore = Math.round(savedDives.reduce((sum, dive) => sum + dive.score, 0) * 100) / 100;
     const allCompleted = savedDives.every((dive) => dive.completed);

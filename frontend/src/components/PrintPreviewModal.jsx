@@ -143,6 +143,10 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const isStrengthDetailPrint = isStrengthPrint && schedule?.divingPrintType === 'detail';
   const refereeGroup = getRefereeGroup(schedule);
   const refereeNames = refereeGroup ? refereeGroupsByCourt[refereeGroup] : [];
+  const refereeNameRows = refereeNames.length ? [
+    refereeNames.slice(0, Math.ceil(refereeNames.length / 2)),
+    refereeNames.slice(Math.ceil(refereeNames.length / 2))
+  ] : [];
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
     const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
@@ -246,7 +250,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             return <TableRow key={`${participant._id || participantIndex}-${roundIndex}`}>
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{name}</TableCell>}
-              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{unit}</TableCell>}
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-unit-cell" sx={{ whiteSpace: 'normal', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{unit}</TableCell>}
               <TableCell align="center">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
               {[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}
               <TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(participantIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
@@ -338,6 +342,12 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           .diving-detail-table .MuiTableCell-root {
             font-size: 9pt !important;
             padding: 3px 2px !important;
+          }
+
+          .diving-detail-table .detail-unit-cell {
+            white-space: normal !important;
+            word-break: break-all !important;
+            overflow-wrap: anywhere !important;
           }
 
           /* Force page margins */
@@ -541,7 +551,11 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
 
           {/* Footer Signature Area */}
           {(isDivingPrint || isStrengthPrint) && refereeNames.length > 0 && <Box sx={{ mt: 3, fontSize: '12pt', color: 'black', fontFamily: '"SimSun", "宋体", serif', lineHeight: 1.8 }}>
-            裁判员：{refereeGroup}组：{refereeNames.join('、')}
+            <Box sx={{ letterSpacing: '0.35em' }}>裁 判 员：</Box>
+            <Box sx={{ textAlign: 'center', mt: 0.5 }}>
+              <Box>{refereeGroup} 组：</Box>
+              {refereeNameRows.map((names, index) => <Box key={index}>{names.join('、')}</Box>)}
+            </Box>
           </Box>}
 
           {!isDivingPrint && !isStrengthPrint && <Box sx={{ mt: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
