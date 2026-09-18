@@ -347,6 +347,11 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             padding: 0 !important;
           }
 
+          /* MUI 的 TableContainer 默认允许横向滚动；打印预览不应出现滚动轨。 */
+          .print-dialog-root .MuiTableContainer-root {
+            overflow: visible !important;
+          }
+
           /* Hide non-print elements inside the dialog */
           .no-print, .MuiBackdrop-root {
             display: none !important;
@@ -594,7 +599,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           </Box>}
 
           <Box className="chief-signature" sx={{ mt: (isDivingPrint || isStrengthPrint) ? 2 : 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
-            总裁判长签名：
+            裁判长签名：
             {signatureImage ? <img src={signatureImage} alt="裁判长签名" style={{ maxHeight: '50px', maxWidth: '150px', marginLeft: '10px' }} /> : '________________________'}
           </Box>
         </Box>
