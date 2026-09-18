@@ -29,6 +29,15 @@ const getRefereeGroup = (schedule) => {
   return match ? match[1].toUpperCase() : null;
 };
 
+const savedDivingJudgeNames = () => {
+  try {
+    const names = JSON.parse(localStorage.getItem('diving_judge_names') || '[]');
+    return Array.from({ length: 5 }, (_, index) => String(names[index] || ''));
+  } catch {
+    return ['', '', '', '', ''];
+  }
+};
+
 const PrintPreviewModal = ({ open, onClose, schedule, participants, results, user, isTeamRanking = false }) => {
   const normalizeStrengthActionName = (value) => String(value || '')
     .replace(/提膝跳\s*10\s*次/g, '提膝跳')
@@ -37,6 +46,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const [title, setTitle] = useState('');
   const [subTitle, setSubTitle] = useState('');
   const [signatureImage, setSignatureImage] = useState(localStorage.getItem('chief_signature') || '');
+  const [divingJudgeNames, setDivingJudgeNames] = useState(savedDivingJudgeNames);
+  const [divingReserveName, setDivingReserveName] = useState(localStorage.getItem('diving_reserve_name') || '');
 
   React.useEffect(() => {
     if (open && schedule) {
@@ -141,12 +152,22 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const isDivingPrint = !isStrengthPrint && (schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives)));
   const isDivingDetailPrint = isDivingPrint && schedule?.divingPrintType === 'detail';
   const isStrengthDetailPrint = isStrengthPrint && schedule?.divingPrintType === 'detail';
+  const isAdmin = user?.role === 'admin' || user?.roles?.includes('admin');
   const refereeGroup = getRefereeGroup(schedule);
   const refereeNames = refereeGroup ? refereeGroupsByCourt[refereeGroup] : [];
   const refereeNameRows = refereeNames.length ? [
     refereeNames.slice(0, Math.ceil(refereeNames.length / 2)),
     refereeNames.slice(Math.ceil(refereeNames.length / 2))
   ] : [];
+  const updateDivingJudgeName = (index, value) => {
+    const names = divingJudgeNames.map((name, nameIndex) => nameIndex === index ? value : name);
+    setDivingJudgeNames(names);
+    localStorage.setItem('diving_judge_names', JSON.stringify(names));
+  };
+  const updateDivingReserveName = (value) => {
+    setDivingReserveName(value);
+    localStorage.setItem('diving_reserve_name', value);
+  };
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
     const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
@@ -228,8 +249,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     });
     const leader = sortedParticipants.find((participant) => !getScoreData(participant).isAbsent);
     const leaderScore = leader ? getScoreData(leader).finalScore : 0;
-    const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
-    const columnWidths = ['5%', '10%', '12%', '14.5%', '5%', '4.5%', '4.5%', '4.5%', '4.5%', '4.5%', '6%', '6%', '7%', '7%', '5%'];
+    const headings = ['姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
+    const columnWidths = ['12%', '13%', '15.5%', '5%', '4.5%', '4.5%', '4.5%', '4.5%', '4.5%', '6%', '6%', '7%', '7%', '5%'];
     return <TableContainer sx={{ border: '1px solid black' }}>
       <Table size="small" className="diving-detail-table" sx={{ tableLayout: 'fixed', width: '100%',
         // “总名次”和“分差”使用 rowSpan；不能移除每行最后一个单元格的右边框，
@@ -249,7 +270,6 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             const dive = dives[roundIndex];
             cumulative += Number(dive?.score || 0);
             return <TableRow key={`${participant._id || participantIndex}-${roundIndex}`}>
-              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-name-cell" sx={{ whiteSpace: 'normal', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{participant?.isVirtualTeam ? (participant.teamMembers || []).map((member, memberIndex) => <React.Fragment key={member._id || memberIndex}>{member.name}{memberIndex < participant.teamMembers.length - 1 && <br />}</React.Fragment>) : name}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-unit-cell" sx={{ whiteSpace: 'normal', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{unit}</TableCell>}
               <TableCell align="center" className="detail-action-cell">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
@@ -410,6 +430,13 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
                 )}
               </Box>
             </Grid>
+            {isDivingPrint && isAdmin && <Grid item xs={12}>
+              <Typography variant="body2" sx={{ mb: 1 }}>跳水裁判员姓名（将显示在公告页尾）</Typography>
+              <Grid container spacing={1}>
+                {divingJudgeNames.map((name, index) => <Grid item xs={12} sm={6} md={4} key={index}><TextField fullWidth size="small" label={`裁判员 ${index + 1}`} value={name} onChange={(event) => updateDivingJudgeName(index, event.target.value)} /></Grid>)}
+                <Grid item xs={12} sm={6} md={4}><TextField fullWidth size="small" label="候补" value={divingReserveName} onChange={(event) => updateDivingReserveName(event.target.value)} /></Grid>
+              </Grid>
+            </Grid>}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -562,7 +589,12 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           </TableContainer>}
 
           {/* Footer Signature Area */}
-          {(isDivingPrint || isStrengthPrint) && refereeNames.length > 0 && <Box sx={{ mt: 3, fontSize: '12pt', color: 'black', fontFamily: '"SimSun", "宋体", serif', lineHeight: 1.8 }}>
+          {isDivingPrint && <Box sx={{ mt: 3, display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '4px 24px', fontSize: '12pt', color: 'black', fontFamily: '"SimSun", "宋体", serif', lineHeight: 1.8 }}>
+            {divingJudgeNames.map((name, index) => <Box key={index}>裁判员 {index + 1}：{name || '________________'}</Box>)}
+            <Box>候补：{divingReserveName || '________________'}</Box>
+          </Box>}
+
+          {isStrengthPrint && refereeNames.length > 0 && <Box sx={{ mt: 3, fontSize: '12pt', color: 'black', fontFamily: '"SimSun", "宋体", serif', lineHeight: 1.8 }}>
             <Box sx={{ letterSpacing: '0.35em' }}>裁 判 员：</Box>
             <Box sx={{ textAlign: 'center', mt: 0.5 }}>
               <Box>{refereeGroup} 组：</Box>
