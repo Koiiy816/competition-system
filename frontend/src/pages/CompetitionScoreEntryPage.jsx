@@ -563,8 +563,8 @@ const CompetitionScoreEntryPage = () => {
   }, [id, scheduleId, isChiefOrAdmin]);
 
   useEffect(() => {
-    // 普通裁判保存成功后由响应立即更新本地成绩；只有裁判长/管理员连接实时通知流。
-    if (!isChiefOrAdmin || !id || !scheduleId) return undefined;
+    // 所有打开同一评分场次的账号都连接实时通知流；没有业务变动时不轮询或查库。
+    if (!id || !scheduleId) return undefined;
 
     let active = true;
     let controller;
@@ -590,13 +590,53 @@ const CompetitionScoreEntryPage = () => {
           const messages = pending.split('\n\n');
           pending = messages.pop() || '';
           messages.forEach((message) => {
+            const eventLine = message.split('\n').find((line) => line.startsWith('event: '));
             const dataLine = message.split('\n').find((line) => line.startsWith('data: '));
             if (!dataLine) return;
             try {
-              const { participantId, result } = JSON.parse(dataLine.slice(6));
-              if (participantId && result) setResults((current) => ({ ...current, [participantId]: result }));
+              const payload = JSON.parse(dataLine.slice(6));
+              if (eventLine === 'event: score-updated' && payload.participantId && payload.result) {
+                setResults((current) => ({ ...current, [payload.participantId]: payload.result }));
+              }
+              if (eventLine === 'event: check-in-updated') {
+                const updates = new Map((payload.updates || []).map((entry) => [String(entry._id), entry]));
+                setParticipants((current) => current.map((participant) => {
+                  const direct = updates.get(String(participant._id));
+                  const teamMembers = (participant.teamMembers || []).map((member) => {
+                    const update = updates.get(String(member._id));
+                    return update ? { ...member, ...update } : member;
+                  });
+                  if (direct) return { ...participant, ...direct, teamMembers };
+                  if (teamMembers.some((member, index) => member !== (participant.teamMembers || [])[index])) {
+                    return { ...participant, teamMembers };
+                  }
+                  return participant;
+                }));
+                if (payload.participantId) {
+                  setResults((current) => {
+                    const existing = current[payload.participantId];
+                    if (!existing) return current;
+                    return {
+                      ...current,
+                      [payload.participantId]: {
+                        ...existing,
+                        score: payload.status === 'absent' ? 0 : existing.score,
+                        status: 'pending',
+                        details: {
+                          ...(existing.details || {}),
+                          isAbsent: payload.status === 'absent',
+                          absentSource: payload.status === 'absent' ? 'check_in' : null
+                        }
+                      }
+                    };
+                  });
+                }
+              }
+              if (eventLine === 'event: schedule-status-updated') {
+                setSchedule((current) => current ? { ...current, status: payload.status } : current);
+              }
             } catch (error) {
-              console.error('实时成绩消息解析失败:', error);
+              console.error('实时评分页面消息解析失败:', error);
             }
           });
         }
@@ -613,7 +653,7 @@ const CompetitionScoreEntryPage = () => {
       window.clearTimeout(reconnectTimer);
       controller?.abort();
     };
-  }, [id, scheduleId, isChiefOrAdmin]);
+  }, [id, scheduleId]);
 
   // 仅用于检录、重置等管理员主动操作后的单次重读；不参与任何定时刷新。
   const fetchResultsOnce = async () => {

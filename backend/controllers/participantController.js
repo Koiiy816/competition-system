@@ -3,6 +3,7 @@ const Competition = require('../models/Competition');
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
+const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 
 // 本赛事的导入资料存在不同选手共用身份证号码的情况，不能用身份证或照片推断选手身份。
 // 人数统计按报名册中的姓名、单位、性别归并；若三项均缺失则保留为独立记录。
@@ -839,6 +840,18 @@ exports.updateParticipantCheckInStatus = async (req, res, next) => {
           { runValidators: true }
         )));
       }
+
+      broadcastScoreEvent(competitionId, scheduleId, 'check-in-updated', {
+        participantId: String(participant._id),
+        status,
+        updates: updatedTargets.map((target) => ({
+          _id: String(target._id),
+          isCheckedIn: target.isCheckedIn,
+          checkInStatus: target.checkInStatus,
+          checkedInAt: target.checkedInAt,
+          absentAt: target.absentAt
+        }))
+      });
     }
 
     res.status(200).json({
