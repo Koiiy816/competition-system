@@ -5,6 +5,7 @@ import { ArrowBack, Fullscreen, FullscreenExit, Refresh } from '@mui/icons-mater
 import resultService from '../services/resultService';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
+import { compareDivingEntries } from '../utils/divingAwards';
 
 const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 6;
@@ -169,7 +170,9 @@ export default function LiveScoreboardPage() {
               return { ...result, displayScore: divingCumulativeScore({ ...result, details: { ...result.details, dives: publicDives } }, resultPublishedRound) };
             })
           : rawRows.filter((result) => result.status === 'verified');
-        rows.sort((a, b) => (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
+        rows.sort((a, b) => isDivingSchedule
+          ? compareDivingEntries(a, b, { getScore: (result) => scoreOf(result.displayScore ?? result.score) ?? 0 })
+          : (scoreOf(b.displayScore ?? b.score) ?? -Infinity) - (scoreOf(a.displayScore ?? a.score) ?? -Infinity) || timestamp(a.updatedAt) - timestamp(b.updatedAt));
         return { schedule, rows, isDiving: isDivingSchedule, publishedRound, subgroupName: genderLabel(schedule) };
       };
       const currentData = makeScoreboardRows(currentSchedule);
@@ -312,7 +315,7 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
         const teamMembers = membersOf(participant);
         // 素质力量等项目会在后台保存正式名次；其余旧成绩尚未保存名次时保持原有排序序号，避免出现空白。
         const savedRank = Number(result.rank);
-        const displayRank = Number.isFinite(savedRank) && savedRank > 0 ? savedRank : absoluteIndex + 1;
+        const displayRank = activeSubgroup.isDiving ? absoluteIndex + 1 : (Number.isFinite(savedRank) && savedRank > 0 ? savedRank : absoluteIndex + 1);
         const firstPrizeLimit = Math.max(1, Math.ceil(activeSubgroup.rows.filter((row) => !row.details?.isAbsent).length * 0.3));
         const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
         const awardLevel = absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');

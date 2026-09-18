@@ -60,11 +60,21 @@ function awardLevel(rank, total, rules) {
   return '\u4e09\u7b49\u5956';
 }
 
-function ranked(records) {
-  const ordered = [...records].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'zh-Hans-CN'));
+function compareDivingActions(left, right) {
+  const leftScores = Array.isArray(left.dives) ? left.dives.map(dive => Number(dive?.score) || 0) : [];
+  const rightScores = Array.isArray(right.dives) ? right.dives.map(dive => Number(dive?.score) || 0) : [];
+  for (let index = 0; index < Math.max(leftScores.length, rightScores.length); index += 1) {
+    const difference = (rightScores[index] || 0) - (leftScores[index] || 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+function ranked(records, uniqueDivingRanks = false) {
+  const ordered = [...records].sort((a, b) => b.score - a.score || (uniqueDivingRanks && compareDivingActions(a, b)) || a.name.localeCompare(b.name, 'zh-Hans-CN') || a.recipientKey.localeCompare(b.recipientKey));
   let previous = null; let rank = 0;
   return ordered.map((record, index) => {
-    if (previous === null || previous !== record.score) rank = index + 1;
+    if (uniqueDivingRanks || previous === null || previous !== record.score) rank = index + 1;
     previous = record.score;
     return { ...record, rank };
   });
@@ -104,11 +114,12 @@ exports.getAwards = async (req, res, next) => {
       if (!eventsBySchedule.has(id)) eventsBySchedule.set(id, { schedule, rows: [] });
       eventsBySchedule.get(id).rows.push({
         recipientKey: keyOf(result.participant), name: result.participant.name || result.participant.teamName,
-        schoolName: result.participant.schoolName || result.participant.teamName || '', score: finalScore(result)
+        schoolName: result.participant.schoolName || result.participant.teamName || '', score: finalScore(result), dives: result.details?.dives
       });
     });
     const eventAwards = [...eventsBySchedule.values()].map(({ schedule, rows }) => {
-      const list = ranked(rows).map(item => ({ ...item, awardLevel: awardLevel(item.rank, rows.length, competition.awardRules) }));
+      const isDiving = schedule.scoringMode === 'diving' && !/素质力量|素質力量/.test(String(schedule.name || ''));
+      const list = ranked(rows, isDiving).map(({ dives, ...item }) => ({ ...item, awardLevel: awardLevel(item.rank, rows.length, competition.awardRules) }));
       return { scheduleId: keyOf(schedule), scheduleName: schedule.name, count: rows.length, awards: list };
     });
 

@@ -45,3 +45,18 @@ test('an entry excluded by the unit limit starts outside the top eight even when
 
   assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2, 3, 9]);
 });
+
+test('diving ties are broken by each action score in program order', () => {
+  const tied = (name, dives) => ({
+    participant: { name, schoolName: `${name}单位` },
+    finalScore: 100,
+    details: { dives }
+  });
+  const ranked = rankDivingAwardEntries([
+    tied('乙', [{ score: 48, difficulty: 2.0 }, { score: 52, difficulty: 2.4 }]),
+    tied('甲', [{ score: 50, difficulty: 2.0 }, { score: 50, difficulty: 2.4 }])
+  ]);
+
+  assert.deepEqual(ranked.map(({ entry }) => entry.participant.name), ['甲', '乙']);
+  assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2]);
+});
