@@ -8,9 +8,50 @@ const api = axios.create({
   }
 });
 
+const mutationMethods = new Set(['post', 'put', 'patch', 'delete']);
+const nonPersistentPostPaths = [
+  '/schedules/excel-preview',
+  '/schedules/collective-roster-preview'
+];
+const highFrequencyMutationPaths = [
+  '/results/submit',
+  '/results/submit-diving',
+  '/results/submit-strength',
+  '/check-in'
+];
+const alreadyConfirmedMutationPaths = [
+  '/schedules/import-excel',
+  '/schedules/import-collective-roster',
+  '/schedules/generate-start-list',
+  '/results/reset-diving-publication',
+  '/results/reset-schedule-results'
+];
+
+const needsMutationConfirmation = (config) => {
+  const method = String(config.method || 'get').toLowerCase();
+  const url = String(config.url || '').split('?')[0];
+  if (!mutationMethods.has(method) || config.skipMutationConfirmation) return false;
+  if (url.startsWith('/auth/') || url.startsWith('/users/profile/')) return false;
+  if (nonPersistentPostPaths.some(path => url.endsWith(path))) return false;
+  if (highFrequencyMutationPaths.some(path => url.endsWith(path))) return false;
+  if (alreadyConfirmedMutationPaths.some(path => url.endsWith(path))) return false;
+  if (method === 'delete' && /\/schedules(?:\/[^/]+)?$/.test(url)) return false;
+  if (method === 'put' && /\/schedules\/[^/]+\/status$/.test(url)) return false;
+  // 普通成绩保存同样属于裁判高频录入，不打断逐人逐轮的工作流。
+  if (method === 'post' && /\/competitions\/[^/]+\/results$/.test(url)) return false;
+  return true;
+};
+
+const mutationConfirmationText = (method) => (
+  method === 'delete' ? '确定删除该数据吗？此操作可能无法恢复。' : '确定保存并执行本次操作吗？'
+);
+
 // 请求拦截器 - 添加token到请求头
 api.interceptors.request.use(
   config => {
+    if (needsMutationConfirmation(config) && !window.confirm(mutationConfirmationText(String(config.method || '').toLowerCase()))) {
+      return Promise.reject(new axios.CanceledError('已取消操作'));
+    }
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

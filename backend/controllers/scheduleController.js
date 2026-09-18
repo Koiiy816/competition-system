@@ -538,7 +538,7 @@ exports.getSchedules = async (req, res, next) => {
       .populate('competition', 'name')
       .populate({
         path: 'participants',
-        select: 'user type teamName name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest isCheckedIn checkedInAt checkedInBy additionalInfo', // Select specific fields from Participant
+        select: 'user type teamName name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo', // Select specific fields from Participant
         populate: [
           {
             path: 'user',
@@ -546,7 +546,7 @@ exports.getSchedules = async (req, res, next) => {
           },
           {
             path: 'teamMembers',
-            select: 'name schoolName additionalInfo'
+            select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo'
           },
           {
             path: 'checkedInBy',
@@ -599,7 +599,7 @@ exports.getSchedule = async (req, res, next) => {
       .populate('competition', 'name startDate endDate location')
       .populate({
         path: 'participants',
-        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo',
+        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo',
         populate: [
           {
             path: 'user',
@@ -607,7 +607,7 @@ exports.getSchedule = async (req, res, next) => {
           },
           {
             path: 'teamMembers',
-            select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo'
+            select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo'
           },
           {
             path: 'checkedInBy',
@@ -627,10 +627,10 @@ exports.getSchedule = async (req, res, next) => {
     if (await normalizeSynchronizedDivingParticipants(schedule)) {
       await schedule.populate({
         path: 'participants',
-        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo',
+        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo',
         populate: [
           { path: 'user', select: 'name email' },
-          { path: 'teamMembers', select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy additionalInfo' },
+          { path: 'teamMembers', select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo' },
           { path: 'checkedInBy', select: 'name email' }
         ]
       });

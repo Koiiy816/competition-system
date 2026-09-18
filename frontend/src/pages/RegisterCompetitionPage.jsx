@@ -744,6 +744,7 @@ const RegisterCompetitionPage = () => {
   const handleSubmit = async () => {
     if (registrants.length === 0) { setError('报名名单为空，请返回添加运动员。'); return; }
     if (hasUnpairedDivingRegistrants()) { setError('存在尚未完成配对的跳水双人项目。'); return; }
+    if (!window.confirm(`确定提交 ${registrants.length} 名运动员的报名资料吗？`)) return;
     setSubmitting(true); setError(''); const failed = [];
     try {
       for (const registrant of registrants) {

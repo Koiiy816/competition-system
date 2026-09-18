@@ -224,12 +224,14 @@ const CompetitionCheckInEntryPage = () => {
               const checkInTime = participant.isVirtualTeam
                 ? formatDateTime(
                     (participant.teamMembers || []).reduce((latest, member) => {
-                      if (!member.checkedInAt) return latest;
-                      const currentTime = new Date(member.checkedInAt).getTime();
+                      const status = normalizeCheckInStatus(member);
+                      const attendanceAt = status === 'absent' ? member.absentAt : member.checkedInAt;
+                      if (!attendanceAt) return latest;
+                      const currentTime = new Date(attendanceAt).getTime();
                       return !latest || currentTime > latest ? currentTime : latest;
                     }, null)
                   )
-                : formatDateTime(participant.checkedInAt);
+                : formatDateTime(status === 'absent' ? participant.absentAt : participant.checkedInAt);
 
               return (
                 <TableRow key={participant._id} hover>
