@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import { isDivingResult, rankDivingAwardEntries } from '../utils/divingAwards';
 
 const scoreOf = (result) => Number(result?.finalScore ?? result?.score ?? 0) || 0;
 const athlete = (participant) => participant?.isVirtualTeam ? (participant.teamMembers || []).map((item) => item.name).filter(Boolean).join('、') || '未知' : participant?.teamName || participant?.name || participant?.user?.name || '未知';
@@ -21,12 +22,17 @@ const rankRows = (rows, getValue) => {
   });
 };
 
-const preparedResults = (results = []) => rankRows(
-  results.filter((result) => !result.participant?.isTest)
+const preparedResults = (results = []) => {
+  const entries = results.filter((result) => !result.participant?.isTest)
     .map((result) => ({ result, absent: Boolean(result.details?.isAbsent), score: scoreOf(result) }))
-    .sort((left, right) => Number(left.absent) - Number(right.absent) || right.score - left.score),
-  (row) => row.score
-);
+    .sort((left, right) => Number(left.absent) - Number(right.absent) || right.score - left.score);
+  if (!results.some(isDivingResult)) return rankRows(entries, (row) => row.score);
+  return rankDivingAwardEntries(entries, {
+    getParticipant: (entry) => entry.result.participant,
+    getScore: (entry) => entry.score,
+    isAbsent: (entry) => entry.absent
+  }).map(({ entry, rank }) => ({ ...entry, rank }));
+};
 
 const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, teamRankings = [] }) => {
   const [signatureImage, setSignatureImage] = useState(localStorage.getItem('chief_signature') || '');
