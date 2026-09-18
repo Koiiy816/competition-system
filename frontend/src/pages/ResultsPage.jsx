@@ -64,6 +64,7 @@ import { useAuth } from '../contexts/AuthContext'; // 导入 useAuth
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import PrintAllResultsModal from '../components/PrintAllResultsModal';
 import BrandWatermark from '../components/BrandWatermark';
+import { isDivingResult, rankDivingAwardEntries } from '../utils/divingAwards';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -783,9 +784,17 @@ const ResultsPage = () => {
 
     Object.keys(grouped).forEach(scheduleName => {
       const scheduleResults = grouped[scheduleName];
+      const isDivingSchedule = scheduleResults.some(isDivingResult);
+      const divingRanks = new Map();
 
-      // 降序排序，弃权排最后
-      scheduleResults.sort((a, b) => {
+      // 跳水项目先按单位获奖名额筛出前八，再将其余选手按成绩排列在第九名之后。
+      if (isDivingSchedule) {
+        const rankedEntries = rankDivingAwardEntries(scheduleResults);
+        scheduleResults.splice(0, scheduleResults.length, ...rankedEntries.map(({ entry }) => entry));
+        rankedEntries.forEach(({ entry, rank }) => divingRanks.set(entry, rank));
+      } else {
+        // 降序排序，弃权排最后
+        scheduleResults.sort((a, b) => {
         const isAbsentA = a.details?.isAbsent || false;
         const isAbsentB = b.details?.isAbsent || false;
         if (isAbsentA && isAbsentB) return 0;
@@ -796,8 +805,9 @@ const ResultsPage = () => {
                        (typeof a.score === 'number' ? a.score : parseFloat(a.score) || 0);
         const scoreB = typeof b.finalScore === 'number' ? b.finalScore : 
                        (typeof b.score === 'number' ? b.score : parseFloat(b.score) || 0);
-        return scoreB - scoreA;
-      });
+          return scoreB - scoreA;
+        });
+      }
 
       // 获取当前选中的比赛
       const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
@@ -824,6 +834,7 @@ const ResultsPage = () => {
       const admissionCount = top3ThenPercentageMode
         ? Math.min(Number(selectedCompetition.awardRules?.rankAwardCount ?? 3), completedFormalCount)
         : (fixedTopEightMode ? Math.min(8, completedFormalCount) : (percentAwardMode ? Math.min(8, formalCount) : getAdmissionCount(selectedCompetition, scheduleName, scheduleResults)));
+      const awardRankLimit = isDivingSchedule ? Math.min(8, completedFormalCount) : admissionCount;
       const luohuTeamRule = shouldCountForTeamRanking(selectedCompetition, scheduleName, scheduleResults);
 
       let currentRankIndex = 0; // 0-7，对应1-8名
@@ -844,17 +855,22 @@ const ResultsPage = () => {
         // 找到当前分数的所有人员
         let j = i;
         let currentScoreMembers = [];
-        while (j < scheduleResults.length) {
-          const nextMember = scheduleResults[j];
-          if (nextMember.details?.isAbsent) break; // 弃权的都在后面，遇到就停止
+        if (isDivingSchedule) {
+          currentScoreMembers = [currentMember];
+          j = i + 1;
+        } else {
+          while (j < scheduleResults.length) {
+            const nextMember = scheduleResults[j];
+            if (nextMember.details?.isAbsent) break; // 弃权的都在后面，遇到就停止
 
-          const nextScore = typeof nextMember.finalScore === 'number' ? nextMember.finalScore : 
-                            (typeof nextMember.score === 'number' ? nextMember.score : parseFloat(nextMember.score) || 0);
-          if (nextScore === currentScore) {
-            currentScoreMembers.push(nextMember);
-            j++;
-          } else {
-            break;
+            const nextScore = typeof nextMember.finalScore === 'number' ? nextMember.finalScore :
+                              (typeof nextMember.score === 'number' ? nextMember.score : parseFloat(nextMember.score) || 0);
+            if (nextScore === currentScore) {
+              currentScoreMembers.push(nextMember);
+              j++;
+            } else {
+              break;
+            }
           }
         }
 
@@ -873,23 +889,24 @@ const ResultsPage = () => {
         // 正式人员参与并列名次和积分计算
         if (normalMembers.length > 0) {
           const tieCount = normalMembers.length;
-          const displayRank = currentRankIndex + 1;
-          const awardLevel = top3ThenPercentageMode
+          const displayRank = isDivingSchedule ? divingRanks.get(currentMember) : currentRankIndex + 1;
+          const awardLevel = isDivingSchedule ? null : (top3ThenPercentageMode
             ? getTop3ThenPercentageAwardLevel(displayRank, completedFormalCount, selectedCompetition)
-            : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null));
-          const isWithinAdmissionRange = (percentAwardMode || fixedTopEightMode) ? Boolean(awardLevel) : displayRank <= admissionCount;
+            : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null)));
+          const isWithinAdmissionRange = isDivingSchedule ? displayRank <= awardRankLimit : ((percentAwardMode || fixedTopEightMode) ? Boolean(awardLevel) : displayRank <= admissionCount);
           const top3TeamPoints = top3ThenPercentageMode
             ? getTop3ThenPercentageTeamPoints(displayRank, awardLevel, selectedCompetition)
             : null;
           const isWithinTeamPointsRange = top3ThenPercentageMode
             ? top3TeamPoints > 0
-            : ((percentAwardMode || fixedTopEightMode) ? displayRank <= 8 : isWithinAdmissionRange);
+            : (isDivingSchedule ? displayRank <= awardRankLimit : ((percentAwardMode || fixedTopEightMode) ? displayRank <= 8 : isWithinAdmissionRange));
           let totalPointsForTies = 0;
           let actualPointsAwarded = 0;
 
           for (let k = 0; k < tieCount; k++) {
-            if (isWithinTeamPointsRange && currentRankIndex + k < basePoints.length) {
-              totalPointsForTies += basePoints[currentRankIndex + k];
+            const pointIndex = isDivingSchedule ? displayRank - 1 + k : currentRankIndex + k;
+            if (isWithinTeamPointsRange && pointIndex < basePoints.length) {
+              totalPointsForTies += basePoints[pointIndex];
               actualPointsAwarded++;
             }
           }
@@ -905,7 +922,7 @@ const ResultsPage = () => {
             result.teamPoints = averagePoints;
             result.isAwarded = isWithinAdmissionRange;
             result.awardLevel = awardLevel;
-            result.awardRankLimit = admissionCount;
+            result.awardRankLimit = awardRankLimit;
 
             // 累加到团体分
             const rawSchoolName = result.participant?.schoolName || result.participant?.teamName;
@@ -994,7 +1011,7 @@ const ResultsPage = () => {
       scheduleResults.forEach(result => {
         if (result.dynamicRank === '-' || result.dynamicRank === '测试') {
           if (result.isAwarded === undefined) result.isAwarded = false;
-          if (result.awardRankLimit === undefined) result.awardRankLimit = admissionCount;
+          if (result.awardRankLimit === undefined) result.awardRankLimit = awardRankLimit;
         }
       });
     });

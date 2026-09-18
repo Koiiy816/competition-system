@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import { isDivingResult, rankDivingAwardEntries } from '../utils/divingAwards';
 
 const scoreOf = (result) => Number(result?.finalScore ?? result?.score ?? 0) || 0;
 const athlete = (participant) => participant?.isVirtualTeam ? (participant.teamMembers || []).map((item) => item.name).filter(Boolean).join('、') || '未知' : participant?.teamName || participant?.name || participant?.user?.name || '未知';
@@ -21,12 +22,17 @@ const rankRows = (rows, getValue) => {
   });
 };
 
-const preparedResults = (results = []) => rankRows(
-  results.filter((result) => !result.participant?.isTest)
+const preparedResults = (results = []) => {
+  const entries = results.filter((result) => !result.participant?.isTest)
     .map((result) => ({ result, absent: Boolean(result.details?.isAbsent), score: scoreOf(result) }))
-    .sort((left, right) => Number(left.absent) - Number(right.absent) || right.score - left.score),
-  (row) => row.score
-);
+    .sort((left, right) => Number(left.absent) - Number(right.absent) || right.score - left.score);
+  if (!results.some(isDivingResult)) return rankRows(entries, (row) => row.score);
+  return rankDivingAwardEntries(entries, {
+    getParticipant: (entry) => entry.result.participant,
+    getScore: (entry) => entry.score,
+    isAbsent: (entry) => entry.absent
+  }).map(({ entry, rank }) => ({ ...entry, rank }));
+};
 
 const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, teamRankings = [] }) => {
   const [signatureImage, setSignatureImage] = useState(localStorage.getItem('chief_signature') || '');
@@ -39,12 +45,16 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     {scheduleName && <Box className="report-meta" sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', fontSize: '12px', mt: 0.5 }}><span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>跳水</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{scheduleName}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{dateOf(competition.startDate)} {competition.location || ''}</span></Box>}
   </Box>;
   const tableStyle = { borderTop: '1px solid black', borderBottom: '1px solid black' };
+  const reportSignature = () => <Box className="chief-signature" sx={{ mt: 1.5, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', fontSize: '11pt', fontFamily: '"SimSun", "宋体", serif' }}>
+    总裁判长签名：{signatureImage ? <img src={signatureImage} alt="裁判长签名" style={{ maxWidth: '150px', maxHeight: '50px', marginLeft: '8px' }} /> : <Box sx={{ width: '130px', height: '24px', ml: 1, borderBottom: '1px solid black' }} />}
+  </Box>;
 
   const teamPage = teamRankings.length ? <Box className="report-page" key="team">
     {reportHeader('团体总分')}
     <TableContainer className="report-table" sx={tableStyle}><Table size="small"><TableHead><TableRow>{['名次', '单位', '总分'].map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
       {teamRankings.map((team, index) => <TableRow key={team.schoolName || index}><TableCell align="center">{index + 1}</TableCell><TableCell align="center">{team.schoolName}</TableCell><TableCell align="center">{Number(team.totalPoints || 0).toFixed(2)}</TableCell></TableRow>)}
     </TableBody></Table></TableContainer>
+    {reportSignature()}
   </Box> : null;
 
   const rankPage = ({ name, entries }) => {
@@ -54,6 +64,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
       <TableContainer className="report-table" sx={tableStyle}><Table size="small"><TableHead><TableRow>{['名次', '姓名', '单位', '成绩', '分差', '备注'].map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
         {entries.map((entry, index) => <TableRow key={entry.result._id || index}><TableCell align="center">{entry.rank}</TableCell><TableCell align="center">{athlete(entry.result.participant)}</TableCell><TableCell align="center">{unit(entry.result.participant)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : entry.score.toFixed(2)}</TableCell><TableCell align="center">{entry.absent || entry.rank === 1 ? '' : (leader - entry.score).toFixed(2)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : ''}</TableCell></TableRow>)}
       </TableBody></Table></TableContainer>
+      {reportSignature()}
     </Box>;
   };
 
@@ -68,7 +79,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     });
     const leader = entries.find((entry) => !entry.absent)?.score || 0;
     const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
-    const columnWidths = ['6%', '10%', '10%', '7%', '6%', '5%', '5%', '5%', '5%', '5%', '7%', '8%', '8%', '8%', '5%'];
+    const columnWidths = ['5%', '10%', '12%', '14.5%', '5%', '4.5%', '4.5%', '4.5%', '4.5%', '4.5%', '6%', '6%', '7%', '7%', '5%'];
     return <Box className="report-page report-detail-page" key={`${name}-detail`}>
       {reportHeader('明细成绩公告', name)}
       <TableContainer className="report-table detail-table" sx={tableStyle}><Table size="small" sx={{ tableLayout: 'fixed', width: '100%' }}><colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup><TableHead><TableRow>{headings.map((label) => <TableCell key={label} align="center">{label === '轮次名次' ? <>轮次<br />名次</> : label}</TableCell>)}</TableRow></TableHead><TableBody>
@@ -81,12 +92,13 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
             cumulative += Number(dive?.score || 0);
             return <TableRow key={`${entry.result._id || entryIndex}-${roundIndex}`}>
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{entry.rank}</TableCell>}{roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-name-cell">{entry.result.participant?.isVirtualTeam ? (entry.result.participant.teamMembers || []).map((member, memberIndex) => <React.Fragment key={member._id || memberIndex}>{member.name}{memberIndex < entry.result.participant.teamMembers.length - 1 && <br />}</React.Fragment>) : athlete(entry.result.participant)}</TableCell>}{roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-unit-cell">{unit(entry.result.participant)}</TableCell>}
-              <TableCell align="center">{dive?.actionCode || dive?.actionName || (entry.absent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>{[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}<TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(entryIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
+              <TableCell align="center" className="detail-action-cell">{dive?.actionCode || dive?.actionName || (entry.absent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>{[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}<TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(entryIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{entry.rank}</TableCell>}{roundIndex === 0 && <TableCell rowSpan={count} align="center">{entry.absent || entry.rank === 1 ? '' : (leader - entry.score).toFixed(2)}</TableCell>}
             </TableRow>;
           });
         })}
       </TableBody></Table></TableContainer>
+      {reportSignature()}
     </Box>;
   };
 
@@ -100,9 +112,9 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
 
   return <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth PaperProps={{ sx: { minHeight: '80vh' } }}>
     <DialogTitle className="no-print" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography variant="h6">打印总成绩册</Typography><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()}>打印</Button></DialogTitle>
-    <DialogContent dividers sx={{ bgcolor: '#f5f5f5' }}><Box className="no-print" sx={{ mb: 2 }}><Typography variant="body2" color="text.secondary" gutterBottom>可上传总裁判长电子签名，签名将显示在成绩册末尾。</Typography><Button variant="outlined" component="label" size="small">上传裁判长电子签<input type="file" hidden accept="image/*" onChange={uploadSignature} /></Button></Box>
-      <Box className="all-results-printable" sx={{ p: 3, bgcolor: 'white', color: 'black' }}>{teamPage}{schedules.map(rankPage)}{schedules.map(detailPage)}<Box className="report-page signature-page" sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', minHeight: '80mm' }}><Box sx={{ textAlign: 'center', minWidth: '210px' }}><Typography sx={{ fontWeight: 'bold', mb: 1 }}>总裁判长签名：</Typography>{signatureImage ? <img src={signatureImage} alt="总裁判长签名" style={{ maxWidth: '150px', maxHeight: '60px' }} /> : <Box sx={{ borderBottom: '1px solid black', height: '35px' }} />}</Box></Box>
-        <style>{`@media print { @page { size: A4 portrait; margin: 10mm; } body * { visibility: hidden; } .all-results-printable, .all-results-printable * { visibility: visible; } .all-results-printable { position: absolute; inset: 0; width: 100%; padding: 0 !important; } .no-print, .MuiBackdrop-root { display: none !important; } .report-page { break-before: page; page-break-before: always; } .report-page:first-child { break-before: auto; page-break-before: auto; } .report-table { overflow: visible !important; } .report-table table { width: 100%; border-collapse: collapse; } .report-title { font-size: 18pt !important; } .report-subtitle { font-size: 14pt !important; } .report-meta { font-size: 10pt !important; } .report-table th, .report-table td { border-bottom: 1px solid #000 !important; padding: 4px 5px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 10pt !important; white-space: nowrap; } .report-table th { font-weight: bold !important; } .report-table:not(.detail-table) td:nth-child(2), .report-table:not(.detail-table) td:nth-child(3) { white-space: normal !important; word-break: break-all !important; overflow-wrap: anywhere !important; } .detail-table th, .detail-table td { font-size: 9pt !important; line-height: 1.2 !important; padding: 3px 2px !important; } .detail-table .detail-name-cell, .detail-table .detail-unit-cell { white-space: normal !important; word-break: break-all !important; overflow-wrap: anywhere !important; } .signature-page { break-before: page; page-break-before: always; } }`}</style>
+    <DialogContent dividers sx={{ bgcolor: '#f5f5f5' }}><Box className="no-print" sx={{ mb: 2 }}><Typography variant="body2" color="text.secondary" gutterBottom>总成绩册仅显示总裁判长电子签名，不显示裁判员名单。</Typography><Button variant="outlined" component="label" size="small">上传裁判长电子签<input type="file" hidden accept="image/*" onChange={uploadSignature} /></Button></Box>
+      <Box className="all-results-printable" sx={{ p: 3, bgcolor: 'white', color: 'black' }}>{teamPage}{schedules.map(rankPage)}{schedules.map(detailPage)}
+        <style>{`@media print { @page { size: A4 portrait; margin: 10mm; } body * { visibility: hidden; } .all-results-printable, .all-results-printable * { visibility: visible; } .all-results-printable { position: absolute; inset: 0; width: 100%; padding: 0 !important; } .no-print, .MuiBackdrop-root { display: none !important; } .report-page { break-before: page; page-break-before: always; } .report-page:first-child { break-before: auto; page-break-before: auto; } .report-table { overflow: visible !important; } .report-table table { width: 100%; border-collapse: collapse; } .report-title { font-size: 18pt !important; } .report-subtitle { font-size: 14pt !important; } .report-meta { font-size: 10pt !important; } .report-table th, .report-table td { border-bottom: 1px solid #000 !important; padding: 4px 5px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 10pt !important; white-space: nowrap; } .report-table th { font-weight: bold !important; } .report-table:not(.detail-table) td:nth-child(2), .report-table:not(.detail-table) td:nth-child(3) { white-space: normal !important; word-break: break-all !important; overflow-wrap: anywhere !important; } .detail-table th, .detail-table td { font-size: 9.5pt !important; line-height: 1.25 !important; padding: 3px 2px !important; } .detail-table .detail-name-cell, .detail-table .detail-unit-cell, .detail-table .detail-action-cell { white-space: normal !important; word-break: break-all !important; overflow-wrap: anywhere !important; } .chief-signature { break-inside: avoid; page-break-inside: avoid; } }`}</style>
       </Box>
     </DialogContent><DialogActions className="no-print"><Button onClick={onClose}>取消</Button></DialogActions>
   </Dialog>;
