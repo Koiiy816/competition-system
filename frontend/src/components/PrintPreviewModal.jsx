@@ -17,6 +17,7 @@ import {
   Grid
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
+import { rankDivingAwardEntries } from '../utils/divingAwards';
 
 const refereeGroupsByCourt = {
   A: ['卢玉玲', '李楷毅', '柯燕', '李亮', '姚晓丽', '贾宇浩', '郑植群', '陈心怡', '王文熙', '张烨盛'],
@@ -86,11 +87,18 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     return { scores, deduction, finalScore, isAbsent };
   };
   const isStrengthPrint = /素质力量|素質力量/.test(String(schedule?.name || '')) || participants.some((participant) => results[participant.__printKey || participant._id || participant]?.details?.scoringType === 'strength');
+  const isDivingPrint = !isStrengthPrint && (schedule?.scoringMode === 'diving' || participants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives)));
   const strengthEventNames = [...new Set([
     ...(schedule?.divingProgram || []).map((event) => event.actionName || event.actionCode),
     ...participants.flatMap((participant) => participant?.additionalInfo?.divingPlan?.dives || []),
     ...participants.flatMap((participant) => (results[participant.__printKey || participant._id || participant]?.details?.events || []))
   ].map((event) => normalizeStrengthActionName(typeof event === 'string' ? event : (event?.actionName || event?.actionCode))).filter(Boolean))];
+  const divingRankedParticipants = isDivingPrint ? rankDivingAwardEntries(participants, {
+    getParticipant: (participant) => participant,
+    getScore: (participant) => getScoreData(participant).finalScore,
+    isAbsent: (participant) => getScoreData(participant).isAbsent,
+    isTest: (participant) => Boolean(participant?.isTest)
+  }) : null;
 
   // Sort participants by final score (descending), absent at the bottom
   const sortedParticipants = (() => {
@@ -98,7 +106,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     if (isTeamRanking) {
       return [...participants];
     }
-    return [...participants].sort((a, b) => {
+    const scoreSorted = [...participants].sort((a, b) => {
       const dataA = getScoreData(a);
       const dataB = getScoreData(b);
       if (dataA.isAbsent && dataB.isAbsent) return 0;
@@ -113,6 +121,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       }
       return 0;
     });
+    if (!isDivingPrint) return scoreSorted;
+    return divingRankedParticipants.map(({ entry }) => entry);
   })();
 
   // Calculate actual ranks (handling ties)
@@ -147,9 +157,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     return ranks;
   };
 
-  const participantRanks = getRanks(sortedParticipants);
+  const participantRanks = isDivingPrint ? divingRankedParticipants.map(({ rank }) => rank) : getRanks(sortedParticipants);
   const completedParticipantCount = sortedParticipants.filter((participant) => !getScoreData(participant).isAbsent).length;
-  const isDivingPrint = !isStrengthPrint && (schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives)));
   const isDivingDetailPrint = isDivingPrint && schedule?.divingPrintType === 'detail';
   const isStrengthDetailPrint = isStrengthPrint && schedule?.divingPrintType === 'detail';
   const isAdmin = user?.role === 'admin' || user?.roles?.includes('admin');
@@ -251,11 +260,10 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     const leaderScore = leader ? getScoreData(leader).finalScore : 0;
     const headings = ['姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
     const columnWidths = ['12%', '13%', '15.5%', '5%', '4.5%', '4.5%', '4.5%', '4.5%', '4.5%', '6%', '6%', '7%', '7%', '5%'];
-    return <TableContainer sx={{ border: '1px solid black' }}>
+    return <TableContainer>
       <Table size="small" className="diving-detail-table" sx={{ tableLayout: 'fixed', width: '100%',
-        // “总名次”和“分差”使用 rowSpan；不能移除每行最后一个单元格的右边框，
-        // 否则后续行的“累计分”会与跨行的“总名次”之间断线。
-        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 2px', color: 'black', fontSize: '9.5pt', lineHeight: 1.25, fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
+        '& .MuiTableHead-root .MuiTableCell-root': { border: '1px solid black', padding: '3px 2px', color: 'black', fontSize: '9.5pt', lineHeight: 1.25, fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' },
+        '& .MuiTableBody-root .MuiTableCell-root': { border: 'none', padding: '3px 2px', color: 'black', fontSize: '9.5pt', lineHeight: 1.25, fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
       }}>
         <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
         <TableHead><TableRow>{headings.map((header) => <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header === '轮次名次' ? <>轮次<br />名次</> : header}</TableCell>)}</TableRow></TableHead>
@@ -266,7 +274,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           const name = participant?.isVirtualTeam ? (participant.teamMembers || []).map((member) => member.name).join('、') : (participant?.teamName || participant?.name || participant?.user?.name || '未知');
           const unit = participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-';
           let cumulative = 0;
-          return Array.from({ length: count }, (_, roundIndex) => {
+          const participantRows = Array.from({ length: count }, (_, roundIndex) => {
             const dive = dives[roundIndex];
             cumulative += Number(dive?.score || 0);
             return <TableRow key={`${participant._id || participantIndex}-${roundIndex}`}>
@@ -275,10 +283,14 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
               <TableCell align="center" className="detail-action-cell">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
               {[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}
               <TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(participantIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
-              {roundIndex === 0 && <TableCell rowSpan={count} align="center" sx={{ borderLeft: '1px solid black !important' }}>{participantRanks[participantIndex]}</TableCell>}
+              {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{isAbsent || participantRanks[participantIndex] === 1 ? '' : (leaderScore - finalScore).toFixed(2)}</TableCell>}
             </TableRow>;
           });
+          if (participantIndex < sortedParticipants.length - 1) {
+            participantRows.push(<TableRow key={`${participant._id || participantIndex}-spacer`} sx={{ height: 14 }}><TableCell colSpan={headings.length} sx={{ border: 'none !important', p: '0 !important', fontSize: 0 }} /></TableRow>);
+          }
+          return participantRows;
         })}</TableBody>
       </Table>
     </TableContainer>;
