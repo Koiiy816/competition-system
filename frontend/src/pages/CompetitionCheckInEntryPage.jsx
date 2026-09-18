@@ -61,6 +61,28 @@ const formatDateTime = (value) => {
   return new Date(value).toLocaleString('zh-CN');
 };
 
+// 检录接口返回的是服务端刚写入成功的参赛者资料。只合并检录相关字段，
+// 避免因局部响应缺少赛程展示字段而覆盖当前列表内容。
+const mergeCheckInFields = (participant, updatedParticipant) => {
+  if (!updatedParticipant) return participant;
+
+  const checkInFields = [
+    'isCheckedIn',
+    'checkInStatus',
+    'checkedInAt',
+    'checkedInBy',
+    'absentAt',
+    'absentBy',
+    'updatedAt'
+  ];
+
+  return checkInFields.reduce((nextParticipant, field) => (
+    Object.prototype.hasOwnProperty.call(updatedParticipant, field)
+      ? { ...nextParticipant, [field]: updatedParticipant[field] }
+      : nextParticipant
+  ), participant);
+};
+
 const CompetitionCheckInEntryPage = () => {
   const { id, scheduleId } = useParams();
   const navigate = useNavigate();
@@ -144,9 +166,33 @@ const CompetitionCheckInEntryPage = () => {
       setSavingId(participant._id);
       setError('');
       setSuccess('');
-      await scheduleService.updateParticipantCheckInStatus(id, participant._id, status, scheduleId);
+      const response = await scheduleService.updateParticipantCheckInStatus(id, participant._id, status, scheduleId);
+      const updatedParticipants = Array.isArray(response.data) ? response.data : [response.data];
+      const updatesById = new Map(updatedParticipants.filter(Boolean).map(item => [item._id, item]));
+
+      // 仅使用接口成功后的服务端返回值更新本地列表：个人项目更新当前行，
+      // 集体项目则同步更新该队伍内所有被服务端更新的队员。
+      setSchedule(currentSchedule => {
+        if (!currentSchedule) return currentSchedule;
+
+        return {
+          ...currentSchedule,
+          participants: (currentSchedule.participants || []).map(currentParticipant => {
+            const currentUpdate = updatesById.get(currentParticipant._id);
+            const mergedParticipant = mergeCheckInFields(currentParticipant, currentUpdate);
+
+            if (!currentParticipant.isVirtualTeam) return mergedParticipant;
+
+            return {
+              ...mergedParticipant,
+              teamMembers: (currentParticipant.teamMembers || []).map(member => (
+                mergeCheckInFields(member, updatesById.get(member._id))
+              ))
+            };
+          })
+        };
+      });
       setSuccess(messageMap[status] || '检录状态已更新');
-      await fetchSchedule();
     } catch (err) {
       setError(err.message || '更新检录状态失败');
     } finally {
