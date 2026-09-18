@@ -60,11 +60,37 @@ function awardLevel(rank, total, rules) {
   return '\u4e09\u7b49\u5956';
 }
 
-function ranked(records) {
-  const ordered = [...records].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'zh-Hans-CN'));
+function compareDivingActions(left, right) {
+  const leftScores = Array.isArray(left.dives) ? left.dives.map(dive => Number(dive?.score) || 0) : [];
+  const rightScores = Array.isArray(right.dives) ? right.dives.map(dive => Number(dive?.score) || 0) : [];
+  for (let index = 0; index < Math.max(leftScores.length, rightScores.length); index += 1) {
+    const difference = (rightScores[index] || 0) - (leftScores[index] || 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+function compareStrengthEvents(left, right) {
+  const eventsFor = record => (Array.isArray(record.events) ? record.events : [])
+    .slice().sort((a, b) => Number(a?.order || 0) - Number(b?.order || 0))
+    .map(event => Number(event?.points) || 0);
+  const leftPoints = eventsFor(left);
+  const rightPoints = eventsFor(right);
+  for (let index = 0; index < Math.max(leftPoints.length, rightPoints.length); index += 1) {
+    const difference = (rightPoints[index] || 0) - (leftPoints[index] || 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+function ranked(records, uniqueRankType = null) {
+  const tieBreak = uniqueRankType === 'diving'
+    ? compareDivingActions
+    : (uniqueRankType === 'strength' ? compareStrengthEvents : () => 0);
+  const ordered = [...records].sort((a, b) => b.score - a.score || tieBreak(a, b) || a.name.localeCompare(b.name, 'zh-Hans-CN') || a.recipientKey.localeCompare(b.recipientKey));
   let previous = null; let rank = 0;
   return ordered.map((record, index) => {
-    if (previous === null || previous !== record.score) rank = index + 1;
+    if (uniqueRankType || previous === null || previous !== record.score) rank = index + 1;
     previous = record.score;
     return { ...record, rank };
   });
@@ -104,11 +130,14 @@ exports.getAwards = async (req, res, next) => {
       if (!eventsBySchedule.has(id)) eventsBySchedule.set(id, { schedule, rows: [] });
       eventsBySchedule.get(id).rows.push({
         recipientKey: keyOf(result.participant), name: result.participant.name || result.participant.teamName,
-        schoolName: result.participant.schoolName || result.participant.teamName || '', score: finalScore(result)
+        schoolName: result.participant.schoolName || result.participant.teamName || '', score: finalScore(result), dives: result.details?.dives, events: result.details?.events
       });
     });
     const eventAwards = [...eventsBySchedule.values()].map(({ schedule, rows }) => {
-      const list = ranked(rows).map(item => ({ ...item, awardLevel: awardLevel(item.rank, rows.length, competition.awardRules) }));
+      const isDiving = schedule.scoringMode === 'diving' && !/素质力量|素質力量/.test(String(schedule.name || ''));
+      const isStrength = /素质力量|素質力量/.test(String(schedule.name || '')) || rows.some(row => Array.isArray(row.events));
+      const rankType = isDiving ? 'diving' : (isStrength ? 'strength' : null);
+      const list = ranked(rows, rankType).map(({ dives, events, ...item }) => ({ ...item, awardLevel: awardLevel(item.rank, rows.length, competition.awardRules) }));
       return { scheduleId: keyOf(schedule), scheduleName: schedule.name, count: rows.length, awards: list };
     });
 

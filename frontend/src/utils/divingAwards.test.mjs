@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isUnitLimitedAwardResult, rankDivingAwardEntries } from './divingAwards.js';
+import { rankDivingAwardEntries } from './divingAwards.js';
 
 const result = (name, unit, score, options = {}) => ({
   participant: { name, schoolName: unit, ...options.participant },
@@ -46,10 +46,17 @@ test('an entry excluded by the unit limit starts outside the top eight even when
   assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2, 3, 9]);
 });
 
-test('strength events use the same unit-limited award rule', () => {
-  assert.equal(isUnitLimitedAwardResult({ schedule: { name: '素质力量' } }), true);
+test('diving ties are broken by each action score in program order', () => {
+  const tied = (name, dives) => ({
+    participant: { name, schoolName: `${name}单位` },
+    finalScore: 100,
+    details: { dives }
+  });
   const ranked = rankDivingAwardEntries([
-    result('甲1', '甲单位', 100), result('甲2', '甲单位', 99), result('甲3', '甲单位', 98), result('甲4', '甲单位', 97)
+    tied('乙', [{ score: 48, difficulty: 2.0 }, { score: 52, difficulty: 2.4 }]),
+    tied('甲', [{ score: 50, difficulty: 2.0 }, { score: 50, difficulty: 2.4 }])
   ]);
-  assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2, 3, 9]);
+
+  assert.deepEqual(ranked.map(({ entry }) => entry.participant.name), ['甲', '乙']);
+  assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2]);
 });

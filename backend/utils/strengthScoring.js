@@ -20,6 +20,19 @@ const normalizeStrengthEvents = (events) => (Array.isArray(events) ? events : []
   };
 }).filter(Boolean);
 
+// A strength score can be entered one action at a time.  Keep previously
+// recorded actions when the client submits only the actions completed so far.
+const mergeStrengthEvents = (currentEvents, incomingEvents) => {
+  const merged = new Map();
+  (Array.isArray(currentEvents) ? currentEvents : []).forEach((event) => {
+    if (event?.actionName) merged.set(event.actionName, event);
+  });
+  (Array.isArray(incomingEvents) ? incomingEvents : []).forEach((event) => {
+    if (event?.actionName) merged.set(event.actionName, event);
+  });
+  return [...merged.values()].sort((left, right) => Number(left.order || 0) - Number(right.order || 0));
+};
+
 const pointsForRank = (rank) => rank === 1 ? 20 : Math.max(0, 20 - rank);
 
-module.exports = { isStrengthSchedule, normalizeStrengthEvents, pointsForRank };
+module.exports = { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, pointsForRank };

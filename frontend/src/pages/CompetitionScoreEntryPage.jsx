@@ -474,9 +474,12 @@ const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatu
   const canEnter = canEdit && isChiefOrAdmin && scheduleStatus !== 'completed' && checkInStatus === 'checked' && !isAbsent;
   const name = participant.name || participant.user?.name || '未知选手';
   const save = async () => {
+    const enteredEvents = events
+      .filter((event) => String(event.rawScore ?? '').trim() !== '' && Number.isFinite(Number(event.rawScore)))
+      .map((event) => ({ ...event, rawScore: Number(event.rawScore) }));
     setSaving(true);
     try {
-      await onSave(participant._id, events.map((event) => ({ ...event, rawScore: Number(event.rawScore) })));
+      await onSave(participant._id, enteredEvents);
       setDirty(false);
     } finally { setSaving(false); }
   };
@@ -495,7 +498,7 @@ const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatu
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>小项/动作</TableCell><TableCell align="center">排名依据</TableCell><TableCell align="center">原始成绩</TableCell><TableCell align="center">小项名次</TableCell><TableCell align="center">积分</TableCell></TableRow></TableHead>
       <TableBody>{events.map((event, index) => { const saved = initialResult?.details?.events?.find((item) => item.actionName === event.actionName); return <TableRow key={`${event.actionName}-${index}`}><TableCell>{index + 1}. {event.actionName}</TableCell><TableCell align="center">{strengthRankingBasis(event.actionName)}</TableCell><TableCell align="center"><TextField size="small" type="number" value={event.rawScore} disabled={!canEnter} onChange={(e) => { setEvents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, rawScore: e.target.value } : item)); setDirty(true); }} InputProps={{ endAdornment: <InputAdornment position="end">{strengthUnit(event.actionName)}</InputAdornment> }} inputProps={{ min: 0, step: 0.01, style: { width: 90, textAlign: 'center' } }} /></TableCell><TableCell align="center">{saved?.rank || '-'}</TableCell><TableCell align="center">{saved?.points ?? '-'}</TableCell></TableRow>; })}</TableBody>
     </Table></TableContainer>
-    <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || !dirty || events.some((event) => event.rawScore === '')}>{saving ? '保存中…' : '保存并重算排名'}</Button></Box>
+    <Box className="no-print" sx={{ p: 1.5, display: 'flex', justifyContent: 'flex-end' }}><Button variant="contained" onClick={save} disabled={!canEnter || saving || !dirty || events.every((event) => String(event.rawScore ?? '').trim() === '')}>{saving ? '保存中…' : '保存已录入小项并重算排名'}</Button></Box>
   </Paper>;
 };
 

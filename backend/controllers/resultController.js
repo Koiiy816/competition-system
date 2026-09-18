@@ -3,7 +3,7 @@ const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const { calculateDivingDiveScore } = require('../utils/divingScoring');
-const { isStrengthSchedule, normalizeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
+const { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
@@ -248,10 +248,13 @@ exports.submitStrengthScore = async (req, res, next) => {
     const normalizedEvents = checkInStatus === 'absent' ? [] : normalizeStrengthEvents(events);
     if (checkInStatus !== 'absent' && !normalizedEvents.length) return res.status(400).json({ success: false, message: '请录入至少一个有效的小项原始成绩' });
     const current = await Result.findOne({ schedule: scheduleId, participant: participantId });
+    const mergedEvents = checkInStatus === 'absent'
+      ? []
+      : mergeStrengthEvents(current?.details?.events, normalizedEvents);
     const data = {
       competition: req.params.competitionId, schedule: scheduleId, participant: participantId,
       score: 0,
-      details: { scoringType: 'strength', isAbsent: checkInStatus === 'absent', events: normalizedEvents, completed: true },
+      details: { scoringType: 'strength', isAbsent: checkInStatus === 'absent', events: mergedEvents, completed: true },
       submittedBy: req.user.id, verifiedBy: req.user.id, verifiedAt: new Date(), status: 'verified', updatedAt: new Date()
     };
     if (current) await Result.findByIdAndUpdate(current._id, data, { runValidators: true }); else await Result.create(data);
