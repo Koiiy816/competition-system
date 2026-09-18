@@ -52,6 +52,8 @@ const getCheckInStatusMeta = (status) => {
   }
 };
 
+const getUndoCheckInLabel = (status) => status === 'absent' ? '撤销缺席' : '撤销检录';
+
 const isParticipantAbsent = (participant, result) => (
   getParticipantCheckInStatus(participant) === 'absent' || !!result?.details?.isAbsent
 );
@@ -262,7 +264,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
               </>
             )}
             {['checked', 'absent'].includes(checkInStatus) && (
-              <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>撤销</Button>
+              <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>{getUndoCheckInLabel(checkInStatus)}</Button>
             )}
           </Box>
         )}
@@ -449,9 +451,9 @@ const DivingScoreCard = ({ participant, schedule, initialResult, format, schedul
     {canCheckIn && <Box className="no-print" sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
       <Typography variant="body2">检录状态：</Typography><Chip size="small" label={getCheckInStatusMeta(checkInStatus).label} color={getCheckInStatusMeta(checkInStatus).color} />
       {checkInStatus === 'not_checked' && <><Button size="small" variant="contained" color="success" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'checked')}>检录</Button><Button size="small" variant="outlined" color="error" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'absent')}>缺席</Button></>}
-      {['checked', 'absent'].includes(checkInStatus) && <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>撤销检录</Button>}
+      {['checked', 'absent'].includes(checkInStatus) && <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>{getUndoCheckInLabel(checkInStatus)}</Button>}
     </Box>}
-    {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该参赛对象已标记为缺席。' : '请先完成检录后再打分。'}</Alert>}
+    {!isAbsent && checkInStatus !== 'checked' && <Alert severity="warning" sx={{ m: 1.5 }}>请先完成检录后再打分。</Alert>}
     {!hasParticipantPlan && <Alert severity="warning" sx={{ m: 1.5 }}>{format === 'synchronized' ? '该双人组合需要两位搭档共用完全一致的动作表，请先完成配对并补录动作表后再打分。' : '该参赛对象还没有跳水动作表，请先补录动作表后再打分。'}</Alert>}
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>轮次／动作</TableCell><TableCell>难度</TableCell>{[1,2,3,4,5].map((number) => <TableCell key={number} align="center">裁{number}</TableCell>)}<TableCell align="center">实得分</TableCell>{supportsRoundDeduction && <TableCell align="center">扣分</TableCell>}</TableRow></TableHead>
       <TableBody>{dives.map((dive, diveIndex) => <TableRow key={diveIndex}><TableCell>{diveIndex + 1}. {dive.actionCode && dive.actionCode !== dive.actionName ? `[${dive.actionCode}] ` : ''}{dive.actionName || dive.actionCode}</TableCell><TableCell align="center">{formatDifficulty(dive.difficulty)}</TableCell>{[0,1,2,3,4].map((judgeIndex) => { const mine = isChiefOrAdmin || allowedIndex === judgeIndex; return <TableCell key={judgeIndex} align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={mine ? (dive.scores?.[judgeIndex] ?? '') : '***'} disabled={!canEnter || !mine} onChange={(event) => updateScore(diveIndex, judgeIndex, event.target.value)} inputProps={{ min: 0, max: 10, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>; })}<TableCell align="center" sx={{ fontWeight: 'bold' }}>{calcDive(dive) ? calcDive(dive).toFixed(2) : '-'}</TableCell>{supportsRoundDeduction && <TableCell align="center" sx={{ p: 0.5 }}><TextField size="small" type="number" value={isChiefOrAdmin ? dive.deduction : '***'} disabled={!canEnter || !isChiefOrAdmin} onChange={(event) => updateDeduction(diveIndex, event.target.value)} inputProps={{ min: 0, step: 0.1, style: { width: 52, textAlign: 'center' } }} /></TableCell>}</TableRow>)}</TableBody>
@@ -491,10 +493,10 @@ const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatu
     {canCheckIn && <Box className="no-print" sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
       <Typography variant="body2">检录状态：</Typography><Chip size="small" label={getCheckInStatusMeta(checkInStatus).label} color={getCheckInStatusMeta(checkInStatus).color} />
       {checkInStatus === 'not_checked' && <><Button size="small" variant="contained" color="success" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'checked')}>检录</Button><Button size="small" variant="outlined" color="error" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'absent')}>缺席</Button></>}
-      {['checked', 'absent'].includes(checkInStatus) && <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>撤销检录</Button>}
+      {['checked', 'absent'].includes(checkInStatus) && <Button size="small" variant="text" disabled={isCheckInUpdating} onClick={() => onCheckIn(participant, 'not_checked')}>{getUndoCheckInLabel(checkInStatus)}</Button>}
     </Box>}
     {!isChiefOrAdmin && <Alert severity="info" sx={{ m: 1.5 }}>素质力量成绩仅由裁判长录入。</Alert>}
-    {checkInStatus !== 'checked' && <Alert severity={isAbsent ? 'info' : 'warning'} sx={{ m: 1.5 }}>{isAbsent ? '该选手已标记为缺席。' : '请先完成检录后再录入。'}</Alert>}
+    {!isAbsent && checkInStatus !== 'checked' && <Alert severity="warning" sx={{ m: 1.5 }}>请先完成检录后再录入。</Alert>}
     <TableContainer><Table size="small"><TableHead><TableRow><TableCell>小项/动作</TableCell><TableCell align="center">排名依据</TableCell><TableCell align="center">原始成绩</TableCell><TableCell align="center">小项名次</TableCell><TableCell align="center">积分</TableCell></TableRow></TableHead>
       <TableBody>{events.map((event, index) => { const saved = initialResult?.details?.events?.find((item) => item.actionName === event.actionName); return <TableRow key={`${event.actionName}-${index}`}><TableCell>{index + 1}. {event.actionName}</TableCell><TableCell align="center">{strengthRankingBasis(event.actionName)}</TableCell><TableCell align="center"><TextField size="small" type="number" value={event.rawScore} disabled={!canEnter} onChange={(e) => { setEvents((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, rawScore: e.target.value } : item)); setDirty(true); }} InputProps={{ endAdornment: <InputAdornment position="end">{strengthUnit(event.actionName)}</InputAdornment> }} inputProps={{ min: 0, step: 0.01, style: { width: 90, textAlign: 'center' } }} /></TableCell><TableCell align="center">{saved?.rank || '-'}</TableCell><TableCell align="center">{saved?.points ?? '-'}</TableCell></TableRow>; })}</TableBody>
     </Table></TableContainer>
@@ -800,7 +802,7 @@ const CompetitionScoreEntryPage = () => {
     if (schedule?.status === 'completed') {
       if (!window.confirm('确定要恢复本场比赛吗？恢复后将可以重新修改成绩。')) return;
       try {
-        await scheduleService.updateSchedule(id, scheduleId, { status: 'ongoing' });
+        await scheduleService.updateScheduleStatus(id, scheduleId, 'ongoing');
         setSchedule(prev => ({ ...prev, status: 'ongoing' }));
       } catch (err) {
         alert('操作失败');
@@ -808,7 +810,7 @@ const CompetitionScoreEntryPage = () => {
     } else {
       if (!window.confirm('确定要结束本场比赛吗？结束将锁定成绩。')) return;
       try {
-        await scheduleService.updateSchedule(id, scheduleId, { status: 'completed' });
+        await scheduleService.updateScheduleStatus(id, scheduleId, 'completed');
         setSchedule(prev => ({ ...prev, status: 'completed' }));
       } catch (err) {
         alert('操作失败');
@@ -961,11 +963,6 @@ const CompetitionScoreEntryPage = () => {
       {checkInSummary.not_checked > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} className="no-print">
           当前有 {checkInSummary.not_checked} 个参赛对象尚未检录，已禁止打分。
-        </Alert>
-      )}
-      {checkInSummary.absent > 0 && (
-        <Alert severity="info" sx={{ mb: 2 }} className="no-print">
-          当前有 {checkInSummary.absent} 个参赛对象已被检录标记为缺席，页面已自动显示“缺席/弃权”。
         </Alert>
       )}
       {checkInSummary.mixed > 0 && (

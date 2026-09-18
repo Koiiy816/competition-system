@@ -170,8 +170,21 @@ const ParticipantSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  // 检录结论必须独立持久化；isCheckedIn 仅保留为“已检录”的兼容布尔值。
+  checkInStatus: {
+    type: String,
+    enum: ['not_checked', 'checked', 'absent'],
+    default: 'not_checked'
+  },
   checkedInAt: {
     type: Date
+  },
+  absentAt: {
+    type: Date
+  },
+  absentBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   checkedInBy: {
     type: mongoose.Schema.Types.ObjectId,

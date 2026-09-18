@@ -3,6 +3,25 @@ const test = require('node:test');
 const Participant = require('../models/Participant');
 const { getMyParticipations } = require('../controllers/participantController');
 
+test('Participant persists an absent check-in status and keeps its timestamp separate', () => {
+  const participant = new Participant({
+    user: '507f1f77bcf86cd799439011',
+    competition: '507f1f77bcf86cd799439011',
+    name: '缺席选手',
+    gender: 'male',
+    type: 'individual',
+    insuranceConfirmed: true,
+    checkInStatus: 'absent',
+    isCheckedIn: false,
+    absentAt: new Date('2026-09-18T00:00:00.000Z')
+  });
+
+  const data = participant.toObject();
+  assert.equal(data.checkInStatus, 'absent');
+  assert.equal(data.absentAt.toISOString(), '2026-09-18T00:00:00.000Z');
+  assert.equal(data.checkedInAt, undefined);
+});
+
 test('getMyParticipations only queries the current unit account records', async () => {
   const originalFind = Participant.find;
   let query;

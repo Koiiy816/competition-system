@@ -19,6 +19,8 @@ test('getSchedules includes diving action plans for start-order printing', async
     await getSchedules({ params: { competitionId: '507f1f77bcf86cd799439011' }, query: {} }, response, assert.fail);
     const participants = populates.find((value) => value.path === 'participants');
     assert.match(participants.select, /additionalInfo/);
+    assert.match(participants.select, /checkInStatus/);
+    assert.match(participants.select, /absentAt/);
     assert.match(participants.populate.find((value) => value.path === 'teamMembers').select, /additionalInfo/);
   } finally {
     Schedule.find = originalFind;

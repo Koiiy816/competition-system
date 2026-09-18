@@ -744,14 +744,16 @@ exports.updateParticipantCheckInStatus = async (req, res, next) => {
           checkInStatus: 'checked',
           checkedInAt: now,
           checkedInBy: req.user.id,
+          absentAt: null,
+          absentBy: null,
           updatedAt: now
         }
       : status === 'absent'
         ? {
             isCheckedIn: false,
             checkInStatus: 'absent',
-            checkedInAt: now,
-            checkedInBy: req.user.id,
+            absentAt: now,
+            absentBy: req.user.id,
             updatedAt: now
           }
         : {
@@ -759,6 +761,8 @@ exports.updateParticipantCheckInStatus = async (req, res, next) => {
             checkInStatus: 'not_checked',
             checkedInAt: null,
             checkedInBy: null,
+            absentAt: null,
+            absentBy: null,
             updatedAt: now
           };
 
@@ -792,8 +796,7 @@ exports.updateParticipantCheckInStatus = async (req, res, next) => {
               participant: targetId,
               score: 0,
               details: {
-                scores: [0, 0, 0, 0, 0],
-                deduction: 0,
+                ...(existingResult?.details || {}),
                 isAbsent: true,
                 absentSource: 'check_in'
               },
@@ -812,27 +815,29 @@ exports.updateParticipantCheckInStatus = async (req, res, next) => {
           })
         );
       } else {
-        await Result.updateMany(
+        const absenceResults = await Result.find(
           {
             competition: competitionId,
             schedule: scheduleId,
             participant: { $in: cleanupResultParticipantIds },
             'details.absentSource': 'check_in'
-          },
+          }
+        );
+        await Promise.all(absenceResults.map((result) => Result.findByIdAndUpdate(
+          result._id,
           {
             $set: {
-              score: 0,
               status: 'pending',
               updatedAt: new Date(),
               details: {
-                scores: [0, 0, 0, 0, 0],
-                deduction: 0,
+                ...(result.details || {}),
                 isAbsent: false,
                 absentSource: null
               }
             }
-          }
-        );
+          },
+          { runValidators: true }
+        )));
       }
     }
 
