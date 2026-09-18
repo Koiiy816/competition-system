@@ -285,6 +285,10 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           /* 打分页会先隐藏全页；弹层打印内容必须显式恢复可见。 */
           body * { visibility: hidden !important; }
           .print-dialog-root, .print-dialog-root * { visibility: visible !important; }
+          body:has(.print-dialog-root) .print-container {
+            display: none !important;
+            visibility: hidden !important;
+          }
           
           /* Ensure the dialog is visible and takes full space */
           .print-dialog-root {
