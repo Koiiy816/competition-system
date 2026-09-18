@@ -65,6 +65,7 @@ import PrintPreviewModal from '../components/PrintPreviewModal';
 import PrintAllResultsModal from '../components/PrintAllResultsModal';
 import BrandWatermark from '../components/BrandWatermark';
 import { isDivingResult, rankDivingAwardEntries } from '../utils/divingAwards';
+import { isStrengthResult, rankStrengthEntries } from '../utils/strengthRanking';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -785,13 +786,19 @@ const ResultsPage = () => {
     Object.keys(grouped).forEach(scheduleName => {
       const scheduleResults = grouped[scheduleName];
       const isDivingSchedule = scheduleResults.some(isDivingResult);
+      const isStrengthSchedule = scheduleResults.some(isStrengthResult);
       const divingRanks = new Map();
+      const strengthRanks = new Map();
 
       // 跳水项目先按单位获奖名额筛出前八，再将其余选手按成绩排列在第九名之后。
       if (isDivingSchedule) {
         const rankedEntries = rankDivingAwardEntries(scheduleResults);
         scheduleResults.splice(0, scheduleResults.length, ...rankedEntries.map(({ entry }) => entry));
         rankedEntries.forEach(({ entry, rank }) => divingRanks.set(entry, rank));
+      } else if (isStrengthSchedule) {
+        const rankedEntries = rankStrengthEntries(scheduleResults);
+        scheduleResults.splice(0, scheduleResults.length, ...rankedEntries.map(({ entry }) => entry));
+        rankedEntries.forEach(({ entry, rank }) => strengthRanks.set(entry, rank));
       } else {
         // 降序排序，弃权排最后
         scheduleResults.sort((a, b) => {
@@ -855,7 +862,7 @@ const ResultsPage = () => {
         // 找到当前分数的所有人员
         let j = i;
         let currentScoreMembers = [];
-        if (isDivingSchedule) {
+        if (isDivingSchedule || isStrengthSchedule) {
           currentScoreMembers = [currentMember];
           j = i + 1;
         } else {
@@ -889,7 +896,7 @@ const ResultsPage = () => {
         // 正式人员参与并列名次和积分计算
         if (normalMembers.length > 0) {
           const tieCount = normalMembers.length;
-          const displayRank = isDivingSchedule ? divingRanks.get(currentMember) : currentRankIndex + 1;
+          const displayRank = isDivingSchedule ? divingRanks.get(currentMember) : (isStrengthSchedule ? strengthRanks.get(currentMember) : currentRankIndex + 1);
           const awardLevel = isDivingSchedule ? null : (top3ThenPercentageMode
             ? getTop3ThenPercentageAwardLevel(displayRank, completedFormalCount, selectedCompetition)
             : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null)));
