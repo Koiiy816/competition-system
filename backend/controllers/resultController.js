@@ -60,11 +60,16 @@ exports.openScoreStream = (req, res) => {
     if (!res.writableEnded && !res.destroyed) res.write(': keepalive\n\n');
   }, 25000);
 
-  req.on('close', () => {
+  let closed = false;
+  const cleanup = () => {
+    if (closed) return;
+    closed = true;
     clearInterval(heartbeat);
     clients.delete(res);
     if (clients.size === 0) scoreStreamClients.delete(key);
-  });
+  };
+  req.on('close', cleanup);
+  res.on('error', cleanup);
 };
 
 /**
@@ -476,24 +481,6 @@ exports.getResults = async (req, res, next) => {
     const page = parseInt(req.query.page, 10) || 1;
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
-    const scoreRefreshOnly = req.query.fields === 'score-refresh';
-
-    // 评分页的实时同步只需要当前场次的分数。避免每两秒重复统计总数、
-    // 展开参赛者/赛程/用户等关联资料；首次进入评分页仍使用完整响应。
-    if (scoreRefreshOnly) {
-      const results = await Result.find(query)
-        .select('_id participant score details status updatedAt')
-        .limit(limit)
-        .lean();
-
-      return res.status(200).json({
-        success: true,
-        count: results.length,
-        total: results.length,
-        data: results
-      });
-    }
-
     const total = await Result.countDocuments(query);
 
     // 执行完整查询

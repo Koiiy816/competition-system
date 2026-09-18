@@ -615,6 +615,17 @@ const CompetitionScoreEntryPage = () => {
     };
   }, [id, scheduleId, isChiefOrAdmin]);
 
+  // 仅用于检录、重置等管理员主动操作后的单次重读；不参与任何定时刷新。
+  const fetchResultsOnce = async () => {
+    const response = await resultService.getResults(id, { scheduleId, limit: 1000 });
+    const nextResults = {};
+    (response.data || []).forEach((result) => {
+      const participantId = result.participant?._id || result.participant;
+      if (participantId) nextResults[participantId] = result;
+    });
+    setResults(nextResults);
+  };
+
   const fetchScheduleOnly = async () => {
     try {
       const schedRes = await scheduleService.getSchedule(id, scheduleId);
@@ -816,7 +827,7 @@ const CompetitionScoreEntryPage = () => {
     setError('');
     try {
       await scheduleService.updateParticipantCheckInStatus(id, participant._id, status, scheduleId);
-      await Promise.all([fetchScheduleOnly(), fetchResultsOnly()]);
+      await Promise.all([fetchScheduleOnly(), fetchResultsOnce()]);
     } catch (err) {
       setError(err.message || '检录状态更新失败');
     } finally {
@@ -848,7 +859,7 @@ const CompetitionScoreEntryPage = () => {
     if (!window.confirm('确定重置本场所有选手的已公开轮次吗？大屏会从第1轮重新开始显示；原始裁判分、动作表和报名资料不会删除。')) return;
     try {
       const response = await resultService.resetDivingPublication(id, scheduleId);
-      await fetchResultsOnly();
+      await fetchResultsOnce();
       alert(response.message || '本场已公开轮次已重置');
     } catch (err) {
       alert(err.message || '重置已公开轮次失败');
@@ -862,7 +873,7 @@ const CompetitionScoreEntryPage = () => {
     if (!confirmed) return;
     try {
       const response = await resultService.resetScheduleResults(id, scheduleId);
-      await fetchResultsOnly();
+      await fetchResultsOnce();
       setSchedule((current) => current ? { ...current, status: 'scheduled' } : current);
       alert(response.message || '本项目测试成绩已清空');
     } catch (err) {
@@ -878,7 +889,7 @@ const CompetitionScoreEntryPage = () => {
   const handleStrengthSave = async (participantId, events) => {
     try {
       await resultService.submitStrengthScore(id, { scheduleId, participantId, events });
-      await fetchResultsOnly();
+      await fetchResultsOnce();
     } catch (err) {
       alert(err.message || '保存素质力量成绩失败');
       throw err;
