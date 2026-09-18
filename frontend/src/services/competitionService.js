@@ -33,6 +33,19 @@ const competitionService = {
     }
   },
 
+  // Score entry only renders the competition name and fallback location.  This
+  // compact response avoids downloading every participant and schedule.
+  getScoreContext: async (id) => {
+    try {
+      const response = await api.get(`/competitions/${id}`, {
+        params: { fields: 'score-context' }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '获取比赛信息失败' };
+    }
+  },
+
   /**
    * 创建新比赛
    * @param {Object|FormData} competitionData - 比赛数据

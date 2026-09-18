@@ -673,14 +673,20 @@ const CompetitionScoreEntryPage = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const schedRes = await scheduleService.getSchedule(id, scheduleId);
+      // These reads do not depend on one another.  Loading them together avoids
+      // adding one public-network round trip for every score-page navigation.
+      const [schedRes, compRes, resRes] = await Promise.all([
+        scheduleService.getSchedule(id, scheduleId),
+        competitionService.getScoreContext(id),
+        resultService.getResults(id, { scheduleId: scheduleId, limit: 1000 })
+      ]);
       
       if (!schedRes || !schedRes.data) {
         throw new Error('赛程数据加载失败');
       }
       
-      // We also need the competition details to show the updated location
-      const compRes = await competitionService.getCompetition(id);
+      // We only need the compact score context for the fallback location and
+      // print title, rather than the full competition payload.
       if (compRes && compRes.data) {
         // Overlay the competition's location onto the schedule if schedule doesn't have a distinct one
         schedRes.data.location = compRes.data.location || schedRes.data.location;
@@ -688,9 +694,6 @@ const CompetitionScoreEntryPage = () => {
       }
       
       setSchedule(schedRes.data);
-      
-      // Get Results
-      const resRes = await resultService.getResults(id, { scheduleId: scheduleId, limit: 1000 });
       
       // Map results by participant ID for easy lookup
       const resMap = {};

@@ -130,20 +130,32 @@ exports.getCompetitions = async (req, res, next) => {
  */
 exports.getCompetition = async (req, res, next) => {
   try {
-    const competition = await Competition.findById(req.params.id)
-      .populate('organizer', 'name email')
-      .populate({
-        path: 'participants',
-        select: 'user type teamName status registrationDate',
-        populate: {
-          path: 'user',
-          select: 'name email'
-        }
-      })
-      .populate({
-        path: 'schedules',
-        select: 'name startTime endTime location status'
-      });
+    // The score-entry page only needs the competition name and location.  Avoid
+    // populating every participant and schedule on that high-frequency route.
+    // The default response remains unchanged for all existing callers.
+    const isScoreContext = req.query.fields === 'score-context';
+    let competitionQuery = Competition.findById(req.params.id);
+
+    if (isScoreContext) {
+      competitionQuery = competitionQuery.select('name location status');
+    } else {
+      competitionQuery = competitionQuery
+        .populate('organizer', 'name email')
+        .populate({
+          path: 'participants',
+          select: 'user type teamName status registrationDate',
+          populate: {
+            path: 'user',
+            select: 'name email'
+          }
+        })
+        .populate({
+          path: 'schedules',
+          select: 'name startTime endTime location status'
+        });
+    }
+
+    const competition = await competitionQuery;
 
     if (!competition) {
       return res.status(404).json({
