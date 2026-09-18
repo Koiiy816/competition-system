@@ -33,10 +33,10 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
   if (!competition) return null;
 
   const schedules = Object.entries(groupedResults || {}).map(([name, results]) => ({ name, entries: preparedResults(results) })).filter((section) => section.entries.length);
-  const reportHeader = (title, scheduleName = '') => <Box sx={{ textAlign: 'center', mb: 0.8, fontFamily: '"SimSun", "宋体", serif' }}>
-    <Typography sx={{ fontSize: '20px', fontWeight: 'bold', lineHeight: 1.35, fontFamily: '"SimHei", "黑体", sans-serif' }}>{competition.name}</Typography>
-    <Typography sx={{ fontSize: '18px', fontWeight: 'bold', lineHeight: 1.35, fontFamily: '"SimHei", "黑体", sans-serif' }}>{title}</Typography>
-    {scheduleName && <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', fontSize: '12px', mt: 0.5 }}><span style={{ textAlign: 'left' }}>跳水</span><span>{scheduleName}</span><span style={{ textAlign: 'right' }}>{dateOf(competition.startDate)} {competition.location || ''}</span></Box>}
+  const reportHeader = (title, scheduleName = '') => <Box className="report-header" sx={{ textAlign: 'center', mb: 0.8, fontFamily: '"SimSun", "宋体", serif' }}>
+    <Typography className="report-title" sx={{ fontSize: '20px', fontWeight: 'bold', lineHeight: 1.35, fontFamily: '"SimHei", "黑体", sans-serif' }}>{competition.name}</Typography>
+    <Typography className="report-subtitle" sx={{ fontSize: '18px', fontWeight: 'bold', lineHeight: 1.35, fontFamily: '"SimHei", "黑体", sans-serif' }}>{title}</Typography>
+    {scheduleName && <Box className="report-meta" sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', fontSize: '12px', mt: 0.5 }}><span style={{ textAlign: 'left' }}>跳水</span><span>{scheduleName}</span><span style={{ textAlign: 'right' }}>{dateOf(competition.startDate)} {competition.location || ''}</span></Box>}
   </Box>;
   const tableStyle = { borderTop: '1px solid black', borderBottom: '1px solid black' };
 
@@ -68,9 +68,10 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     });
     const leader = entries.find((entry) => !entry.absent)?.score || 0;
     const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
+    const columnWidths = ['6%', '10%', '10%', '7%', '6%', '5%', '5%', '5%', '5%', '5%', '7%', '8%', '8%', '8%', '5%'];
     return <Box className="report-page report-detail-page" key={`${name}-detail`}>
       {reportHeader('明细成绩公告', name)}
-      <TableContainer className="report-table detail-table" sx={tableStyle}><Table size="small"><TableHead><TableRow>{headings.map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
+      <TableContainer className="report-table detail-table" sx={tableStyle}><Table size="small" sx={{ tableLayout: 'fixed', width: '100%' }}><colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup><TableHead><TableRow>{headings.map((label) => <TableCell key={label} align="center">{label === '轮次名次' ? <>轮次<br />名次</> : label}</TableCell>)}</TableRow></TableHead><TableBody>
         {entries.flatMap((entry, entryIndex) => {
           const dives = entry.result.details?.dives || [];
           const count = Math.max(1, dives.length);
@@ -101,7 +102,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     <DialogTitle className="no-print" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography variant="h6">打印总成绩册</Typography><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()}>打印</Button></DialogTitle>
     <DialogContent dividers sx={{ bgcolor: '#f5f5f5' }}><Box className="no-print" sx={{ mb: 2 }}><Typography variant="body2" color="text.secondary" gutterBottom>可上传总裁判长电子签名，签名将显示在成绩册末尾。</Typography><Button variant="outlined" component="label" size="small">上传裁判长电子签<input type="file" hidden accept="image/*" onChange={uploadSignature} /></Button></Box>
       <Box className="all-results-printable" sx={{ p: 3, bgcolor: 'white', color: 'black' }}>{teamPage}{schedules.map(rankPage)}{schedules.map(detailPage)}<Box className="report-page signature-page" sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end', minHeight: '80mm' }}><Box sx={{ textAlign: 'center', minWidth: '210px' }}><Typography sx={{ fontWeight: 'bold', mb: 1 }}>总裁判长签名：</Typography>{signatureImage ? <img src={signatureImage} alt="总裁判长签名" style={{ maxWidth: '150px', maxHeight: '60px' }} /> : <Box sx={{ borderBottom: '1px solid black', height: '35px' }} />}</Box></Box>
-        <style>{`@media print { @page { size: A4 portrait; margin: 10mm; } body * { visibility: hidden; } .all-results-printable, .all-results-printable * { visibility: visible; } .all-results-printable { position: absolute; inset: 0; width: 100%; padding: 0 !important; } .no-print, .MuiBackdrop-root { display: none !important; } .report-page { break-before: page; page-break-before: always; } .report-page:first-child { break-before: auto; page-break-before: auto; } .report-table { overflow: visible !important; } .report-table table { width: 100%; border-collapse: collapse; } .report-table th, .report-table td { border-bottom: 1px solid #000 !important; padding: 3px 4px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 10px !important; white-space: nowrap; } .report-table th { font-weight: bold !important; } .detail-table th, .detail-table td { font-size: 7px !important; padding: 2px !important; } .signature-page { break-before: page; page-break-before: always; } }`}</style>
+        <style>{`@media print { @page { size: A4 portrait; margin: 10mm; } body * { visibility: hidden; } .all-results-printable, .all-results-printable * { visibility: visible; } .all-results-printable { position: absolute; inset: 0; width: 100%; padding: 0 !important; } .no-print, .MuiBackdrop-root { display: none !important; } .report-page { break-before: page; page-break-before: always; } .report-page:first-child { break-before: auto; page-break-before: auto; } .report-table { overflow: visible !important; } .report-table table { width: 100%; border-collapse: collapse; } .report-title { font-size: 18pt !important; } .report-subtitle { font-size: 14pt !important; } .report-meta { font-size: 10pt !important; } .report-table th, .report-table td { border-bottom: 1px solid #000 !important; padding: 4px 5px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 10pt !important; white-space: nowrap; } .report-table th { font-weight: bold !important; } .detail-table th, .detail-table td { font-size: 9pt !important; line-height: 1.2 !important; padding: 3px 2px !important; } .signature-page { break-before: page; page-break-before: always; } }`}</style>
       </Box>
     </DialogContent><DialogActions className="no-print"><Button onClick={onClose}>取消</Button></DialogActions>
   </Dialog>;

@@ -18,6 +18,17 @@ import {
 } from '@mui/material';
 import PrintIcon from '@mui/icons-material/Print';
 
+const refereeGroupsByCourt = {
+  A: ['卢玉玲', '李楷毅', '柯燕', '李亮', '姚晓丽', '贾宇浩', '郑植群', '陈心怡', '王文熙', '张烨盛'],
+  B: ['吴威成', '杨卫斌', '邓文锋', '杨国政', '吴家丽', '肖伟敏', '徐梓莹', '许晋涛']
+};
+
+const getRefereeGroup = (schedule) => {
+  const court = String(schedule?.court || schedule?.location || '').trim();
+  const match = court.match(/^([AB])(?:\s*场地)?$/i);
+  return match ? match[1].toUpperCase() : null;
+};
+
 const PrintPreviewModal = ({ open, onClose, schedule, participants, results, user, isTeamRanking = false }) => {
   const normalizeStrengthActionName = (value) => String(value || '')
     .replace(/提膝跳\s*10\s*次/g, '提膝跳')
@@ -130,6 +141,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const isDivingPrint = !isStrengthPrint && (schedule?.scoringMode === 'diving' || sortedParticipants.some((participant) => Array.isArray(results[participant.__printKey || participant._id || participant]?.details?.dives)));
   const isDivingDetailPrint = isDivingPrint && schedule?.divingPrintType === 'detail';
   const isStrengthDetailPrint = isStrengthPrint && schedule?.divingPrintType === 'detail';
+  const refereeGroup = getRefereeGroup(schedule);
+  const refereeNames = refereeGroup ? refereeGroupsByCourt[refereeGroup] : [];
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
     const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
@@ -158,8 +171,8 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     <TableContainer sx={{ border: '1px solid black' }}>
       <Table size="small" sx={{
         '& .MuiTableCell-root': {
-          borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 4px',
-          color: 'black', fontSize: '11px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap'
+          borderBottom: '1px solid black', borderRight: '1px solid black', padding: '4px 6px',
+          color: 'black', fontSize: '12pt', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap'
         },
         '& .MuiTableCell-root:last-child': { borderRight: 'none' }
       }}>
@@ -211,13 +224,15 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     const leader = sortedParticipants.find((participant) => !getScoreData(participant).isAbsent);
     const leaderScore = leader ? getScoreData(leader).finalScore : 0;
     const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
+    const columnWidths = ['6%', '10%', '10%', '7%', '6%', '5%', '5%', '5%', '5%', '5%', '7%', '8%', '8%', '8%', '5%'];
     return <TableContainer sx={{ border: '1px solid black' }}>
-      <Table size="small" className="diving-detail-table" sx={{
+      <Table size="small" className="diving-detail-table" sx={{ tableLayout: 'fixed', width: '100%',
         // “总名次”和“分差”使用 rowSpan；不能移除每行最后一个单元格的右边框，
         // 否则后续行的“累计分”会与跨行的“总名次”之间断线。
-        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '2px 3px', color: 'black', fontSize: '9px', fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
+        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 2px', color: 'black', fontSize: '9pt', lineHeight: 1.2, fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
       }}>
-        <TableHead><TableRow>{headings.map((header) => <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header}</TableCell>)}</TableRow></TableHead>
+        <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
+        <TableHead><TableRow>{headings.map((header) => <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header === '轮次名次' ? <>轮次<br />名次</> : header}</TableCell>)}</TableRow></TableHead>
         <TableBody>{sortedParticipants.flatMap((participant, participantIndex) => {
           const { finalScore, isAbsent } = getScoreData(participant);
           const dives = results[participant.__printKey || participant._id || participant]?.details?.dives || [];
@@ -262,10 +277,9 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       {/* Print Styles */}
       <style>{`
         @media print {
-          /* Hide everything in body except our dialog */
-          body > *:not(.print-dialog-root) {
-            display: none !important;
-          }
+          /* 打分页会先隐藏全页；弹层打印内容必须显式恢复可见。 */
+          body * { visibility: hidden !important; }
+          .print-dialog-root, .print-dialog-root * { visibility: visible !important; }
           
           /* Ensure the dialog is visible and takes full space */
           .print-dialog-root {
@@ -321,9 +335,14 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             background-color: white !important;
           }
 
+          .diving-detail-table .MuiTableCell-root {
+            font-size: 9pt !important;
+            padding: 3px 2px !important;
+          }
+
           /* Force page margins */
           @page {
-            size: A4;
+            size: A4 portrait;
             margin: 10mm;
           }
           
@@ -387,7 +406,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           sx={{ 
             p: 4, 
             bgcolor: 'white', 
-            minHeight: '297mm', // A4 height approx
+            minHeight: '297mm',
             color: 'black',
             '@media print': {
               margin: '0',
@@ -411,7 +430,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             </Typography>
             {isDivingPrint || isStrengthPrint ? <>
               <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>{isStrengthPrint ? (isStrengthDetailPrint ? '素质力量明细成绩公告' : '素质力量名次公告') : (isDivingDetailPrint ? '明细成绩公告' : '名次公告')}</Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: 1, alignItems: 'center', fontSize: '12px', fontFamily: '"SimSun", "宋体", serif' }}>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', columnGap: 1, alignItems: 'center', fontSize: '14px', fontFamily: '"SimSun", "宋体", serif' }}>
                 <span style={{ textAlign: 'left' }}>{isStrengthPrint ? '跳水·素质力量' : '跳水'}</span><span>{schedule.name}</span><span style={{ textAlign: 'right' }}>{schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} {schedule.location || ''}</span>
               </Box>
             </> : <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>{subTitle}</Typography>}
@@ -521,6 +540,10 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           </TableContainer>}
 
           {/* Footer Signature Area */}
+          {(isDivingPrint || isStrengthPrint) && refereeNames.length > 0 && <Box sx={{ mt: 3, fontSize: '12pt', color: 'black', fontFamily: '"SimSun", "宋体", serif', lineHeight: 1.8 }}>
+            裁判员：{refereeGroup}组：{refereeNames.join('、')}
+          </Box>}
+
           {!isDivingPrint && !isStrengthPrint && <Box sx={{ mt: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               总裁判长签名：
