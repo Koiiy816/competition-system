@@ -8,3 +8,10 @@ test('strength total-score ties are broken by each event points in order', () =>
   assert.deepEqual(ranked.map(({ entry: item }) => item.participant.name), ['甲', '乙']);
   assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2]);
 });
+
+test('strength awards keep at most three individual athletes from one unit in the top eight', () => {
+  const entry = (name, score) => ({ participant: { name, schoolName: '甲单位' }, finalScore: score, details: { events: [] } });
+  const ranked = rankStrengthEntries([entry('甲1', 100), entry('甲2', 99), entry('甲3', 98), entry('甲4', 97)]);
+
+  assert.deepEqual(ranked.map(({ rank }) => rank), [1, 2, 3, 9]);
+});
