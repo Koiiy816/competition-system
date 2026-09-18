@@ -314,7 +314,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
         </Box>
       </TableCell>
 
-      <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
+      {isChiefOrAdmin && <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
         <Typography 
           variant="h6" 
           fontWeight="bold" 
@@ -331,13 +331,13 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
         >
           {isAbsent ? '缺席/弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '-')}
         </Typography>
-      </TableCell>
+      </TableCell>}
 
-      <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
+      {isChiefOrAdmin && <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
         <Typography variant="h6" fontWeight="bold" color="secondary" sx={{ fontSize: '1.1rem' }}>
           {currentRank || '-'}
         </Typography>
-      </TableCell>
+      </TableCell>}
 
       <TableCell align="center" className="no-print" sx={{ verticalAlign: 'middle', px: 0.5, whiteSpace: 'nowrap' }}>
         {!isAbsent && !isNotChecked && !isMixed && (
@@ -444,7 +444,7 @@ const DivingScoreCard = ({ participant, schedule, initialResult, format, schedul
   return <Paper variant="outlined" sx={{ mb: 2, overflow: 'hidden' }}>
     <Box sx={{ p: 1.5, bgcolor: 'primary.50', display: 'flex', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
       <Box><Typography fontWeight="bold">{participantName}</Typography><Typography variant="body2" color="text.secondary">{participant.schoolName || participant.teamName || '-'} · {format === 'synchronized' ? '双人跳水' : '个人跳水'}</Typography></Box>
-      <Box sx={{ textAlign: 'right' }}><Typography variant="body2">实时总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '缺席/弃权' : total.toFixed(2)}</Typography><Typography variant="caption">排名：{currentRank || '-'}</Typography></Box>
+      {isChiefOrAdmin && <Box sx={{ textAlign: 'right' }}><Typography variant="body2">实时总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '缺席/弃权' : total.toFixed(2)}</Typography><Typography variant="caption">排名：{currentRank || '-'}</Typography></Box>}
     </Box>
     {canCheckIn && <Box className="no-print" sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
       <Typography variant="body2">检录状态：</Typography><Chip size="small" label={getCheckInStatusMeta(checkInStatus).label} color={getCheckInStatusMeta(checkInStatus).color} />
@@ -483,7 +483,7 @@ const StrengthScoreCard = ({ participant, schedule, initialResult, scheduleStatu
   return <Paper variant="outlined" sx={{ mb: 2, overflow: 'hidden' }}>
     <Box sx={{ p: 1.5, bgcolor: 'primary.50', display: 'flex', justifyContent: 'space-between', gap: 2 }}>
       <Box><Typography fontWeight="bold">{name}</Typography><Typography variant="body2" color="text.secondary">{participant.schoolName || participant.teamName || '-'}</Typography></Box>
-      <Box sx={{ textAlign: 'right' }}><Typography variant="body2">小项积分总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '弃权' : Number(initialResult?.score || 0)}</Typography><Typography variant="caption">总排名：{currentRank || '-'}</Typography></Box>
+      {isChiefOrAdmin && <Box sx={{ textAlign: 'right' }}><Typography variant="body2">小项积分总分</Typography><Typography variant="h6" color={isAbsent ? 'error.main' : 'primary.main'}>{isAbsent ? '弃权' : Number(initialResult?.score || 0)}</Typography><Typography variant="caption">总排名：{currentRank || '-'}</Typography></Box>}
     </Box>
     {canCheckIn && <Box className="no-print" sx={{ px: 1.5, pt: 1, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
       <Typography variant="body2">检录状态：</Typography><Chip size="small" label={getCheckInStatusMeta(checkInStatus).label} color={getCheckInStatusMeta(checkInStatus).color} />
@@ -1072,8 +1072,8 @@ const CompetitionScoreEntryPage = () => {
                     <TableCell key={index} width="7%" align="center">裁{index + 1}</TableCell>
                   ))}
                   <TableCell width="7%" align="center">裁判长加减分</TableCell>
-                  <TableCell width="8%" align="center">最后得分</TableCell>
-                  <TableCell width="5%" align="center">实时排名</TableCell>
+                  {isChiefOrAdmin && <TableCell width="8%" align="center">最后得分</TableCell>}
+                  {isChiefOrAdmin && <TableCell width="5%" align="center">实时排名</TableCell>}
                   <TableCell width="5%" align="center" className="no-print">操作</TableCell>
                 </TableRow>
               </TableHead>
