@@ -229,12 +229,12 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
     const leader = sortedParticipants.find((participant) => !getScoreData(participant).isAbsent);
     const leaderScore = leader ? getScoreData(leader).finalScore : 0;
     const headings = ['名次', '姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
-    const columnWidths = ['6%', '10%', '10%', '7%', '6%', '5%', '5%', '5%', '5%', '5%', '7%', '8%', '8%', '8%', '5%'];
+    const columnWidths = ['5%', '10%', '12%', '14.5%', '5%', '4.5%', '4.5%', '4.5%', '4.5%', '4.5%', '6%', '6%', '7%', '7%', '5%'];
     return <TableContainer sx={{ border: '1px solid black' }}>
       <Table size="small" className="diving-detail-table" sx={{ tableLayout: 'fixed', width: '100%',
         // “总名次”和“分差”使用 rowSpan；不能移除每行最后一个单元格的右边框，
         // 否则后续行的“累计分”会与跨行的“总名次”之间断线。
-        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 2px', color: 'black', fontSize: '9pt', lineHeight: 1.2, fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
+        '& .MuiTableCell-root': { borderBottom: '1px solid black', borderRight: '1px solid black', padding: '3px 2px', color: 'black', fontSize: '9.5pt', lineHeight: 1.25, fontFamily: '"SimSun", "宋体", serif', whiteSpace: 'nowrap' }
       }}>
         <colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup>
         <TableHead><TableRow>{headings.map((header) => <TableCell key={header} align="center" sx={{ fontWeight: 'bold' }}>{header === '轮次名次' ? <>轮次<br />名次</> : header}</TableCell>)}</TableRow></TableHead>
@@ -252,7 +252,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
               {roundIndex === 0 && <TableCell rowSpan={count} align="center">{participantRanks[participantIndex]}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-name-cell" sx={{ whiteSpace: 'normal', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{participant?.isVirtualTeam ? (participant.teamMembers || []).map((member, memberIndex) => <React.Fragment key={member._id || memberIndex}>{member.name}{memberIndex < participant.teamMembers.length - 1 && <br />}</React.Fragment>) : name}</TableCell>}
               {roundIndex === 0 && <TableCell rowSpan={count} align="center" className="detail-unit-cell" sx={{ whiteSpace: 'normal', wordBreak: 'break-all', overflowWrap: 'anywhere' }}>{unit}</TableCell>}
-              <TableCell align="center">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
+              <TableCell align="center" className="detail-action-cell">{dive?.actionCode || dive?.actionName || (isAbsent ? '弃权' : '-')}</TableCell><TableCell align="center">{dive?.difficulty ?? '-'}</TableCell>
               {[0, 1, 2, 3, 4].map((judge) => <TableCell key={judge} align="center">{dive?.scores?.[judge] ?? '-'}</TableCell>)}
               <TableCell align="center">{dive ? Number(dive.score || 0).toFixed(2) : '-'}</TableCell><TableCell align="center">{dive ? roundRanks[roundIndex]?.get(participantIndex) ?? '-' : '-'}</TableCell><TableCell align="center">{dive ? cumulative.toFixed(2) : '-'}</TableCell>
               {roundIndex === 0 && <TableCell rowSpan={count} align="center" sx={{ borderLeft: '1px solid black !important' }}>{participantRanks[participantIndex]}</TableCell>}
@@ -345,15 +345,21 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
           }
 
           .diving-detail-table .MuiTableCell-root {
-            font-size: 9pt !important;
+            font-size: 9.5pt !important;
             padding: 3px 2px !important;
           }
 
           .diving-detail-table .detail-name-cell,
-          .diving-detail-table .detail-unit-cell {
+          .diving-detail-table .detail-unit-cell,
+          .diving-detail-table .detail-action-cell {
             white-space: normal !important;
             word-break: break-all !important;
             overflow-wrap: anywhere !important;
+          }
+
+          .chief-signature {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
 
           /* Force page margins */
@@ -564,17 +570,10 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             </Box>
           </Box>}
 
-          {!isDivingPrint && !isStrengthPrint && <Box sx={{ mt: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              总裁判长签名：
-              {signatureImage ? (
-                <img src={signatureImage} alt="裁判长签名" style={{ maxHeight: '50px', marginLeft: '10px' }} />
-              ) : (
-                '________________________'
-              )}
-            </Box>
-            {/* 暂时隐藏底部的日期，因为你的参考图里没有 */}
-          </Box>}
+          <Box className="chief-signature" sx={{ mt: (isDivingPrint || isStrengthPrint) ? 2 : 6, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', fontSize: isTeamRanking ? '16px' : '14px', fontFamily: isTeamRanking ? '"SimSun", "宋体", serif' : 'inherit' }}>
+            总裁判长签名：
+            {signatureImage ? <img src={signatureImage} alt="裁判长签名" style={{ maxHeight: '50px', maxWidth: '150px', marginLeft: '10px' }} /> : '________________________'}
+          </Box>
         </Box>
       </DialogContent>
 
