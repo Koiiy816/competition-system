@@ -510,6 +510,10 @@ exports.getSchedules = async (req, res, next) => {
       query.type = req.query.type;
     }
 
+    if (req.query.court) {
+      query.court = req.query.court;
+    }
+
     // 日期过滤：支持原来的 startTime/endTime 范围，以及新的 scheduleDate 字段
     if (req.query.scheduleDate) {
       // 如果明确传了 scheduleDate，就优先以此为准
@@ -532,32 +536,44 @@ exports.getSchedules = async (req, res, next) => {
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const total = await Schedule.countDocuments(query);
+    const navigationOnly = req.query.fields === 'navigation';
 
-    // 执行查询
-    const schedules = await Schedule.find(query)
-      .populate('competition', 'name')
-      .populate({
-        path: 'participants',
-        select: 'user type teamName name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo', // Select specific fields from Participant
-        populate: [
-          {
-            path: 'user',
-            select: 'name email'
-          },
-          {
-            path: 'teamMembers',
-            select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo'
-          },
-          {
-            path: 'checkedInBy',
-            select: 'name email'
-          }
-        ]
-      })
-      .populate('referees', 'name')
-      .skip(startIndex)
-      .limit(limit)
-      .sort({ scheduleDate: 1, timeSlot: 1, court: 1, order: 1, startTime: 1 });
+    // “上一场/下一场”只需要赛程排序字段，避免为全赛事赛程展开选手与裁判资料。
+    let schedules;
+    if (navigationOnly) {
+      schedules = await Schedule.find(query)
+        .select('_id name court scheduleDate timeSlot order startTime')
+        .skip(startIndex)
+        .limit(limit)
+        .sort({ scheduleDate: 1, timeSlot: 1, court: 1, order: 1, startTime: 1 })
+        .lean();
+    } else {
+      // 执行完整查询
+      schedules = await Schedule.find(query)
+        .populate('competition', 'name')
+        .populate({
+          path: 'participants',
+          select: 'user type teamName name schoolName grade ageGroup event gender isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo', // Select specific fields from Participant
+          populate: [
+            {
+              path: 'user',
+              select: 'name email'
+            },
+            {
+              path: 'teamMembers',
+              select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo'
+            },
+            {
+              path: 'checkedInBy',
+              select: 'name email'
+            }
+          ]
+        })
+        .populate('referees', 'name')
+        .skip(startIndex)
+        .limit(limit)
+        .sort({ scheduleDate: 1, timeSlot: 1, court: 1, order: 1, startTime: 1 });
+    }
 
     // 分页结果
     const pagination = {};

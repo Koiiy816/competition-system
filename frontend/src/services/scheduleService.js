@@ -40,6 +40,17 @@ const scheduleService = {
     }
   },
 
+  getScheduleNavigation: async (competitionId, court) => {
+    try {
+      const response = await api.get(`/competitions/${competitionId}/schedules`, {
+        params: { fields: 'navigation', court, limit: 1000 }
+      });
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '获取赛程导航失败' };
+    }
+  },
+
   getGroupPreview: async (competitionId) => {
     try {
       const response = await api.get(`/competitions/${competitionId}/schedules/group-preview`);
