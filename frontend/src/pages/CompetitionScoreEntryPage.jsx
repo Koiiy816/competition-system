@@ -705,15 +705,13 @@ const CompetitionScoreEntryPage = () => {
       // Participants are populated in schedule
       setParticipants(schedRes.data.participants || []);
 
-      // 获取所有赛程以计算“下一个比赛项目”
+      // 仅获取同场地赛程的导航字段，用于计算“下一个比赛项目”。
       try {
-        const allSchedRes = await scheduleService.getSchedules(id, { limit: 1000 });
+        const currentCourt = schedRes.data.court || '一号场地';
+        const allSchedRes = await scheduleService.getScheduleNavigation(id, currentCourt);
         if (allSchedRes && allSchedRes.data) {
           const allSchedules = allSchedRes.data;
-          const currentCourt = schedRes.data.court || '一号场地';
-          
-          // 筛选出同场地的所有赛程
-          const courtSchedules = allSchedules.filter(s => s.court === currentCourt);
+          const courtSchedules = allSchedules;
           
           // 按日期、时间段、排序号依次排序
           const timeSlotOrder = { '上午': 1, '下午': 2, '晚上': 3 };
