@@ -788,13 +788,17 @@ const ResultsPage = () => {
       const isDivingSchedule = scheduleResults.some(isDivingResult);
       const isStrengthSchedule = scheduleResults.some(isStrengthResult);
       const divingRanks = new Map();
+      const divingAwards = new Map();
       const strengthRanks = new Map();
 
-      // 跳水项目先按单位获奖名额筛出前八，再将其余选手按成绩排列在第九名之后。
+      // 跳水项目按单位获奖限额筛选录取者；未录取者仍连续编号，但不计团体分。
       if (isDivingSchedule) {
         const rankedEntries = rankDivingAwardEntries(scheduleResults);
         scheduleResults.splice(0, scheduleResults.length, ...rankedEntries.map(({ entry }) => entry));
-        rankedEntries.forEach(({ entry, rank }) => divingRanks.set(entry, rank));
+        rankedEntries.forEach(({ entry, rank, isAwarded }) => {
+          divingRanks.set(entry, rank);
+          divingAwards.set(entry, isAwarded);
+        });
       } else if (isStrengthSchedule) {
         const rankedEntries = rankStrengthEntries(scheduleResults);
         scheduleResults.splice(0, scheduleResults.length, ...rankedEntries.map(({ entry }) => entry));
@@ -897,16 +901,17 @@ const ResultsPage = () => {
         if (normalMembers.length > 0) {
           const tieCount = normalMembers.length;
           const displayRank = isDivingSchedule ? divingRanks.get(currentMember) : (isStrengthSchedule ? strengthRanks.get(currentMember) : currentRankIndex + 1);
+          const isDivingAwarded = isDivingSchedule && Boolean(divingAwards.get(currentMember));
           const awardLevel = isDivingSchedule ? null : (top3ThenPercentageMode
             ? getTop3ThenPercentageAwardLevel(displayRank, completedFormalCount, selectedCompetition)
             : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null)));
-          const isWithinAdmissionRange = isDivingSchedule ? displayRank <= awardRankLimit : ((percentAwardMode || fixedTopEightMode) ? Boolean(awardLevel) : displayRank <= admissionCount);
+          const isWithinAdmissionRange = isDivingSchedule ? isDivingAwarded : ((percentAwardMode || fixedTopEightMode) ? Boolean(awardLevel) : displayRank <= admissionCount);
           const top3TeamPoints = top3ThenPercentageMode
             ? getTop3ThenPercentageTeamPoints(displayRank, awardLevel, selectedCompetition)
             : null;
           const isWithinTeamPointsRange = top3ThenPercentageMode
             ? top3TeamPoints > 0
-            : (isDivingSchedule ? displayRank <= awardRankLimit : ((percentAwardMode || fixedTopEightMode) ? displayRank <= 8 : isWithinAdmissionRange));
+            : (isDivingSchedule ? isDivingAwarded : ((percentAwardMode || fixedTopEightMode) ? displayRank <= 8 : isWithinAdmissionRange));
           let totalPointsForTies = 0;
           let actualPointsAwarded = 0;
 
