@@ -1052,7 +1052,8 @@ const ResultsPage = () => {
     setProcessedData({ groupedResults: grouped, teamRankings: teamRankingsArray });
   }, [results, competitions, filters.competitionId]);
 
-  // 当前比赛各代表队/学校取得的单项前三名数量。双人和混双组合按一个获奖组合统计一次。
+  // 当前比赛各代表队/学校取得的前三名：单人和双人/混双组合分开统计。
+  // 双人栏按获奖组合数统计，方便按实际发放规则自行换算实体奖牌数量。
   const teamMedalSummary = useMemo(() => {
     const summary = new Map();
     Object.values(processedData.groupedResults).forEach((scheduleResults) => {
@@ -1062,15 +1063,40 @@ const ResultsPage = () => {
         if (result.participant?.isTest || result.details?.isAbsent || score <= 0 || !Number.isInteger(rank) || rank < 1 || rank > 3) return;
         const schoolName = result.participant?.schoolName || result.participant?.teamName || result.participant?.user?.schoolName;
         if (!schoolName) return;
-        if (!summary.has(schoolName)) summary.set(schoolName, { schoolName, gold: 0, silver: 0, bronze: 0 });
+        if (!summary.has(schoolName)) {
+          summary.set(schoolName, {
+            schoolName,
+            individualGold: 0,
+            individualSilver: 0,
+            individualBronze: 0,
+            pairGold: 0,
+            pairSilver: 0,
+            pairBronze: 0
+          });
+        }
         const medals = summary.get(schoolName);
-        if (rank === 1) medals.gold += 1;
-        if (rank === 2) medals.silver += 1;
-        if (rank === 3) medals.bronze += 1;
+        const isDivingPair = isDivingResult(result)
+          && result.participant?.isVirtualTeam
+          && result.participant?.teamMembers?.length === 2;
+        if (isDivingPair) {
+          if (rank === 1) medals.pairGold += 1;
+          if (rank === 2) medals.pairSilver += 1;
+          if (rank === 3) medals.pairBronze += 1;
+        } else {
+          if (rank === 1) medals.individualGold += 1;
+          if (rank === 2) medals.individualSilver += 1;
+          if (rank === 3) medals.individualBronze += 1;
+        }
       });
     });
     return [...summary.values()].sort((left, right) => (
-      right.gold - left.gold || right.silver - left.silver || right.bronze - left.bronze || left.schoolName.localeCompare(right.schoolName, 'zh-Hans-CN')
+      right.individualGold - left.individualGold
+      || right.individualSilver - left.individualSilver
+      || right.individualBronze - left.individualBronze
+      || right.pairGold - left.pairGold
+      || right.pairSilver - left.pairSilver
+      || right.pairBronze - left.pairBronze
+      || left.schoolName.localeCompare(right.schoolName, 'zh-Hans-CN')
     ));
   }, [processedData.groupedResults]);
 
@@ -2048,16 +2074,19 @@ const ResultsPage = () => {
                 <Paper sx={{ mb: 3, overflow: 'hidden' }}>
                   <Box sx={{ px: 2, py: 1.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
                     <Typography variant="h6">代表队/学校金银铜统计</Typography>
-                    <Typography variant="body2">按各单项名次第一、第二、第三统计；双人及混双组合按一组计一次。</Typography>
+                    <Typography variant="body2">按各单项名次第一、第二、第三统计；双人/混双按获奖组合数列示，可自行换算实体奖牌数量。</Typography>
                   </Box>
                   <Table size="small" aria-label="代表队学校金银铜统计表">
                     <TableHead>
                       <TableRow>
                         <TableCell>排名</TableCell>
                         <TableCell>代表队/学校</TableCell>
-                        <TableCell align="center">金牌（第一名）</TableCell>
-                        <TableCell align="center">银牌（第二名）</TableCell>
-                        <TableCell align="center">铜牌（第三名）</TableCell>
+                        <TableCell align="center">单人金</TableCell>
+                        <TableCell align="center">单人银</TableCell>
+                        <TableCell align="center">单人铜</TableCell>
+                        <TableCell align="center">双人/混双金</TableCell>
+                        <TableCell align="center">双人/混双银</TableCell>
+                        <TableCell align="center">双人/混双铜</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -2065,13 +2094,16 @@ const ResultsPage = () => {
                         <TableRow key={team.schoolName}>
                           <TableCell>{index + 1}</TableCell>
                           <TableCell sx={{ fontWeight: 'bold' }}>{team.schoolName}</TableCell>
-                          <TableCell align="center">{team.gold}</TableCell>
-                          <TableCell align="center">{team.silver}</TableCell>
-                          <TableCell align="center">{team.bronze}</TableCell>
+                          <TableCell align="center">{team.individualGold}</TableCell>
+                          <TableCell align="center">{team.individualSilver}</TableCell>
+                          <TableCell align="center">{team.individualBronze}</TableCell>
+                          <TableCell align="center">{team.pairGold}</TableCell>
+                          <TableCell align="center">{team.pairSilver}</TableCell>
+                          <TableCell align="center">{team.pairBronze}</TableCell>
                         </TableRow>
                       ))}
                       {teamMedalSummary.length === 0 && (
-                        <TableRow><TableCell colSpan={5} align="center">暂无前三名成绩</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} align="center">暂无前三名成绩</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
