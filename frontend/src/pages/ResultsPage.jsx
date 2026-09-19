@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 import { useNavigate } from 'react-router-dom';
 import {
@@ -372,6 +372,7 @@ const ResultsPage = () => {
   const [schedules, setSchedules] = useState([]); // 赛程列表，用于配置合并项
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const resultsVersionRef = useRef('');
 
   // 合并项配置对话框状态
   const [combinedConfigOpen, setCombinedConfigOpen] = useState(false);
@@ -565,16 +566,19 @@ const ResultsPage = () => {
             limit: 5000
           };
 
-          const [resultsRes, schedulesRes] = await Promise.all([
+          const [resultsRes, schedulesRes, versionRes] = await Promise.all([
             resultService.getResults(filters.competitionId, params),
-            scheduleService.getSchedules(filters.competitionId, { limit: 1000 })
+            scheduleService.getSchedules(filters.competitionId, { limit: 1000 }),
+            resultService.getResults(filters.competitionId, { ...params, fields: 'version' })
           ]);
 
           setResults(resultsRes.data || []);
           setSchedules(schedulesRes.data || []);
+          resultsVersionRef.current = versionRes?.data?.version || '';
         } else {
           setResults([]);
           setSchedules([]);
+          resultsVersionRef.current = '';
         }
       } catch (error) {
         setError(error.message || '获取数据失败');
@@ -586,24 +590,30 @@ const ResultsPage = () => {
 
     fetchResultsAndSchedules();
 
-    // 增加轮询：每 3 秒刷新一次数据，实现“实时刷新”
+    let refreshInFlight = false;
+
+    // 每 3 秒只检查一个版本标记；仅当已公布成绩真的变化时才下载完整结果。
     const intervalId = setInterval(() => {
-      if (filters.competitionId) {
-        resultService.getResults(filters.competitionId, {
-          search: filters.search || undefined,
-          status: filters.status || 'verified', // 默认只拉取已审核(已存)的成绩
-          limit: 5000
-        }).then(res => {
-          setResults(prev => {
-            const newData = res.data || [];
-            // 性能优化：只有当数据真正发生变化时才更新 state，避免整个大屏每 3 秒做一次无意义的完整重渲染
-            if (JSON.stringify(prev) !== JSON.stringify(newData)) {
-              return newData;
-            }
-            return prev;
-          });
-        }).catch(err => console.error('Silent refresh failed:', err));
-      }
+      if (!filters.competitionId || refreshInFlight) return;
+      refreshInFlight = true;
+      const params = {
+        search: filters.search || undefined,
+        status: filters.status || 'verified',
+        limit: 5000
+      };
+      resultService.getResults(filters.competitionId, { ...params, fields: 'version' })
+        .then((versionRes) => {
+          const version = versionRes?.data?.version || '';
+          if (version === resultsVersionRef.current) return null;
+          return resultService.getResults(filters.competitionId, params).then((resultsRes) => ({ version, resultsRes }));
+        })
+        .then((update) => {
+          if (!update) return;
+          resultsVersionRef.current = update.version;
+          setResults(update.resultsRes.data || []);
+        })
+        .catch(err => console.error('Silent refresh failed:', err))
+        .finally(() => { refreshInFlight = false; });
     }, 3000);
 
     return () => clearInterval(intervalId);

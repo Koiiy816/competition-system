@@ -441,6 +441,20 @@ exports.getResults = async (req, res, next) => {
     const page = parseInt(req.query.page, 10) || 1;
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
+
+    // 成绩页实时查看先用极小的版本标记判断是否真的有变动，避免每几秒
+    // 重复展开数千条成绩及其关联资料。完整数据仍走下面原有逻辑。
+    if (req.query.fields === 'version') {
+      const latest = await Result.findOne(query)
+        .select('_id updatedAt')
+        .sort({ updatedAt: -1, _id: -1 })
+        .lean();
+      return res.status(200).json({
+        success: true,
+        data: { version: latest ? `${latest._id}:${new Date(latest.updatedAt).getTime()}` : 'empty' }
+      });
+    }
+
     const total = await Result.countDocuments(query);
 
     // 执行完整查询

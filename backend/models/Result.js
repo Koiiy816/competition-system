@@ -66,4 +66,7 @@ ResultSchema.pre('save', function(next) {
   next();
 });
 
+// 支持成绩页的轻量版本检查：按比赛和状态快速定位最后一次成绩变动。
+ResultSchema.index({ competition: 1, status: 1, updatedAt: -1 });
+
 module.exports = mongoose.model('Result', ResultSchema);
