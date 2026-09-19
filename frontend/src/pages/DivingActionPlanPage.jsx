@@ -269,13 +269,27 @@ export default function DivingActionPlanPage() {
     try {
       const response = await participantService.saveDivingPlan(item.competition._id || item.competition, item._id, completedPlan);
       setMessage({ severity: 'success', text: response.message || '动作表已保存。' });
-      await load();
+      // 保存后只更新当前卡片的本地数据，避免 load() 触发整页 loading，
+      // 导致管理员在长名单中补录时被带回页面顶部。
+      setPlans((current) => ({ ...current, [item._id]: completedPlan }));
+      const pairId = item.additionalInfo?.divingPair?.pairId;
+      setItems((current) => current.map((entry) => {
+        const samePair = pairId && entry.additionalInfo?.divingPair?.pairId === pairId;
+        if (entry._id !== item._id && !samePair) return entry;
+        return {
+          ...entry,
+          additionalInfo: {
+            ...(entry.additionalInfo || {}),
+            divingPlan: completedPlan
+          }
+        };
+      }));
     } catch (error) {
       setMessage({ severity: 'error', text: error.message || '保存失败' });
     } finally {
       setSavingId('');
     }
-  }, [load]);
+  }, []);
 
   const updatePlan = useCallback((participantId, updater) => {
     setPlans((current) => {

@@ -928,8 +928,17 @@ const CompetitionScoreEntryPage = () => {
 
   const handleStrengthSave = async (participantId, events) => {
     try {
-      await resultService.submitStrengthScore(id, { scheduleId, participantId, events });
-      await fetchResultsOnce();
+      const response = await resultService.submitStrengthScore(id, { scheduleId, participantId, events });
+      // 后台已一次重算全场名次；直接采用同一响应中的完整结果，保存者也无需等待额外请求或手动刷新。
+      const updatedResults = response.results || (response.data ? [response.data] : []);
+      if (updatedResults.length) {
+        setResults((current) => updatedResults.reduce((next, result) => {
+          const resultParticipantId = result.participant?._id || result.participant;
+          return resultParticipantId ? { ...next, [resultParticipantId]: result } : next;
+        }, current));
+      } else {
+        await fetchResultsOnce();
+      }
     } catch (err) {
       alert(err.message || '保存素质力量成绩失败');
       throw err;

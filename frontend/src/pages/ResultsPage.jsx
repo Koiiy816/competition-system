@@ -290,7 +290,25 @@ const getFixedTopEightAwardLevel = (rank, completedCount) => {
   return ['金牌', '银牌', '铜牌'][rank - 1] || '获奖证书';
 };
 
+// 除跳水外，保留原有规则：集体、双人和对练项目均不参与团体计分。
+// 跳水双人（含混双）是一个参赛组合，只应为所属单位计一次分，不能当作集体项目排除。
 const isIndividualScoringSchedule = (scheduleName = '') => !/(\u96c6\u4f53|\u53cc\u4eba|\u5bf9\u7ec3)/.test(scheduleName);
+const countsForTeamScoring = (scheduleName = '', scheduleResults = []) => {
+  const isDivingSchedule = scheduleResults.some(isDivingResult);
+  return isDivingSchedule
+    ? !/(\u96c6\u4f53|\u5bf9\u7ec3)/.test(scheduleName)
+    : isIndividualScoringSchedule(scheduleName);
+};
+
+const chineseRank = (value) => {
+  const rank = Number(value);
+  if (!Number.isInteger(rank) || rank < 1) return '-';
+  const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+  if (rank < 10) return digits[rank];
+  if (rank < 20) return `十${rank === 10 ? '' : digits[rank % 10]}`;
+  if (rank < 100) return `${digits[Math.floor(rank / 10)]}十${rank % 10 ? digits[rank % 10] : ''}`;
+  return String(rank);
+};
 
 const getAdmissionCount = (competition, scheduleName, scheduleResults) => {
   const formalCount = getFormalResultCount(scheduleResults);
@@ -763,7 +781,7 @@ const ResultsPage = () => {
     if (isTop3ThenPercentageCompetition(selectedCompetitionForRules)) {
       const completedIndividualSchedules = new Map();
       Object.entries(grouped).forEach(([scheduleName, scheduleResults]) => {
-        if (!isIndividualScoringSchedule(scheduleName)) return;
+        if (!countsForTeamScoring(scheduleName, scheduleResults)) return;
         const seenInSchedule = new Set();
         scheduleResults.forEach(result => {
           if (result.participant?.isTest || result.details?.isAbsent) return;
@@ -945,11 +963,11 @@ const ResultsPage = () => {
             // 团体分计入逻辑
             let shouldCountForTeam = false;
             if (top3ThenPercentageMode) {
-              shouldCountForTeam = isIndividualScoringSchedule(scheduleName)
+              shouldCountForTeam = countsForTeamScoring(scheduleName, scheduleResults)
                 && eligibleTeamParticipantKeys.has(getParticipantScoreKey(result.participant))
                 && averagePoints > 0;
             } else if (percentAwardMode || fixedTopEightMode) {
-              shouldCountForTeam = isIndividualScoringSchedule(scheduleName) && averagePoints > 0;
+              shouldCountForTeam = countsForTeamScoring(scheduleName, scheduleResults) && averagePoints > 0;
             } else if (isLuohuTraditionalCompetition(selectedCompetition)) {
               shouldCountForTeam = luohuTeamRule === true && averagePoints > 0;
             } else if (isTargetCompetition) {
@@ -1034,6 +1052,28 @@ const ResultsPage = () => {
     setProcessedData({ groupedResults: grouped, teamRankings: teamRankingsArray });
   }, [results, competitions, filters.competitionId]);
 
+  // 当前比赛各代表队/学校取得的单项前三名数量。双人和混双组合按一个获奖组合统计一次。
+  const teamMedalSummary = useMemo(() => {
+    const summary = new Map();
+    Object.values(processedData.groupedResults).forEach((scheduleResults) => {
+      scheduleResults.forEach((result) => {
+        const rank = Number(result.dynamicRank);
+        const score = Number(result.finalScore ?? result.score ?? 0) || 0;
+        if (result.participant?.isTest || result.details?.isAbsent || score <= 0 || !Number.isInteger(rank) || rank < 1 || rank > 3) return;
+        const schoolName = result.participant?.schoolName || result.participant?.teamName || result.participant?.user?.schoolName;
+        if (!schoolName) return;
+        if (!summary.has(schoolName)) summary.set(schoolName, { schoolName, gold: 0, silver: 0, bronze: 0 });
+        const medals = summary.get(schoolName);
+        if (rank === 1) medals.gold += 1;
+        if (rank === 2) medals.silver += 1;
+        if (rank === 3) medals.bronze += 1;
+      });
+    });
+    return [...summary.values()].sort((left, right) => (
+      right.gold - left.gold || right.silver - left.silver || right.bronze - left.bronze || left.schoolName.localeCompare(right.schoolName, 'zh-Hans-CN')
+    ));
+  }, [processedData.groupedResults]);
+
   // 处理标签切换
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
@@ -1106,6 +1146,10 @@ const ResultsPage = () => {
   const handleExportExcel = (scheduleName, scheduleResults) => {
     // 过滤掉测试人员
     const validResults = scheduleResults.filter(r => !r.participant?.isTest);
+    const isStrengthSchedule = validResults.some(isStrengthResult);
+    const strengthRanks = isStrengthSchedule
+      ? new Map(rankStrengthEntries(validResults).map(({ entry, rank }) => [entry, rank]))
+      : new Map();
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
     const fixedTopEightModeForExport = isFixedTopEightCompetition(selectedCompetition);
     const showPrizeLevelsForExport = isPercentAwardCompetition(selectedCompetition);
@@ -1163,6 +1207,9 @@ const ResultsPage = () => {
       }
 
       rowData['最终得分'] = isAbsent ? '弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '0');
+      if (isStrengthSchedule) {
+        rowData['名次'] = isAbsent ? '-' : chineseRank(strengthRanks.get(r));
+      }
       if (!showPrizeLevelsForExport && ruleSummary) {
         rowData['录取说明'] = `录取前${ruleSummary.admissionCount}${ruleSummary.countsForTeam ? '，计团体总分' : '，不计团体总分'}`;
       }
@@ -1316,7 +1363,7 @@ const ResultsPage = () => {
                 )}
               </Box>
               <Box>
-                {filteredGroupedResults[scheduleName].some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? <>
+                {filteredGroupedResults[scheduleName].some((result) => isDivingResult(result) || isStrengthResult(result)) ? <>
                   <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => handlePrint(scheduleName, filteredGroupedResults[scheduleName], 'detail')} sx={{ mr: 1 }}>
                     明细成绩公告
                   </Button>
@@ -1539,7 +1586,7 @@ const ResultsPage = () => {
                     )}
                   </Box>
                   <Box>
-                    {scheduleResults.some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? <>
+                    {scheduleResults.some((result) => isDivingResult(result) || isStrengthResult(result)) ? <>
                       <Button variant="outlined" size="small" startIcon={<PrintIcon />} onClick={() => handlePrint(scheduleName, scheduleResults, 'detail')} sx={{ mr: 1 }}>
                         明细成绩公告
                       </Button>
@@ -1997,6 +2044,39 @@ const ResultsPage = () => {
           {/* 成绩和排名 */}
           {!isSpectatorOnly && (
             <TabPanel value={tabValue} index={0}>
+              {filters.competitionId && (
+                <Paper sx={{ mb: 3, overflow: 'hidden' }}>
+                  <Box sx={{ px: 2, py: 1.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+                    <Typography variant="h6">代表队/学校金银铜统计</Typography>
+                    <Typography variant="body2">按各单项名次第一、第二、第三统计；双人及混双组合按一组计一次。</Typography>
+                  </Box>
+                  <Table size="small" aria-label="代表队学校金银铜统计表">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>排名</TableCell>
+                        <TableCell>代表队/学校</TableCell>
+                        <TableCell align="center">金牌（第一名）</TableCell>
+                        <TableCell align="center">银牌（第二名）</TableCell>
+                        <TableCell align="center">铜牌（第三名）</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {teamMedalSummary.map((team, index) => (
+                        <TableRow key={team.schoolName}>
+                          <TableCell>{index + 1}</TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>{team.schoolName}</TableCell>
+                          <TableCell align="center">{team.gold}</TableCell>
+                          <TableCell align="center">{team.silver}</TableCell>
+                          <TableCell align="center">{team.bronze}</TableCell>
+                        </TableRow>
+                      ))}
+                      {teamMedalSummary.length === 0 && (
+                        <TableRow><TableCell colSpan={5} align="center">暂无前三名成绩</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </Paper>
+              )}
               {renderResults()}
             </TabPanel>
           )}

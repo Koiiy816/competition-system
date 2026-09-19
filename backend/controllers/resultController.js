@@ -304,7 +304,14 @@ exports.submitStrengthScore = async (req, res, next) => {
     }
     if (schedule.status === 'scheduled') { schedule.status = 'ongoing'; await schedule.save(); }
     const saved = await Result.findOne({ schedule: scheduleId, participant: participantId });
-    res.status(200).json({ success: true, data: saved });
+    // 素质力量一次保存会重算本场所有人的小项名次、积分和总排名。
+    // 将完整结果即时推送给同场打开的裁判长/管理员，避免其他卡片仍显示旧分数。
+    allResults.forEach((result) => {
+      broadcastScoreEvent(req.params.competitionId, scheduleId, 'score-updated', {
+        participantId: String(result.participant), result
+      });
+    });
+    res.status(200).json({ success: true, data: saved, results: allResults });
   } catch (error) { next(error); } finally { releaseLock(lockKey); }
 };
 

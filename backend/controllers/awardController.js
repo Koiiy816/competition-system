@@ -11,6 +11,12 @@ const finalScore = result => {
   return Number(result?.score) || 0;
 };
 const isIndividual = name => !/(\u96c6\u4f53|\u53cc\u4eba|\u5bf9\u7ec3)/.test(String(name || ''));
+// 跳水双人和混双是一个参赛组合，计入所属单位一次团体积分；其他项目继续沿用原有排除双人规则。
+const countsForTeamScore = schedule => (
+  schedule?.scoringMode === 'diving'
+    ? !/(\u96c6\u4f53|\u5bf9\u7ec3)/.test(String(schedule?.name || ''))
+    : isIndividual(schedule?.name)
+);
 
 function remainingAwardCounts(count, rules = {}) {
   const weights = [
@@ -145,7 +151,7 @@ exports.getAwards = async (req, res, next) => {
     const eventKeysByPerson = new Map();
     valid.forEach(result => {
       const schedule = scheduleById.get(keyOf(result.schedule));
-      if (schedule && isIndividual(schedule.name)) {
+      if (schedule && countsForTeamScore(schedule)) {
         const person = keyOf(result.participant);
         if (!eventKeysByPerson.has(person)) eventKeysByPerson.set(person, new Set());
         eventKeysByPerson.get(person).add(keyOf(schedule));
@@ -157,7 +163,8 @@ exports.getAwards = async (req, res, next) => {
       .map(([person]) => person));
     const teamPoints = new Map();
     eventAwards.forEach(event => {
-      if (!isIndividual(event.scheduleName)) return;
+      const schedule = scheduleById.get(event.scheduleId);
+      if (!countsForTeamScore(schedule)) return;
       event.awards.forEach(item => {
         if (!eligible.has(item.recipientKey)) return;
         const percentageMode = competition.awardRules?.mode === 'legacy_percentage';
