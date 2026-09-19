@@ -56,7 +56,11 @@ export const rankDivingAwardEntries = (entries, {
   isAbsent = defaultAbsent,
   isTest = defaultTest
 } = {}) => {
-  const sorted = [...entries].sort((left, right) => compareDivingEntries(left, right, { getParticipant, getScore, isAbsent }));
+  const statusOf = (entry) => (isTest(entry) ? 1 : (isAbsent(entry) ? 2 : 0));
+  const sorted = [...entries].sort((left, right) => (
+    statusOf(left) - statusOf(right)
+    || compareDivingEntries(left, right, { getParticipant, getScore, isAbsent })
+  ));
   const winners = [];
   const remaining = [];
   const awardedByUnit = new Map();
@@ -65,7 +69,7 @@ export const rankDivingAwardEntries = (entries, {
     const participant = getParticipant(entry);
     const key = unitKey(participant, index);
     const awardedCount = awardedByUnit.get(key) || 0;
-    if (!isAbsent(entry) && !isTest(entry) && winners.length < 8 && awardedCount < awardLimitFor(participant)) {
+    if (statusOf(entry) === 0 && winners.length < 8 && awardedCount < awardLimitFor(participant)) {
       winners.push(entry);
       awardedByUnit.set(key, awardedCount + 1);
     } else {
@@ -73,11 +77,13 @@ export const rankDivingAwardEntries = (entries, {
     }
   });
 
+  // 未录取组合紧随最后一个录取名次编号，避免在单位限额导致录取人数不足八人时跳过名次。
   return [...winners, ...remaining].map((entry, index) => {
+    const eligible = statusOf(entry) === 0;
     const isAwarded = index < winners.length;
     return {
       entry,
-      rank: isAbsent(entry) ? '-' : (isAwarded ? index + 1 : 9 + index - winners.length),
+      rank: eligible ? index + 1 : '-',
       isAwarded
     };
   });
