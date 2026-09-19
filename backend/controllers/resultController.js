@@ -4,6 +4,7 @@ const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const { calculateDivingDiveScore } = require('../utils/divingScoring');
 const { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
+const { broadcastScoreEvent, openScoreStream } = require('../utils/scoreUpdateStream');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
@@ -19,6 +20,8 @@ const releaseLock = (key) => {
   delete scoreLocks[key];
 };
 // -----------------------------------------------------------------
+
+exports.openScoreStream = openScoreStream;
 
 /**
  * @desc    获取成绩状态列表
@@ -222,6 +225,9 @@ exports.submitDivingScore = async (req, res, next) => {
       schedule.status = 'ongoing';
       await schedule.save();
     }
+    broadcastScoreEvent(req.params.competitionId, scheduleId, 'score-updated', {
+      participantId: String(result.participant), result
+    });
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -430,7 +436,7 @@ exports.getResults = async (req, res, next) => {
     const endIndex = page * limit;
     const total = await Result.countDocuments(query);
 
-    // 执行查询
+    // 执行完整查询
     const results = await Result.find(query)
       .populate('competition', 'name')
       .populate('schedule', 'name startTime location')
@@ -760,6 +766,9 @@ exports.submitScore = async (req, res, next) => {
       await schedule.save();
     }
 
+    broadcastScoreEvent(req.params.competitionId, scheduleId, 'score-updated', {
+      participantId: String(result.participant), result
+    });
     res.status(200).json({
       success: true,
       data: result

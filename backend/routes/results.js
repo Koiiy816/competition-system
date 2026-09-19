@@ -22,6 +22,14 @@ router.get(
   resultController.getResults
 );
 
+// @route   GET api/competitions/:competitionId/results/stream
+// @desc    当前场次的评分人员接收实时成绩与检录通知
+router.get(
+  '/stream',
+  [auth, authorize('admin', 'chief_referee', 'referee')],
+  resultController.openScoreStream
+);
+
 // @route   GET api/competitions/:competitionId/results/:id
 // @desc    获取单条成绩详情
 // @access  私有/管理员、主裁或裁判

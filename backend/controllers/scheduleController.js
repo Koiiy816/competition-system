@@ -2,6 +2,7 @@ const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const { normalizeParticipantGender, getScheduleGender, formatScheduleName, parseScheduleIdentity } = require('../utils/scheduleNaming');
+const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 
 function mergeUndersizedAgeGroups(groups, competition) {
   const minimum = competition?.awardRules?.mergeGroupsBelow || 0;
@@ -1108,6 +1109,10 @@ exports.updateScheduleStatus = async (req, res, next) => {
     // 更新状态
     schedule.status = status;
     await schedule.save();
+
+    broadcastScoreEvent(req.params.competitionId, req.params.id, 'schedule-status-updated', {
+      status: schedule.status
+    });
 
     res.status(200).json({
       success: true,

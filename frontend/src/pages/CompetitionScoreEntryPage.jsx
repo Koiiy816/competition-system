@@ -560,34 +560,110 @@ const CompetitionScoreEntryPage = () => {
   
   useEffect(() => {
     fetchData();
-    // 自动轮询刷新分数 (每3秒)，解决裁判长看不到最新分数的问题
-    const interval = setInterval(() => {
-      fetchResultsOnly();
-      fetchScheduleOnly();
-    }, 3000);
-    return () => clearInterval(interval);
+  }, [id, scheduleId, isChiefOrAdmin]);
+
+  useEffect(() => {
+    // 所有打开同一评分场次的账号都连接实时通知流；没有业务变动时不轮询或查库。
+    if (!id || !scheduleId) return undefined;
+
+    let active = true;
+    let controller;
+    let reconnectTimer;
+
+    const connect = async () => {
+      controller = new AbortController();
+      try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/competitions/${id}/results/stream?scheduleId=${encodeURIComponent(scheduleId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: controller.signal
+        });
+        if (!response.ok || !response.body) throw new Error(`实时成绩连接失败：${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let pending = '';
+        while (active) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          pending += decoder.decode(value, { stream: true });
+          const messages = pending.split('\n\n');
+          pending = messages.pop() || '';
+          messages.forEach((message) => {
+            const eventLine = message.split('\n').find((line) => line.startsWith('event: '));
+            const dataLine = message.split('\n').find((line) => line.startsWith('data: '));
+            if (!dataLine) return;
+            try {
+              const payload = JSON.parse(dataLine.slice(6));
+              if (eventLine === 'event: score-updated' && payload.participantId && payload.result) {
+                setResults((current) => ({ ...current, [payload.participantId]: payload.result }));
+              }
+              if (eventLine === 'event: check-in-updated') {
+                const updates = new Map((payload.updates || []).map((entry) => [String(entry._id), entry]));
+                setParticipants((current) => current.map((participant) => {
+                  const direct = updates.get(String(participant._id));
+                  const teamMembers = (participant.teamMembers || []).map((member) => {
+                    const update = updates.get(String(member._id));
+                    return update ? { ...member, ...update } : member;
+                  });
+                  if (direct) return { ...participant, ...direct, teamMembers };
+                  if (teamMembers.some((member, index) => member !== (participant.teamMembers || [])[index])) {
+                    return { ...participant, teamMembers };
+                  }
+                  return participant;
+                }));
+                if (payload.participantId) {
+                  setResults((current) => {
+                    const existing = current[payload.participantId];
+                    if (!existing) return current;
+                    return {
+                      ...current,
+                      [payload.participantId]: {
+                        ...existing,
+                        score: payload.status === 'absent' ? 0 : existing.score,
+                        status: 'pending',
+                        details: {
+                          ...(existing.details || {}),
+                          isAbsent: payload.status === 'absent',
+                          absentSource: payload.status === 'absent' ? 'check_in' : null
+                        }
+                      }
+                    };
+                  });
+                }
+              }
+              if (eventLine === 'event: schedule-status-updated') {
+                setSchedule((current) => current ? { ...current, status: payload.status } : current);
+              }
+            } catch (error) {
+              console.error('实时评分页面消息解析失败:', error);
+            }
+          });
+        }
+      } catch (error) {
+        if (active && error.name !== 'AbortError') console.error('实时成绩连接失败:', error);
+      } finally {
+        if (active) reconnectTimer = window.setTimeout(connect, 1000);
+      }
+    };
+
+    connect();
+    return () => {
+      active = false;
+      window.clearTimeout(reconnectTimer);
+      controller?.abort();
+    };
   }, [id, scheduleId]);
 
-  const fetchResultsOnly = async () => {
-    try {
-      const resRes = await resultService.getResults(id, { scheduleId: scheduleId, limit: 1000 });
-      const resMap = {};
-      if (resRes.data && Array.isArray(resRes.data)) {
-        resRes.data.forEach(r => {
-          const pId = r.participant?._id || r.participant;
-          if (pId) resMap[pId] = r;
-        });
-      }
-      setResults(prev => {
-        // 性能优化：对比前后数据是否一致，如果完全一样则不触发 setResults 重渲染整个打分表格，防止卡顿
-        if (JSON.stringify(prev) !== JSON.stringify(resMap)) {
-          return resMap;
-        }
-        return prev;
-      });
-    } catch (err) {
-      console.error('Auto fetch results failed:', err);
-    }
+  // 仅用于检录、重置等管理员主动操作后的单次重读；不参与任何定时刷新。
+  const fetchResultsOnce = async () => {
+    const response = await resultService.getResults(id, { scheduleId, limit: 1000 });
+    const nextResults = {};
+    (response.data || []).forEach((result) => {
+      const participantId = result.participant?._id || result.participant;
+      if (participantId) nextResults[participantId] = result;
+    });
+    setResults(nextResults);
   };
 
   const fetchScheduleOnly = async () => {
@@ -791,7 +867,7 @@ const CompetitionScoreEntryPage = () => {
     setError('');
     try {
       await scheduleService.updateParticipantCheckInStatus(id, participant._id, status, scheduleId);
-      await Promise.all([fetchScheduleOnly(), fetchResultsOnly()]);
+      await Promise.all([fetchScheduleOnly(), fetchResultsOnce()]);
     } catch (err) {
       setError(err.message || '检录状态更新失败');
     } finally {
@@ -823,7 +899,7 @@ const CompetitionScoreEntryPage = () => {
     if (!window.confirm('确定重置本场所有选手的已公开轮次吗？大屏会从第1轮重新开始显示；原始裁判分、动作表和报名资料不会删除。')) return;
     try {
       const response = await resultService.resetDivingPublication(id, scheduleId);
-      await fetchResultsOnly();
+      await fetchResultsOnce();
       alert(response.message || '本场已公开轮次已重置');
     } catch (err) {
       alert(err.message || '重置已公开轮次失败');
@@ -837,7 +913,7 @@ const CompetitionScoreEntryPage = () => {
     if (!confirmed) return;
     try {
       const response = await resultService.resetScheduleResults(id, scheduleId);
-      await fetchResultsOnly();
+      await fetchResultsOnce();
       setSchedule((current) => current ? { ...current, status: 'scheduled' } : current);
       alert(response.message || '本项目测试成绩已清空');
     } catch (err) {
@@ -853,7 +929,7 @@ const CompetitionScoreEntryPage = () => {
   const handleStrengthSave = async (participantId, events) => {
     try {
       await resultService.submitStrengthScore(id, { scheduleId, participantId, events });
-      await fetchResultsOnly();
+      await fetchResultsOnce();
     } catch (err) {
       alert(err.message || '保存素质力量成绩失败');
       throw err;
