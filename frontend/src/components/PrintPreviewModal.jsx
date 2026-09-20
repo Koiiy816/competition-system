@@ -301,13 +301,9 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       {/* Print Styles */}
       <style>{`
         @media print {
-          /* 打分页会先隐藏全页；弹层打印内容必须显式恢复可见。 */
-          body * { visibility: hidden !important; }
-          .print-dialog-root, .print-dialog-root * { visibility: visible !important; }
-          body:has(.print-dialog-root) .print-container {
-            display: none !important;
-            visibility: hidden !important;
-          }
+          /* 只保留实际公告弹窗，避免页面和弹窗骨架的高度被打印成白页。 */
+          body > * { display: none !important; }
+          body > .print-dialog-root { display: block !important; }
           
           /* Ensure the dialog is visible and takes full space */
           .print-dialog-root {
@@ -322,6 +318,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             z-index: 9999 !important;
             display: block !important;
             background-color: white !important;
+            overflow: visible !important;
           }
 
           /* Reset Dialog internal layout */
