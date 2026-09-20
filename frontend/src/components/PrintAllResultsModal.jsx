@@ -142,7 +142,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
 
   const signaturePage = <Box className="report-page chief-signature-page" key="chief-signature-page">
     <Typography sx={{ mt: '70mm', textAlign: 'center', fontSize: '20pt', fontWeight: 'bold', fontFamily: '"SimHei", "黑体", sans-serif' }}>裁判长、编排长签名页</Typography>
-    <Box sx={{ mt: '35mm', ml: '12%', display: 'grid', gap: '20mm', fontSize: '18pt', fontFamily: '"SimSun", "宋体", serif' }}>
+    <Box sx={{ mt: '35mm', ml: '12%', mr: '8%', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', columnGap: '18mm', rowGap: '14mm', fontSize: '18pt', fontFamily: '"SimSun", "宋体", serif' }}>
       {signatureImages.map((signatureImage, index) => <Box key={`chief-${index}`} sx={{ display: 'flex', alignItems: 'center', minHeight: '34px' }}>裁判长：{signatureImage ? <img src={signatureImage} alt={`裁判长签名 ${index + 1}`} style={{ maxWidth: '240px', maxHeight: '100px', marginLeft: '18px' }} /> : <Box sx={{ width: '200px', height: '34px', ml: 2, borderBottom: '1px solid black' }} />}</Box>)}
       <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '34px' }}>编排长：{organizerSignature ? <img src={organizerSignature} alt="编排长签名" style={{ maxWidth: '240px', maxHeight: '100px', marginLeft: '18px' }} /> : <Box sx={{ width: '200px', height: '34px', ml: 2, borderBottom: '1px solid black' }} />}</Box>
     </Box>
