@@ -301,13 +301,13 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       {/* Print Styles */}
       <style>{`
         @media print {
-          /* 只保留实际公告弹窗，避免页面和弹窗骨架的高度被打印成白页。 */
-          body > * { display: none !important; }
-          body > .print-dialog-root { display: block !important; }
+          /* 只隐藏主应用，MUI 打印弹窗由 Portal 挂在 body 下，必须保留。 */
+          body > #root,
+          body > .MuiModal-root:not(.print-dialog-root) { display: none !important; }
           
           /* Ensure the dialog is visible and takes full space */
           .print-dialog-root {
-            position: absolute !important;
+            position: static !important;
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
@@ -481,7 +481,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             {isDivingPrint || isStrengthPrint ? <>
               <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>{isStrengthPrint ? (isStrengthDetailPrint ? '素质力量明细成绩公告' : '素质力量名次公告') : (isDivingDetailPrint ? '明细成绩公告' : '名次公告')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', columnGap: 1, alignItems: 'center', fontSize: '14px', fontFamily: '"SimSun", "宋体", serif' }}>
-                <span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>{isStrengthPrint ? '跳水·素质力量' : '跳水'}</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{schedule.name}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{schedule.location || schedule.court || ''}</span>
+                <span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>{isStrengthPrint ? '跳水·素质力量' : '跳水'}</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{schedule.name}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{schedule.competitionLocation || schedule.location || schedule.court || ''}</span>
               </Box>
             </> : <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>{subTitle}</Typography>}
           </Box>
