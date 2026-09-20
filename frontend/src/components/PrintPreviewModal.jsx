@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -39,7 +39,6 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   const [signatureImage, setSignatureImage] = useState(localStorage.getItem('chief_signature') || '');
   const [divingJudgeNames, setDivingJudgeNames] = useState(savedDivingJudgeNames);
   const [divingReserveName, setDivingReserveName] = useState(localStorage.getItem('diving_reserve_name') || '');
-  const printableRef = useRef(null);
 
   React.useEffect(() => {
     if (open && schedule) {
@@ -51,34 +50,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   }, [open, schedule]);
   
   const handlePrint = () => {
-    const printable = printableRef.current;
-    if (!printable) return;
-
-    const printWindow = window.open('', '_blank', 'width=1000,height=800');
-    if (!printWindow) {
-      window.alert('浏览器阻止了打印窗口，请允许本站弹出窗口后重试。');
-      return;
-    }
-
-    const styles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map((node) => node.outerHTML)
-      .join('\n');
-    const printableHtml = printable.outerHTML;
-
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${title || '成绩公告'}</title>${styles}<style>@page { size: A4 portrait; margin: 10mm; } html, body { margin: 0; padding: 0; background: #fff; } body { color: #000; } .printable-content { display: block !important; width: 100% !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; background: #fff !important; } .MuiTableContainer-root { overflow: visible !important; } .no-print, button { display: none !important; } .chief-signature { break-inside: avoid; page-break-inside: avoid; }</style></head><body>${printableHtml}</body></html>`);
-    printWindow.document.close();
-
-    const startPrint = () => {
-      printWindow.focus();
-      printWindow.print();
-    };
-
-    if (printWindow.document.fonts?.ready) {
-      printWindow.document.fonts.ready.then(startPrint);
-    } else {
-      window.setTimeout(startPrint, 300);
-    }
+    window.print();
   };
 
   const handleSignatureUpload = (e) => {
@@ -329,10 +301,13 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       {/* Print Styles */}
       <style>{`
         @media print {
-          /* 只保留实际公告弹窗，避免页面和弹窗骨架的高度被打印成白页。 */
-          body > #root { display: none !important; }
-          body > .print-dialog-root,
-          body > .MuiModal-root.print-dialog-root { display: block !important; }
+          /* 打分页会先隐藏全页；弹层打印内容必须显式恢复可见。 */
+          body * { visibility: hidden !important; }
+          .print-dialog-root, .print-dialog-root * { visibility: visible !important; }
+          body:has(.print-dialog-root) .print-container {
+            display: none !important;
+            visibility: hidden !important;
+          }
           
           /* Ensure the dialog is visible and takes full space */
           .print-dialog-root {
@@ -347,7 +322,6 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             z-index: 9999 !important;
             display: block !important;
             background-color: white !important;
-            overflow: visible !important;
           }
 
           /* Reset Dialog internal layout */
@@ -482,7 +456,6 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
         {/* Preview Area - This is what gets printed */}
         <Box 
           className="printable-content"
-          ref={printableRef}
           sx={{ 
             p: 4, 
             bgcolor: 'white', 
