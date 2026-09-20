@@ -7,7 +7,6 @@ import { isStrengthResult, rankStrengthEntries } from '../utils/strengthRanking'
 const scoreOf = (result) => Number(result?.finalScore ?? result?.score ?? 0) || 0;
 const athlete = (participant) => participant?.isVirtualTeam ? (participant.teamMembers || []).map((item) => item.name).filter(Boolean).join('、') || '未知' : participant?.teamName || participant?.name || participant?.user?.name || '未知';
 const unit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-';
-const dateOf = (value) => value ? new Date(value).toLocaleDateString() : '';
 const strengthActionName = (value) => String(value || '').replace(/提膝跳\s*10\s*次/g, '提膝跳').replace(/引体控\s*40\s*秒/g, '引体控');
 const savedChiefSignatures = () => {
   try {
@@ -51,10 +50,10 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
   if (!competition) return null;
 
   const schedules = Object.entries(groupedResults || {}).map(([name, results]) => ({ name, schedule: results.find((result) => result.schedule)?.schedule, entries: preparedResults(results) })).filter((section) => section.entries.length);
-  const reportHeader = (title, scheduleName = '', discipline = '跳水', schedule = null) => <Box className="report-header" sx={{ textAlign: 'center', mb: 0.8, fontFamily: '"SimSun", "宋体", serif' }}>
+  const reportHeader = (title, scheduleName = '', discipline = '跳水', schedule = null, locationOnly = false) => <Box className="report-header" sx={{ textAlign: 'center', mb: 0.8, fontFamily: '"SimSun", "宋体", serif' }}>
     <Typography className="report-title" sx={{ fontSize: '24px', fontWeight: 'bold', lineHeight: 1.5, fontFamily: '"SimHei", "黑体", sans-serif' }}>{competition.name}</Typography>
     <Typography className="report-subtitle" sx={{ fontSize: '18px', fontWeight: 'bold', lineHeight: 1.35, fontFamily: '"SimHei", "黑体", sans-serif' }}>{title}</Typography>
-    {scheduleName && <Box className="report-meta" sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', columnGap: 1, alignItems: 'center', fontSize: '14px', mt: 0.5 }}><span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>{discipline}</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{scheduleName}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{dateOf(schedule?.startTime || competition.startDate)} {schedule?.location || competition.location || ''}</span></Box>}
+    {scheduleName && <Box className="report-meta" sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', columnGap: 1, alignItems: 'center', fontSize: '14px', mt: 0.5 }}><span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>{discipline}</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{scheduleName}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{locationOnly ? (schedule?.location || schedule?.court || competition.location || '') : `${schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} ${schedule?.location || competition.location || ''}`}</span></Box>}
   </Box>;
   const tableStyle = { borderTop: '1px solid black', borderBottom: '1px solid black' };
   const teamPage = teamRankings.length ? <Box className="report-page" key="team">
@@ -67,8 +66,9 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
   const rankPage = ({ name, schedule, entries }) => {
     const leader = entries.find((entry) => !entry.absent)?.score || 0;
     const discipline = entries.some(({ result }) => isStrengthResult(result)) ? '跳水·素质力量' : '跳水';
+    const isDivingReport = entries.some(({ result }) => isDivingResult(result) || isStrengthResult(result));
     return <Box className="report-page" key={`${name}-rank`}>
-      {reportHeader('名次公告', name, discipline, schedule)}
+      {reportHeader('名次公告', name, discipline, schedule, isDivingReport)}
       <TableContainer className="report-table rank-table" sx={{ border: '1px solid black' }}><Table size="small"><TableHead><TableRow>{['名次', '姓名', '单位', '成绩', '分差', '备注'].map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
         {entries.map((entry, index) => <TableRow key={entry.result._id || index}><TableCell align="center">{entry.rank}</TableCell><TableCell align="center">{athlete(entry.result.participant)}</TableCell><TableCell align="center">{unit(entry.result.participant)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : entry.score.toFixed(2)}</TableCell><TableCell align="center">{entry.absent || entry.rank === 1 ? '' : (leader - entry.score).toFixed(2)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : ''}</TableCell></TableRow>)}
       </TableBody></Table></TableContainer>
@@ -81,7 +81,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
       const leader = entries.find((entry) => !entry.absent)?.score || 0;
       const headings = ['姓名', '单位', '小项', '原始成绩', '积分', '总分', '总名次', '分差'];
       return <Box className="report-page report-detail-page" key={`${name}-detail`}>
-        {reportHeader('素质力量明细成绩公告', name, '跳水·素质力量', schedule)}
+        {reportHeader('素质力量明细成绩公告', name, '跳水·素质力量', schedule, true)}
         <TableContainer className="report-table detail-table" sx={tableStyle}><Table size="small"><TableHead><TableRow>{headings.map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
           {entries.flatMap((entry, entryIndex) => {
             const events = entry.result.details?.events || [];
@@ -116,7 +116,7 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     const headings = ['姓名', '单位', '动作', '难度', 'E1', 'E2', 'E3', 'E4', 'E5', '得分', '轮次名次', '累计分', '总名次', '分差'];
     const columnWidths = ['12%', '13%', '15.5%', '5%', '4.5%', '4.5%', '4.5%', '4.5%', '4.5%', '6%', '6%', '7%', '7%', '5%'];
     return <Box className="report-page report-detail-page" key={`${name}-detail`}>
-      {reportHeader('明细成绩公告', name, '跳水', schedule)}
+      {reportHeader('明细成绩公告', name, '跳水', schedule, true)}
       <TableContainer className="report-table detail-table" sx={tableStyle}><Table size="small" sx={{ tableLayout: 'fixed', width: '100%' }}><colgroup>{columnWidths.map((width, index) => <col key={index} style={{ width }} />)}</colgroup><TableHead><TableRow>{headings.map((label) => <TableCell key={label} align="center">{label === '轮次名次' ? <>轮次<br />名次</> : label}</TableCell>)}</TableRow></TableHead><TableBody>
         {entries.flatMap((entry, entryIndex) => {
           const dives = entry.result.details?.dives || [];
