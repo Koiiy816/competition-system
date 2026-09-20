@@ -302,8 +302,9 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
       <style>{`
         @media print {
           /* 只保留实际公告弹窗，避免页面和弹窗骨架的高度被打印成白页。 */
-          body > * { display: none !important; }
-          body > .print-dialog-root { display: block !important; }
+          body > #root { display: none !important; }
+          body > .print-dialog-root,
+          body > .MuiModal-root.print-dialog-root { display: block !important; }
           
           /* Ensure the dialog is visible and takes full space */
           .print-dialog-root {
