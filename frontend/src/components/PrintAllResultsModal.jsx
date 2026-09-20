@@ -18,6 +18,16 @@ const savedChiefSignatures = () => {
   return [localStorage.getItem('chief_signature') || ''];
 };
 const savedOrganizerSignature = () => localStorage.getItem('organizer_signature') || '';
+const savedSignatureGroup = (key, legacyKey = '') => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
+    if (Array.isArray(saved) && saved.length) return saved;
+  } catch {
+    // Fall through to the legacy single-signature value.
+  }
+  const legacy = legacyKey ? localStorage.getItem(legacyKey) : '';
+  return legacy ? [legacy] : [''];
+};
 
 const rankRows = (rows, getValue) => {
   let previousValue = null;
@@ -48,7 +58,8 @@ const preparedResults = (results = []) => {
 
 const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, teamRankings = [] }) => {
   const [signatureImages, setSignatureImages] = useState(savedChiefSignatures);
-  const [organizerSignature, setOrganizerSignature] = useState(savedOrganizerSignature);
+  const [deputySignatureImages, setDeputySignatureImages] = useState(() => savedSignatureGroup('deputy_chief_signatures'));
+  const [organizerSignatureImages, setOrganizerSignatureImages] = useState(() => savedSignatureGroup('organizer_signatures', 'organizer_signature'));
   if (!competition) return null;
 
   const schedules = Object.entries(groupedResults || {}).map(([name, results]) => ({ name, schedule: results.find((result) => result.schedule)?.schedule, entries: preparedResults(results) })).filter((section) => section.entries.length);
@@ -140,11 +151,18 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     </Box>;
   };
 
+  const signatureGroup = (label, images, prefix) => <Box sx={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '90px minmax(0, 1fr)', alignItems: 'center', columnGap: '8mm' }}>
+    <Box sx={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>{label}：</Box>
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '8mm 12mm' }}>
+      {images.map((signatureImage, index) => <Box key={`${prefix}-${index}`} sx={{ display: 'flex', alignItems: 'center', minHeight: '30px' }}>{signatureImage ? <img src={signatureImage} alt={`${label}签名 ${index + 1}`} style={{ maxWidth: '180px', maxHeight: '70px' }} /> : <Box sx={{ width: '180px', height: '30px', borderBottom: '1px solid black' }} />}</Box>)}
+    </Box>
+  </Box>;
   const signaturePage = <Box className="report-page chief-signature-page" key="chief-signature-page">
-    <Typography sx={{ mt: '70mm', textAlign: 'center', fontSize: '20pt', fontWeight: 'bold', fontFamily: '"SimHei", "黑体", sans-serif' }}>裁判长、编排长签名页</Typography>
-    <Box sx={{ mt: '35mm', ml: '12%', mr: '8%', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', columnGap: '18mm', rowGap: '14mm', fontSize: '18pt', fontFamily: '"SimSun", "宋体", serif' }}>
-      {signatureImages.map((signatureImage, index) => <Box key={`chief-${index}`} sx={{ display: 'flex', alignItems: 'center', minHeight: '34px' }}>裁判长：{signatureImage ? <img src={signatureImage} alt={`裁判长签名 ${index + 1}`} style={{ maxWidth: '240px', maxHeight: '100px', marginLeft: '18px' }} /> : <Box sx={{ width: '200px', height: '34px', ml: 2, borderBottom: '1px solid black' }} />}</Box>)}
-      <Box sx={{ display: 'flex', alignItems: 'center', minHeight: '34px' }}>编排长：{organizerSignature ? <img src={organizerSignature} alt="编排长签名" style={{ maxWidth: '240px', maxHeight: '100px', marginLeft: '18px' }} /> : <Box sx={{ width: '200px', height: '34px', ml: 2, borderBottom: '1px solid black' }} />}</Box>
+    <Typography sx={{ mt: '35mm', textAlign: 'center', fontSize: '18pt', fontWeight: 'bold', fontFamily: '"SimHei", "黑体", sans-serif' }}>裁判长、副裁判长、编排长签名页</Typography>
+    <Box sx={{ mt: '20mm', ml: '8%', mr: '8%', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', rowGap: '13mm', fontSize: '15pt', fontFamily: '"SimSun", "宋体", serif' }}>
+      {signatureGroup('裁判长', signatureImages, 'chief')}
+      {signatureGroup('副裁判长', deputySignatureImages, 'deputy')}
+      {signatureGroup('编排长', organizerSignatureImages, 'organizer')}
     </Box>
   </Box>;
 
@@ -163,22 +181,29 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
     };
     reader.readAsDataURL(file);
   };
-  const uploadOrganizerSignature = (event) => {
+  const saveSignatureGroup = (key, setImages, next) => {
+    setImages(next);
+    localStorage.setItem(key, JSON.stringify(next));
+  };
+  const uploadSignatureGroup = (key, setImages, images, index, event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onloadend = () => {
-      const next = reader.result;
-      setOrganizerSignature(next);
-      localStorage.setItem('organizer_signature', next);
+      const next = [...images];
+      next[index] = reader.result;
+      saveSignatureGroup(key, setImages, next);
     };
     reader.readAsDataURL(file);
   };
+  const clearSignatureGroupItem = (key, setImages, images, index) => saveSignatureGroup(key, setImages, images.map((item, itemIndex) => itemIndex === index ? '' : item));
+  const removeSignatureGroupItem = (key, setImages, images, index) => saveSignatureGroup(key, setImages, images.filter((_, itemIndex) => itemIndex !== index));
+  const signatureControls = (label, key, images, setImages, allowRemove = true) => <Box sx={{ display: 'grid', gap: 1, mt: 1 }}><Typography variant="body2" sx={{ fontWeight: 'bold' }}>{label}</Typography>{images.map((signatureImage, index) => <Box key={`${key}-${index}`} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography variant="body2">{label} {index + 1}</Typography><Button variant="outlined" component="label" size="small">{signatureImage ? '更换签名' : '上传签名'}<input type="file" hidden accept="image/*" onChange={(event) => uploadSignatureGroup(key, setImages, images, index, event)} /></Button>{signatureImage && <Button size="small" color="error" onClick={() => clearSignatureGroupItem(key, setImages, images, index)}>清除</Button>}{allowRemove && images.length > 1 && <Button size="small" color="error" onClick={() => removeSignatureGroupItem(key, setImages, images, index)}>删除此位</Button>}</Box>)}<Button sx={{ justifySelf: 'start' }} variant="outlined" size="small" onClick={() => saveSignatureGroup(key, setImages, [...images, ''])}>新增{label}签名</Button></Box>;
 
   return <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth className="all-results-print-dialog" PaperProps={{ sx: { minHeight: '80vh' } }}>
     <DialogTitle className="no-print" sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><Typography variant="h6">打印总成绩册</Typography><Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()}>打印</Button></DialogTitle>
-    <DialogContent dividers sx={{ bgcolor: '#f5f5f5' }}><Box className="no-print" sx={{ mb: 2 }}><Typography variant="body2" color="text.secondary" gutterBottom>裁判长、编排长电子签会显示在总成绩册最后的独立签名页；可按需新增多位裁判长签名。</Typography><Box sx={{ display: 'grid', gap: 1 }}>{signatureImages.map((signatureImage, index) => <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Typography variant="body2">裁判长 {index + 1}</Typography><Button variant="outlined" component="label" size="small">{signatureImage ? '更换签名' : '上传签名'}<input type="file" hidden accept="image/*" onChange={(event) => uploadSignature(index, event)} /></Button>{signatureImage && <Button size="small" color="error" onClick={() => saveSignatures(signatureImages.map((item, itemIndex) => itemIndex === index ? '' : item))}>清除</Button>}{signatureImages.length > 1 && <Button size="small" color="error" onClick={() => saveSignatures(signatureImages.filter((_, itemIndex) => itemIndex !== index))}>删除此位</Button>}</Box>)}</Box><Button sx={{ mt: 1 }} variant="outlined" size="small" onClick={() => saveSignatures([...signatureImages, ''])}>新增裁判长签名</Button><Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}><Typography variant="body2">编排长</Typography><Button variant="outlined" component="label" size="small">{organizerSignature ? '更换签名' : '上传签名'}<input type="file" hidden accept="image/*" onChange={uploadOrganizerSignature} /></Button>{organizerSignature && <Button size="small" color="error" onClick={() => { setOrganizerSignature(''); localStorage.removeItem('organizer_signature'); }}>清除</Button>}</Box></Box>
-      <Box className="all-results-printable" sx={{ p: 3, bgcolor: 'white', color: 'black' }}>{teamPage}{schedules.map(rankPage)}{schedules.map(detailPage)}{signaturePage}
+    <DialogContent dividers sx={{ bgcolor: '#f5f5f5' }}><Box className="no-print" sx={{ mb: 2 }}><Typography variant="body2" color="text.secondary" gutterBottom>裁判长、副裁判长、编排长电子签会显示在总成绩册第一页的独立签名页；每类签名名称只显示一次，可按需新增多个签名。</Typography>{signatureControls('裁判长', 'chief_signatures', signatureImages, setSignatureImages)}{signatureControls('副裁判长', 'deputy_chief_signatures', deputySignatureImages, setDeputySignatureImages)}{signatureControls('编排长', 'organizer_signatures', organizerSignatureImages, setOrganizerSignatureImages)}</Box>
+      <Box className="all-results-printable" sx={{ p: 3, bgcolor: 'white', color: 'black' }}>{signaturePage}{teamPage}{schedules.map(rankPage)}{schedules.map(detailPage)}
         <style>{`@media print { @page { size: A4 portrait; margin: 10mm; } body > * { display: none !important; } body > .all-results-print-dialog { display: block !important; } .all-results-print-dialog { position: static !important; width: 100% !important; height: auto !important; min-height: 0 !important; overflow: visible !important; } .all-results-print-dialog .MuiDialog-container, .all-results-print-dialog .MuiPaper-root, .all-results-print-dialog .MuiDialogContent-root { display: block !important; position: static !important; width: 100% !important; height: auto !important; min-height: 0 !important; max-height: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; box-shadow: none !important; } .all-results-printable { position: static !important; width: 100% !important; padding: 0 !important; } .no-print, .MuiBackdrop-root { display: none !important; } .report-page { break-before: page; page-break-before: always; } .report-page:first-child { break-before: auto; page-break-before: auto; } .chief-signature-page { min-height: 260mm; } .report-table { overflow: visible !important; } .report-table table { width: 100%; border-collapse: collapse; } .report-title { font-size: 18pt !important; } .report-subtitle { font-size: 14pt !important; } .report-meta { font-size: 10pt !important; } .rank-table th, .rank-table td { border-bottom: 1px solid #000 !important; border-right: 1px solid #000 !important; padding: 4px 6px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 12pt !important; white-space: nowrap; } .rank-table th:last-child, .rank-table td:last-child { border-right: none !important; } .rank-table th { font-weight: bold !important; } .rank-table td:nth-child(2), .rank-table td:nth-child(3) { white-space: normal !important; word-break: break-all !important; overflow-wrap: anywhere !important; } .report-table:not(.rank-table):not(.detail-table) th, .report-table:not(.rank-table):not(.detail-table) td { border-bottom: 1px solid #000 !important; padding: 4px 5px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 10pt !important; white-space: nowrap; } .detail-table .MuiTableHead-root .MuiTableCell-root { border: 1px solid #000 !important; padding: 3px 2px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 9.5pt !important; line-height: 1.25 !important; white-space: nowrap; } .detail-table .MuiTableBody-root .MuiTableCell-root { border: none !important; padding: 3px 2px !important; color: #000 !important; font-family: SimSun, serif !important; font-size: 9.5pt !important; line-height: 1.25 !important; white-space: nowrap; } .detail-table .detail-name-cell, .detail-table .detail-unit-cell, .detail-table .detail-action-cell { white-space: normal !important; word-break: break-all !important; overflow-wrap: anywhere !important; } }`}</style>
       </Box>
     </DialogContent><DialogActions className="no-print"><Button onClick={onClose}>取消</Button></DialogActions>
