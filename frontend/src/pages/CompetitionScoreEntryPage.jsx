@@ -1250,7 +1250,7 @@ const CompetitionScoreEntryPage = () => {
       <PrintPreviewModal
         open={printModalOpen}
         onClose={() => setPrintModalOpen(false)}
-        schedule={schedule ? { ...schedule, competitionName: competition?.name || schedule?.competitionName, competitionLocation: competition?.location || '', divingPrintType } : schedule}
+        schedule={schedule ? { ...schedule, competitionName: competition?.name || schedule?.competitionName, divingPrintType } : schedule}
         participants={(schedule?.scoringMode === 'diving' ? scoringParticipants : participants).filter(p => !p.isTest)}
         results={results}
         user={user}

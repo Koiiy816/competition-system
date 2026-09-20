@@ -1266,9 +1266,8 @@ const ResultsPage = () => {
     const virtualSchedule = {
       name: scheduleName,
       startTime: sourceSchedule?.startTime || selectedCompetition?.startDate || new Date(),
-      location: selectedCompetition?.location || sourceSchedule?.location || '',
+      location: sourceSchedule?.location || selectedCompetition?.location || '',
       court: sourceSchedule?.court || sourceSchedule?.location || '',
-      competitionLocation: selectedCompetition?.location || '',
       showPrizeLevels: isPercentAwardCompetition(selectedCompetition),
       competitionName: selectedCompetition?.name || '比赛',
       scoringMode: scheduleResults.some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? 'diving' : 'standard',
