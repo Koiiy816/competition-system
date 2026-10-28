@@ -484,7 +484,7 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
             {isDivingPrint || isStrengthPrint ? <>
               <Typography sx={{ fontSize: '18px', fontFamily: '"SimHei", "黑体", sans-serif', mb: 0.5 }}>{isStrengthPrint ? (isStrengthDetailPrint ? '素质力量明细成绩公告' : '素质力量名次公告') : (isDivingDetailPrint ? '明细成绩公告' : '名次公告')}</Typography>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) minmax(0, 1fr)', columnGap: 1, alignItems: 'center', fontSize: '14px', fontFamily: '"SimSun", "宋体", serif' }}>
-                <span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>{isStrengthPrint ? '跳水·素质力量' : '跳水'}</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{schedule.name}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{schedule.startTime ? new Date(schedule.startTime).toLocaleDateString() : ''} {schedule.location || ''}</span>
+                <span style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>{isStrengthPrint ? '跳水·素质力量' : '跳水'}</span><span style={{ textAlign: 'center', overflowWrap: 'anywhere' }}>{schedule.name}</span><span style={{ textAlign: 'right', overflowWrap: 'anywhere' }}>{schedule.location || schedule.court || ''}</span>
               </Box>
             </> : <Typography variant="subtitle1" sx={{ fontSize: isTeamRanking ? '18px' : '14px', mt: 2 }}>{subTitle}</Typography>}
           </Box>
