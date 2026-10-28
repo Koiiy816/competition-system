@@ -84,7 +84,7 @@ const isDivingCompetition = (type) => String(type || '').trim().includes('跳水
 export default function CompetitionDetailsPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   
   const [competition, setCompetition] = useState({
     name: '',
@@ -95,9 +95,11 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
     status: 'draft',
     type: '武术',
     location: '',
+    guidingUnits: [],
     hosts: [],
     organizers: [],
     coOrganizers: [],
+    invitedUnits: [],
     rules: '',
     maxParticipants: 0,
     genderRestriction: 'both',
@@ -189,10 +191,10 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
       }
     };
 
-    if (id) {
+    if (id && !authLoading) {
       fetchCompetition();
     }
-  }, [id, isCreate, isEdit]);
+  }, [id, isCreate, isEdit, authLoading]);
 
   // Auto-save to localStorage whenever competition changes (only in create mode)
   useEffect(() => {
@@ -417,7 +419,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
     ];
 
     const jsonFields = [
-      'hosts', 'organizers', 'coOrganizers', 'ageGroups', 'events', 
+      'guidingUnits', 'hosts', 'organizers', 'coOrganizers', 'invitedUnits', 'ageGroups', 'events',
       'participantRequirements', 'registrationRules', 'scoringRules', 'awardRules',
       'awards', 'categories', 'tags'
     ];
@@ -546,6 +548,14 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                 <TextField
                   fullWidth
                   margin="normal"
+                  label="指导单位 (可选，用逗号分隔)"
+                  name="guidingUnits"
+                  value={Array.isArray(competition.guidingUnits) ? competition.guidingUnits.join('，') : competition.guidingUnits || ''}
+                  onChange={(e) => setCompetition({ ...competition, guidingUnits: e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean) })}
+                />
+                <TextField
+                  fullWidth
+                  margin="normal"
                   label="主办单位 (用逗号分隔)"
                   name="hosts"
                   value={Array.isArray(competition.hosts) ? competition.hosts.join('，') : competition.hosts}
@@ -566,6 +576,14 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                   name="coOrganizers"
                   value={Array.isArray(competition.coOrganizers) ? competition.coOrganizers.join('，') : competition.coOrganizers}
                   onChange={(e) => setCompetition({ ...competition, coOrganizers: e.target.value.split(/[,，]/).map(s => s.trim()) })}
+                />
+                <TextField
+                  fullWidth
+                  margin="normal"
+                  label="特邀单位 (可选，用逗号分隔)"
+                  name="invitedUnits"
+                  value={Array.isArray(competition.invitedUnits) ? competition.invitedUnits.join('，') : competition.invitedUnits || ''}
+                  onChange={(e) => setCompetition({ ...competition, invitedUnits: e.target.value.split(/[,，]/).map(s => s.trim()).filter(Boolean) })}
                 />
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
@@ -866,8 +884,8 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                        <TextField
                          fullWidth
                          type="number"
-                         label="每人最多报名项目数"
-                         value={competition.registrationRules?.maxEventsPerParticipant || 3}
+                         label="每人最多报名项目数 (0表示不限制)"
+                         value={competition.registrationRules?.maxEventsPerParticipant ?? 3}
                          onChange={(e) => handleNestedChange('registrationRules', 'maxEventsPerParticipant', e.target.value)}
                        />
                      </Grid>
@@ -1203,6 +1221,17 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                <Typography variant="subtitle1" gutterBottom>
                 <strong>地点：</strong> {competition.location || '待定'}
               </Typography>
+              {[
+                ['指导单位', competition.guidingUnits],
+                ['主办单位', competition.hosts],
+                ['承办单位', competition.organizers],
+                ['协办单位', competition.coOrganizers],
+                ['特邀单位', competition.invitedUnits]
+              ].map(([label, units]) => Array.isArray(units) && units.length > 0 && (
+                <Typography variant="subtitle1" gutterBottom key={label}>
+                  <strong>{label}：</strong>{units.join('、')}
+                </Typography>
+              ))}
               
               <Divider sx={{ my: 2 }} />
               

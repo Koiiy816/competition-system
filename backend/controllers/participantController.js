@@ -145,6 +145,10 @@ exports.getParticipants = async (req, res, next) => {
 
     // 支持按项目分组返回
     if (req.query.groupBy === 'event' || req.query.groupBy === 'school') {
+      const competition = req.query.groupBy === 'event' && req.params.competitionId
+        ? await Competition.findById(req.params.competitionId).select('events.name events.isGroupEvent')
+        : null;
+      const groupEvents = new Set((competition?.events || []).filter(event => event.isGroupEvent).map(event => event.name));
       const groupsMap = {};
       participants.forEach(p => {
         let eventName = (p.event && p.event.trim()) ? p.event : '未分类项目';
@@ -178,7 +182,7 @@ exports.getParticipants = async (req, res, next) => {
           // 原有逻辑：按照比赛项目分组
           // ========================
           // 检查是否为集体项目 (根据名称或组别判断)
-          const isCollective = eventName.includes('集体') || ageGroup.includes('集体混合') || ageGroup.includes('混合集体') || eventName.includes('武术操');
+          const isCollective = groupEvents.has(eventName) || eventName.includes('集体') || ageGroup.includes('集体混合') || ageGroup.includes('混合集体') || eventName.includes('武术操');
           
           if (isCollective) {
              // 1. 如果是集体项目，必须以“单位（学校）”和“项目”作为最高级别的归类维度
@@ -1185,7 +1189,7 @@ exports.exportParticipantsBySchool = async (req, res, next) => {
       // 区分个人和集体项目
       const eventName = p.event || '';
       const ageGroup = p.ageGroup || p.grade || '';
-      const isCollective = eventName.includes('集体') || ageGroup.includes('混合集体');
+      const isCollective = competition?.events?.some(event => event.name === eventName && event.isGroupEvent) || eventName.includes('集体') || ageGroup.includes('混合集体');
       
       if (isCollective) {
         // 如果是集体项目，记录队伍名称
