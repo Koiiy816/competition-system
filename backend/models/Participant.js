@@ -102,18 +102,9 @@ const ParticipantSchema = new mongoose.Schema({
     trim: true,
     maxlength: [1000, '备注不能超过1000个字符']
   },
-  // 保险确认
+  // 保险确认（保留历史数据兼容；新报名不再要求填写）
   insuranceConfirmed: {
-    type: Boolean,
-    // 虚拟队伍不需要保险确认
-    required: function() { return !this.isVirtualTeam; },
-    validate: {
-      validator: function(v) {
-        if (this.isVirtualTeam) return true;
-        return v === true;
-      },
-      message: '参赛必须办理保险'
-    }
+    type: Boolean
   },
   type: {
     type: String,
@@ -124,6 +115,12 @@ const ParticipantSchema = new mongoose.Schema({
     type: String,
     trim: true,
     maxlength: [50, '团队名称不能超过50个字符']
+  },
+  // 集体项目的队伍编号，例如“1队”“2队”。同一单位同一项目可据此拆分为多支队伍。
+  groupTeam: {
+    type: String,
+    trim: true,
+    maxlength: [30, '队伍编号不能超过30个字符']
   },
   members: [{
     user: {

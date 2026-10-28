@@ -165,6 +165,7 @@ exports.generateStartList = async (req, res, next) => {
       const ageGroup = p.ageGroup || p.grade || '未知组别';
       const gender = p.gender || 'unknown';
       const schoolName = p.schoolName || '未知单位';
+      const groupTeam = String(p.groupTeam || '').trim();
       
       // --- 核心纠错：统一“集体混合”到“集体项目” ---
       if (event.includes('集体混合')) {
@@ -216,14 +217,15 @@ exports.generateStartList = async (req, res, next) => {
       }
       
       if (isGroup) {
-         // 集体项目：同一单位（schoolName）的人算作一支队伍
+         // 集体项目：按“单位 + 队伍编号”聚合，支持同一单位报名多支队伍。
          if (!teamGroups[key]) {
             teamGroups[key] = {};
          }
-         if (!teamGroups[key][schoolName]) {
-            teamGroups[key][schoolName] = []; 
+         const teamKey = `${schoolName}\u0000${groupTeam}`;
+         if (!teamGroups[key][teamKey]) {
+            teamGroups[key][teamKey] = { schoolName, groupTeam, memberIds: [] };
          }
-         teamGroups[key][schoolName].push(p._id);
+         teamGroups[key][teamKey].memberIds.push(p._id);
       } else {
         // 个人项目：正常加入
         if (!groups[key]) {
@@ -259,8 +261,8 @@ exports.generateStartList = async (req, res, next) => {
       // 检查当前比赛是否启用了集体项目虚拟队伍（由于这里我们直接将包含多个成员的数组结构化，可能需要特殊的虚拟参赛者或者前端渲染支持）
       // 由于现有系统强依赖 Participant _id 数组，对于集体项目，我们将所有同单位的队员组合在一起，作为一个子数组存储，或者合并他们的名字创建一个临时的虚拟参赛者
       
-      for (const schoolName in teamGroups[key]) {
-        const teamMembersIds = teamGroups[key][schoolName];
+      for (const teamKey in teamGroups[key]) {
+        const { schoolName, groupTeam, memberIds: teamMembersIds } = teamGroups[key][teamKey];
         // 我们需要获取这些队员的详细信息来拼接名字
         const teamMembers = participants.filter(p => teamMembersIds.includes(p._id));
         const combinedNames = teamMembers.map(m => m.name).join('、');
@@ -273,13 +275,15 @@ exports.generateStartList = async (req, res, next) => {
             event: event,
             ageGroup: ageGroup,
             gender: gender,
-            schoolName: schoolName
+            schoolName: schoolName,
+            groupTeam: groupTeam
           },
           {
             $set: {
               type: 'team',
               name: combinedNames,
-              teamName: schoolName,
+              teamName: groupTeam ? `${schoolName}${groupTeam}` : schoolName,
+              groupTeam: groupTeam,
               status: 'approved',
               teamMembers: teamMembersIds,
               isTest: teamMembers.some(m => m.isTest)

@@ -597,7 +597,7 @@ exports.updateParticipant = async (req, res, next) => {
       delete req.body.checkInStatus;
       delete req.body.isTest;
       delete req.body.additionalInfo;
-      const allowedFields = new Set(['name', 'teamName', 'members', 'schoolName', 'event', 'manualEventGroup', 'grade', 'ageGroup', 'gender', 'idCard', 'birthDate', 'teamLeader', 'leaderPhone', 'coach', 'coachPhone', 'remark', 'photoFile']);
+      const allowedFields = new Set(['name', 'teamName', 'groupTeam', 'members', 'schoolName', 'event', 'manualEventGroup', 'grade', 'ageGroup', 'gender', 'idCard', 'birthDate', 'teamLeader', 'leaderPhone', 'coach', 'coachPhone', 'remark', 'photoFile']);
       Object.keys(req.body).forEach((key) => {
         if (!allowedFields.has(key)) delete req.body[key];
       });
@@ -1193,7 +1193,7 @@ exports.exportParticipantsBySchool = async (req, res, next) => {
       
       if (isCollective) {
         // 如果是集体项目，记录队伍名称
-        const teamName = p.teamName || p.name || '未知队伍';
+        const teamName = p.groupTeam || p.teamName || p.name || '未知队伍';
         schoolGroups[schoolName].collectiveEvents.add(`${eventName}(${teamName})`);
       } else {
         // 个人项目，按性别分类姓名
