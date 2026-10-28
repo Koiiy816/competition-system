@@ -702,9 +702,6 @@ const RegisterCompetitionPage = () => {
         errors.events = '请重新选择项目类别和比赛项目';
         return;
       }
-      if (eventConfig.isGroupEvent && !String(selectedTeamAssignments[eventName] || '').trim()) {
-        errors[`teamAssignment.${eventName}`] = '请填写队伍编号，例如 1队';
-      }
       const detail = selectedEventDetails[eventName];
       if (!isDivingEvent(eventConfig) && eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
         errors['eventDetails.' + eventName] = eventConfig.registrationDetail.label || '请填写项目详情';
@@ -1134,14 +1131,13 @@ const RegisterCompetitionPage = () => {
                 {selectedEventConfig?.isGroupEvent && (
                   <TextField
                     fullWidth
-                    required
                     sx={{ mt: 1 }}
-                    label="队伍编号"
+                    label="队伍编号（选填）"
                     placeholder="例如：1队、2队"
                     value={selectedTeamAssignments[selectedEvent] || ''}
                     onChange={(event) => handleTeamAssignmentChange(selectedEvent, event.target.value)}
                     error={!!formErrors[`teamAssignment.${selectedEvent}`]}
-                    helperText={formErrors[`teamAssignment.${selectedEvent}`] || '同一单位有多支队伍时，请为每支队伍填写不同编号；同一队的所有队员填写相同编号。'}
+                    helperText={formErrors[`teamAssignment.${selectedEvent}`] || '只有同一单位报名多支队伍时才需填写，例如 1队、2队；只有一支队伍可留空。'}
                     inputProps={{ maxLength: 30 }}
                   />
                 )}
