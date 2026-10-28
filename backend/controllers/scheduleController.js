@@ -183,7 +183,7 @@ exports.generateStartList = async (req, res, next) => {
       
       // --- 终极规则：集体项目合并策略 ---
       // 幼儿集体拳、武术操等集体项目需要合并男女，统称为混合集体
-      const isForceMixedGroup = event === '集体项目' || event.includes('集体') || event.includes('武术操');
+      const isForceMixedGroup = (eventConfig?.isGroupEvent && eventConfig.genderRestriction === 'both') || event === '集体项目' || event.includes('集体') || event.includes('武术操');
       if (isForceMixedGroup) {
          // 我们将带有男/女字眼的前缀去掉，但保留小学组/幼儿组等信息
          let strippedAgeGroup = ageGroup.replace(/男(子|童)?|女(子|童)?/g, '').trim();

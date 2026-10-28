@@ -37,6 +37,11 @@ const CompetitionSchema = new mongoose.Schema({
     type: String,
     required: [true, '请提供比赛地点']
   },
+  guidingUnits: {
+    type: [String],
+    default: [],
+    description: '指导单位'
+  },
   hosts: {
     type: [String],
     default: [],
@@ -51,6 +56,11 @@ const CompetitionSchema = new mongoose.Schema({
     type: [String],
     default: [],
     description: '协办单位'
+  },
+  invitedUnits: {
+    type: [String],
+    default: [],
+    description: '特邀单位'
   },
   status: {
     type: String,

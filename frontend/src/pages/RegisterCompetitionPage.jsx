@@ -101,6 +101,7 @@ const RegisterCompetitionPage = () => {
   const [photoError, setPhotoError] = useState('');
   const [registrants, setRegistrants] = useState([]);
   const [selectedEvents, setSelectedEvents] = useState(['']);
+  const [selectedEventTypes, setSelectedEventTypes] = useState(['']);
   const [selectedEventDetails, setSelectedEventDetails] = useState({});
   const photoSummary = (photo) => isDivingCompetition(competition) ? '' : ' · ' + (photo ? '已上传照片' : '未上传照片');
   
@@ -285,7 +286,8 @@ const RegisterCompetitionPage = () => {
         events.push({
           category,
           name: event,
-          displayName: `${category} - ${event}`
+          displayName: event,
+          isGroupEvent: category === '集体项目'
         });
       });
     });
@@ -415,7 +417,11 @@ const RegisterCompetitionPage = () => {
   // 处理表单变更
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    if (['grade', 'gender', 'birthDate', 'idCard'].includes(name)) setSelectedEvents(['']);
+    if (['grade', 'gender', 'birthDate', 'idCard'].includes(name)) {
+      setSelectedEvents(['']);
+      setSelectedEventTypes(['']);
+      setSelectedEventDetails({});
+    }
     
     // 如果年级发生变化，清空比赛项目选择
     if (name === 'grade') {
@@ -532,6 +538,20 @@ const RegisterCompetitionPage = () => {
     if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
   };
 
+  const handleEventTypeChange = (index, value) => {
+    const previousEvent = selectedEvents[index];
+    if (previousEvent) {
+      setSelectedEventDetails(current => {
+        const next = { ...current };
+        delete next[previousEvent];
+        return next;
+      });
+    }
+    setSelectedEventTypes(prev => prev.map((type, typeIndex) => typeIndex === index ? value : type));
+    setSelectedEvents(prev => prev.map((event, eventIndex) => eventIndex === index ? '' : event));
+    if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
+  };
+
   const handleEventDetailChange = (eventName, value) => {
     setSelectedEventDetails(prev => ({ ...prev, [eventName]: value }));
     if (formErrors[`eventDetails.${eventName}`]) {
@@ -540,6 +560,10 @@ const RegisterCompetitionPage = () => {
   };
 
   const getEventConfigByName = (eventName) => (competition?.events || []).find(event => event.name === eventName) || getAvailableEvents().find(event => event.name === eventName);
+  const getEventLabel = (eventName) => {
+    const event = getEventConfigByName(eventName);
+    return event ? `${event.isGroupEvent ? '集体项目' : '个人项目'} · ${event.displayName || event.name}` : eventName;
+  };
   const getRegistrantUnit = (entry) => String(entry?.data?.schoolName || entry?.data?.teamName || '').trim();
   const isDivingPairRegistrant = (entry) => {
     const eventConfig = getEventConfigByName(entry?.data?.event);
@@ -625,7 +649,10 @@ const RegisterCompetitionPage = () => {
     }));
   };
 
-  const addEventSelection = () => setSelectedEvents(prev => [...prev, '']);
+  const addEventSelection = () => {
+    setSelectedEvents(prev => [...prev, '']);
+    setSelectedEventTypes(prev => [...prev, '']);
+  };
 
   const removeEventSelection = (index) => {
     setSelectedEvents(prev => {
@@ -639,6 +666,7 @@ const RegisterCompetitionPage = () => {
       }
       return prev.length === 1 ? [''] : prev.filter((_, eventIndex) => eventIndex !== index);
     });
+    setSelectedEventTypes(prev => prev.length === 1 ? [''] : prev.filter((_, typeIndex) => typeIndex !== index));
     if (formErrors.events) setFormErrors(prev => ({ ...prev, events: '' }));
   };
 
@@ -677,8 +705,13 @@ const RegisterCompetitionPage = () => {
     if (!selectedEvents.some(event => event && event.trim())) {
       errors.events = '请至少选择一个比赛项目';
     }
-    selectedEvents.filter(Boolean).forEach(eventName => {
+    selectedEvents.forEach((eventName, index) => {
+      if (!eventName) return;
       const eventConfig = getAvailableEvents().find(event => event.name === eventName);
+      if (!eventConfig || selectedEventTypes[index] !== (eventConfig.isGroupEvent ? 'group' : 'individual')) {
+        errors.events = '请重新选择项目类别和比赛项目';
+        return;
+      }
       const detail = selectedEventDetails[eventName];
       if (!isDivingEvent(eventConfig) && eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
         errors['eventDetails.' + eventName] = eventConfig.registrationDetail.label || '请填写项目详情';
@@ -718,6 +751,7 @@ const RegisterCompetitionPage = () => {
     }))]);
     setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', insuranceConfirmed: false, additionalInfo: { notes: '' } }));
     setSelectedEvents(['']);
+    setSelectedEventTypes(['']);
     setSelectedEventDetails({});
     setSelectedPhoto(null); setFormErrors({}); setError('');
   };
@@ -1046,11 +1080,26 @@ const RegisterCompetitionPage = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>同一名运动员可一次选择多个项目，无需重复填写个人资料。</Typography>
             {selectedEvents.map((selectedEvent, index) => {
               const selectedEventConfig = getAvailableEvents().find(event => event.name === selectedEvent);
+              const selectedEventType = selectedEventTypes[index];
+              const eventsInType = getAvailableEvents().filter(event => (event.isGroupEvent ? 'group' : 'individual') === selectedEventType);
               const detailConfig = selectedEventConfig?.registrationDetail;
               return (
               <Box key={index} sx={{ mb: 1.5 }}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                  <FormControl fullWidth required error={!!formErrors.events}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <FormControl required error={!!formErrors.events} sx={{ minWidth: 160, flex: '1 1 160px' }}>
+                    <InputLabel id={'event-type-label-' + index}>项目类别</InputLabel>
+                    <Select
+                      labelId={'event-type-label-' + index}
+                      value={selectedEventType}
+                      label="项目类别"
+                      onChange={(event) => handleEventTypeChange(index, event.target.value)}
+                      disabled={!formData.grade}
+                    >
+                      <MenuItem value="individual">个人项目</MenuItem>
+                      <MenuItem value="group">集体项目</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {selectedEventType && <FormControl required error={!!formErrors.events} sx={{ minWidth: 240, flex: '3 1 240px' }}>
                   <InputLabel id={'event-label-' + index}>{'比赛项目' + ' ' + (index + 1)}</InputLabel>
                   <Select
                     labelId={'event-label-' + index}
@@ -1059,16 +1108,18 @@ const RegisterCompetitionPage = () => {
                     label={'比赛项目' + ' ' + (index + 1)}
                     onChange={(event) => handleEventSelectionChange(index, event.target.value)}
                     disabled={!formData.grade}
+                    renderValue={(value) => eventsInType.find(event => event.name === value)?.displayName || value}
                   >
-                    {getAvailableEvents().map((event) => (
+                    {eventsInType.map((event) => (
                       <MenuItem key={event.name} value={event.name} disabled={selectedEvents.includes(event.name) && selectedEvent !== event.name}>
                         {event.displayName}
                       </MenuItem>
                     ))}
                   </Select>
-                  </FormControl>
+                  </FormControl>}
                   {selectedEvents.length > 1 && <Button color="error" onClick={() => removeEventSelection(index)}>删除</Button>}
                 </Box>
+                {selectedEventType && eventsInType.length === 0 && <FormHelperText>当前年龄组没有可选的{selectedEventType === 'group' ? '集体' : '个人'}项目</FormHelperText>}
                 {selectedEvent && !isDivingEvent(selectedEventConfig) && detailConfig?.required && (
                   <TextField
                     fullWidth
@@ -1199,7 +1250,7 @@ const RegisterCompetitionPage = () => {
                 {registrants.map((item, index) => (
                   <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
                     <Typography>
-                      {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {item.data.grade || '-'} · {item.data.event || '-'}{photoSummary(item.photo)}
+                      {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {item.data.grade || '-'} · {getEventLabel(item.data.event) || '-'}{photoSummary(item.photo)}
                       {item.data.additionalInfo?.divingPlan ? ' · ' + divingPlanSummary(item.data.additionalInfo.divingPlan, item.data.additionalInfo?.divingPair) : ''}
                     </Typography>
                     <Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>删除</Button>
@@ -1265,7 +1316,7 @@ const RegisterCompetitionPage = () => {
     <Box>
       <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
-      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{item.data.event || '-'} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
+      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{getEventLabel(item.data.event) || '-'} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
     </Box>
   );
 

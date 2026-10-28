@@ -66,7 +66,7 @@ const authService = {
       const response = await api.get('/auth/me');
       return response.data.data;
     } catch (error) {
-      throw error.response ? error.response.data : { message: '获取用户信息失败' };
+      throw error;
     }
   },
 

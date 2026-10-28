@@ -33,7 +33,7 @@ import BrandWatermark from '../components/BrandWatermark';
 
 const CompetitionsPage = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const isAdmin = user?.roles?.includes('admin');
   
   // 状态
@@ -71,6 +71,7 @@ const CompetitionsPage = () => {
   
   // 获取比赛列表
   useEffect(() => {
+    if (authLoading) return;
     const fetchCompetitions = async () => {
       setLoading(true);
       setError('');
@@ -127,7 +128,7 @@ const CompetitionsPage = () => {
     };
     
     fetchCompetitions();
-  }, [page, filters, isAdmin]);
+  }, [page, filters, isAdmin, authLoading]);
   
   // 处理页码变化
   const handlePageChange = (event, value) => {
