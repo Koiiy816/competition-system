@@ -38,7 +38,6 @@ import participantService from '../services/participantService';
 import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
 const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
-const isDivingCompetition = (competition = {}) => /跳水|跳板|跳台/.test([competition.type, competition.name].filter(Boolean).join(' '));
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const getPairKind = (event = {}, gender = '') => isMixedDivingEvent(event) ? 'mixed' : (gender || 'same-gender');
@@ -105,7 +104,9 @@ const RegisterCompetitionPage = () => {
   const [selectedEventTypes, setSelectedEventTypes] = useState(['']);
   const [selectedEventDetails, setSelectedEventDetails] = useState({});
   const [selectedTeamAssignments, setSelectedTeamAssignments] = useState({});
-  const photoSummary = (photo) => isDivingCompetition(competition) ? '' : ' · ' + (photo ? '已上传照片' : '未上传照片');
+  const photoSummary = (photo) => competition?.participantRequirements?.requirePhoto === true
+    ? ' · ' + (photo ? '已上传照片' : '未上传照片')
+    : '';
   
   // 表单数据
   const [formData, setFormData] = useState({
@@ -701,7 +702,7 @@ const RegisterCompetitionPage = () => {
     // 这里可以根据比赛的具体要求添加更多验证
     
     if (!isAdmin && !formData.idCard.trim()) errors.idCard = '请填写证件号码';
-    if (competition?.participantRequirements?.requirePhoto && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
+    if (competition?.participantRequirements?.requirePhoto === true && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -1187,9 +1188,9 @@ const RegisterCompetitionPage = () => {
           )}
           
           {/* 纸质版报名表上传 */}
-          {competition?.participantRequirements?.requirePhoto && (
+          {competition?.participantRequirements?.requirePhoto === true && (
           <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>{'\u8fd0\u52a8\u5458\u7167\u7247'}{competition?.participantRequirements?.requirePhoto ? ' *' : ''}</Typography>
+            <Typography variant="subtitle1" gutterBottom>{'\u8fd0\u52a8\u5458\u7167\u7247'} *</Typography>
             <input accept="image/jpeg,image/png" style={{ display: 'none' }} id="participant-photo-upload" type="file" onChange={handlePhotoSelect} />
             <label htmlFor="participant-photo-upload"><Button variant="outlined" component="span" startIcon={<CloudUploadIcon />}>{'\u4e0a\u4f20\u7167\u7247'}</Button></label>
             {selectedPhoto && <Typography variant="body2" sx={{ mt: 1 }}>{'\u5df2\u9009\u62e9\uff1a'}{selectedPhoto.name}</Typography>}

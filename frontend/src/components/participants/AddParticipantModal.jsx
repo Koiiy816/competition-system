@@ -288,7 +288,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.gender) newErrors.gender = '请选择性别';
     if (!formData.grade) newErrors.grade = '请选择年龄组别';
     if (!formData.event) newErrors.event = '请选择比赛项目';
-    // 管理员可不上传照片；上传入口仍保留，之后可补传。
+    // 仅赛事明确要求照片时，管理员才可在此上传。
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -351,7 +351,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const availableEvents = getAvailableEvents();
-  const photoRequired = false;
+  const photoRequired = competition?.participantRequirements?.requirePhoto === true;
 
   return (
     <Dialog open={open} onClose={!submitting ? onClose : null} maxWidth="md" fullWidth>
@@ -653,10 +653,10 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 helperText="仅供管理员记录，最多 1000 字"
               />
             </Grid>
-            {(
+            {photoRequired && (
               <Grid item xs={12}>
                 <Box sx={{ border: '1px dashed', borderColor: errors.photo ? 'error.main' : 'divider', borderRadius: 1, p: 2 }}>
-                  <Typography variant="subtitle2">{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoRequired ? ' *' : '（管理员可稍后补传）'}</Typography>
+                  <Typography variant="subtitle2">{'\u8fd0\u52a8\u5458\u7167\u7247'} *</Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 10MB\u3002'}</Typography>
                   <input accept="image/jpeg,image/png" id="admin-participant-photo" type="file" style={{ display: 'none' }} onChange={handlePhotoChange} />
                   <label htmlFor="admin-participant-photo"><Button component="span" variant="outlined">{'\u4e0a\u4f20\u7167\u7247'}</Button></label>

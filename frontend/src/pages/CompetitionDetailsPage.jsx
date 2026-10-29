@@ -110,6 +110,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
       requirePhone: true,
       requireCoach: false,
       requireSchool: true,
+      requirePhoto: false,
       requireInsurance: true,
       requireMedicalCertificate: false,
       requireParentConsent: true
@@ -818,6 +819,17 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                              />
                            }
                            label="要求学校信息"
+                         />
+                       </Grid>
+                       <Grid item xs={12} sm={6}>
+                         <FormControlLabel
+                           control={
+                             <Checkbox
+                               checked={competition.participantRequirements?.requirePhoto === true}
+                               onChange={(e) => handleNestedChange('participantRequirements', 'requirePhoto', e.target.checked)}
+                             />
+                           }
+                           label="要求运动员照片"
                          />
                        </Grid>
                        <Grid item xs={12} sm={6}>

@@ -142,6 +142,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const canUseDivingPlanPdf = user?.roles?.some((role) => ['admin', 'chief_referee', 'referee'].includes(role));
   const selectedCompetition = competitions.find((competition) => competition._id === filters.competitionId);
   const isDivingCompetition = /跳水|跳板|跳台/.test([selectedCompetition?.type, selectedCompetition?.name].filter(Boolean).join(' '));
+  const photosEnabled = selectedCompetition?.participantRequirements?.requirePhoto === true;
   
   // 决定是否能查看标签页和列表（管理员/主裁/裁判 或 开启了"我的报名"功能）
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
@@ -1388,7 +1389,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           <TableHead>
             <TableRow>
               <TableCell>参赛者</TableCell>
-              <TableCell>照片</TableCell>
+              {photosEnabled && <TableCell>照片</TableCell>}
               <TableCell>所属单位</TableCell>
               <TableCell>性别</TableCell>
               <TableCell>年龄组别</TableCell>
@@ -1421,15 +1422,17 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                       )}
                     </Box>
                   </TableCell>
-                  <TableCell>
-                    {participant.photoFile ? (
-                      <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => handleViewPhoto(participant)}>
-                        {'\u67e5\u770b\u7167\u7247'}
-                      </Button>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">{'\u672a\u4e0a\u4f20'}</Typography>
-                    )}
-                  </TableCell>
+                  {photosEnabled && (
+                    <TableCell>
+                      {participant.photoFile ? (
+                        <Button size="small" variant="outlined" startIcon={<VisibilityIcon />} onClick={() => handleViewPhoto(participant)}>
+                          {'\u67e5\u770b\u7167\u7247'}
+                        </Button>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">{'\u672a\u4e0a\u4f20'}</Typography>
+                      )}
+                    </TableCell>
+                  )}
                   <TableCell>{participant.schoolName || '-'}</TableCell>
                   <TableCell>{getGenderLabel(participant.gender)}</TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>{participant.ageGroup || participant.grade || '-'}</TableCell>
@@ -1940,7 +1943,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         过滤
                       </Button>
                     </Tooltip>
-                    {isAdminOrChiefReferee && (
+                    {isAdminOrChiefReferee && photosEnabled && (
                       <Button
                         variant="contained"
                         color="primary"
@@ -2164,11 +2167,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       )}
       
       {/* 确认对话框 */}
-            <Dialog open={photoDialogOpen} onClose={handleClosePhoto} maxWidth="sm" fullWidth>
-        <DialogTitle>{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoDialogParticipant ? ' - ' + (photoDialogParticipant.name || photoDialogParticipant.teamName || '') : ''}</DialogTitle>
-        <DialogContent dividers sx={{ textAlign: 'center' }}>{photoDialogUrl && <Box component="img" src={photoDialogUrl} alt="participant photo" sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }} />}</DialogContent>
-        <DialogActions><Button onClick={handleClosePhoto}>{'\u5173\u95ed'}</Button></DialogActions>
-      </Dialog>
+      {photosEnabled && (
+        <Dialog open={photoDialogOpen} onClose={handleClosePhoto} maxWidth="sm" fullWidth>
+          <DialogTitle>{'\u8fd0\u52a8\u5458\u7167\u7247'}{photoDialogParticipant ? ' - ' + (photoDialogParticipant.name || photoDialogParticipant.teamName || '') : ''}</DialogTitle>
+          <DialogContent dividers sx={{ textAlign: 'center' }}>{photoDialogUrl && <Box component="img" src={photoDialogUrl} alt="participant photo" sx={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }} />}</DialogContent>
+          <DialogActions><Button onClick={handleClosePhoto}>{'\u5173\u95ed'}</Button></DialogActions>
+        </Dialog>
+      )}
 
 {renderConfirmDialog()}
 

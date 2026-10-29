@@ -410,7 +410,7 @@ exports.createParticipant = async (req, res, next) => {
     if (!isAdmin && !String(req.body.idCard || '').trim()) {
       return res.status(400).json({ success: false, message: '请填写证件号码' });
     }
-    if (competition.participantRequirements?.requirePhoto && !req.body.photoFile && !isAdmin) {
+    if (competition.participantRequirements?.requirePhoto === true && !req.body.photoFile && !isAdmin) {
       return res.status(400).json({ success: false, message: '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247' });
     }
     // 管理员和主裁可在截止后代报名；单位提交必须同时满足截止时间、项目、年龄组及性别限制。
