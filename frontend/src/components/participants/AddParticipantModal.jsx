@@ -24,6 +24,7 @@ import {
 import competitionService from '../../services/competitionService';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseChineseResidentIdentityNumber } from '../../utils/certificateInfo';
 
 const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([participant.event, participant.category].filter(Boolean).join(' '));
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
@@ -208,16 +209,10 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     }
 
     if (name === 'idCard') {
-       // 仅大陆 18 位身份证自动识别资料；港澳及海外证件号码按原样保存。
-       if (/^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(val)) {
-          const year = val.substring(6, 10);
-          const month = val.substring(10, 12);
-          const day = val.substring(12, 14);
-          
-          // 自动识别性别
-          const genderDigit = parseInt(val.substring(16, 17), 10);
-          const autoGender = genderDigit % 2 === 0 ? 'female' : 'male';
-          const genderPrefix = autoGender === 'male' ? '男子' : '女子';
+       const certificateInfo = parseChineseResidentIdentityNumber(val);
+       if (certificateInfo) {
+          const year = certificateInfo.birthDate.substring(0, 4);
+          const autoGender = certificateInfo.gender;
           
           // 自动识别年龄组别 (按2026年计算)
           const birthYear = parseInt(year, 10);
@@ -231,7 +226,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
           setFormData(prev => ({
             ...prev,
             idCard: val,
-            birthDate: `${year}-${month}-${day}`,
+            birthDate: certificateInfo.birthDate,
             gender: autoGender,
             grade: autoGrade || prev.grade
           }));
@@ -562,7 +557,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 value={formData.idCard}
                 onChange={handleChange}
                 error={!!errors.idCard}
-                helperText={errors.idCard || "支持身份证、港澳居民身份证、护照等；大陆18位身份证可自动识别出生日期和性别"}
+                helperText={errors.idCard || "大陆居民身份证及港澳台居民居住证可自动识别生日和性别；香港/澳门本地身份证、护照等请手动填写"}
               />
             </Grid>
 

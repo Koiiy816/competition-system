@@ -36,6 +36,7 @@ import { useAuth } from '../contexts/AuthContext';
 import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { getAutoAgeGroup } from '../utils/ageGroup';
+import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
 const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
 const isDivingCompetition = (competition = {}) => /跳水|跳板|跳台/.test([competition.type, competition.name].filter(Boolean).join(' '));
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -437,24 +438,12 @@ const RegisterCompetitionPage = () => {
     } else if (name === 'idCard') {
       let updates = { [name]: value };
       
-      // 仅当填写的是大陆 18 位身份证时，才自动提取出生日期和性别；
-      // 港澳居民身份证、护照及其他证件号码按原样保存，由用户自行填写出生日期和性别。
-      if (value && value.length === 18 && /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/.test(value)) {
-        // 提取出生日期
-        const year = value.substring(6, 10);
-        const month = value.substring(10, 12);
-        const day = value.substring(12, 14);
-        const birthDateStr = `${year}-${month}-${day}`;
-        
-        // 提取性别 (第17位奇数男，偶数女)
-        const genderDigit = parseInt(value.substring(16, 17), 10);
-        const genderStr = genderDigit % 2 === 1 ? 'male' : 'female';
-        
-        updates.birthDate = birthDateStr;
-        updates.gender = genderStr;
+      const certificateInfo = parseChineseResidentIdentityNumber(value);
+      if (certificateInfo) {
+        updates.birthDate = certificateInfo.birthDate;
+        updates.gender = certificateInfo.gender;
         updates.event = ''; // 组别或性别变化，清空已选比赛项目
-        
-        updates.grade = getAutoAgeGroup(birthDateStr, competition?.ageGroups || []);
+        updates.grade = getAutoAgeGroup(certificateInfo.birthDate, competition?.ageGroups || []);
       }
       
       setFormData(prev => ({
@@ -940,7 +929,7 @@ const RegisterCompetitionPage = () => {
             value={formData.idCard}
             onChange={handleFormChange}
             error={!!formErrors.idCard}
-            helperText={formErrors.idCard || (isAdmin ? '管理员手动新增可留空' : '请填写身份证、港澳居民身份证、护照或其他有效证件号码；大陆身份证可自动识别出生日期和性别')}
+            helperText={formErrors.idCard || (isAdmin ? '管理员手动新增可留空' : '大陆居民身份证及港澳台居民居住证可自动识别出生日期、性别和年龄组；香港/澳门本地身份证、护照等请手动填写生日和性别')}
           />
         </Grid>
 
