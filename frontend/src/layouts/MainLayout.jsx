@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useLocation, Link as RouterLink } from 'react-router-dom';
 import { 
   AppBar, 
@@ -22,6 +22,9 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { useAuth } from '../contexts/AuthContext';
+import participantService from '../services/participantService';
+
+const isDivingRegistration = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant?.event || ''));
 
 const BrandLogo = ({ mobile = false }) => (
   <Box
@@ -58,6 +61,29 @@ const MainLayout = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [anchorElNav, setAnchorElNav] = useState(null);
   const [anchorElUser, setAnchorElUser] = useState(null);
+  const [hasDivingRegistration, setHasDivingRegistration] = useState(false);
+
+  const isAdmin = Boolean(user?.roles?.includes('admin'));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // 管理员拥有完整入口；普通参赛单位则以本人是否已有跳水报名来决定。
+    if (!isAuthenticated || isAdmin || !user?.roles?.includes('organization')) {
+      setHasDivingRegistration(false);
+      return () => { cancelled = true; };
+    }
+
+    participantService.getMyParticipations()
+      .then((response) => {
+        if (!cancelled) setHasDivingRegistration((response.data || []).some(isDivingRegistration));
+      })
+      .catch(() => {
+        if (!cancelled) setHasDivingRegistration(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [isAdmin, isAuthenticated, user?.roles]);
 
   const handleOpenNavMenu = (event) => {
     setAnchorElNav(event.currentTarget);
@@ -126,7 +152,7 @@ const MainLayout = () => {
         pages.push({ title: '我的报名', path: '/my-registrations' });
       }
 
-      if (user.roles.includes('organization') || user.roles.includes('admin') || user.roles.includes('chief_referee')) {
+      if (isAdmin || (user.roles.includes('organization') && hasDivingRegistration)) {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
       }
 
