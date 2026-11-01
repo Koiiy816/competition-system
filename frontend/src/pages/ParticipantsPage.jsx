@@ -1943,7 +1943,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         过滤
                       </Button>
                     </Tooltip>
-                    {isAdminOrChiefReferee && photosEnabled && (
+                    {isAdminOrChiefReferee && (
                       <Button
                         variant="contained"
                         color="primary"
@@ -1978,7 +1978,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         批量导入
                       </Button>
                     )}
-                    {isAdminOrChiefReferee && (
+                    {isAdminOrChiefReferee && photosEnabled && (
                       <Button variant="contained" color="info" startIcon={<PhotoIcon />} onClick={handleExportPhotos} disabled={actionLoading}>{'\u5bfc\u51fa\u62a5\u540d\u8d44\u6599\u53ca\u7167\u7247'}</Button>
                     )}
                     {canUseDivingPlanPdf && isDivingCompetition && (
