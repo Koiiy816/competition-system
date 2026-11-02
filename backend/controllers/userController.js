@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { normalizeSportTypes } = require('../utils/competitionType');
 
 /**
  * @desc    获取所有用户
@@ -59,7 +60,11 @@ exports.getUser = async (req, res, next) => {
  */
 exports.createUser = async (req, res, next) => {
   try {
-    const user = await User.create(req.body);
+    const userData = { ...req.body };
+    if (Object.prototype.hasOwnProperty.call(userData, 'sportTypes')) {
+      userData.sportTypes = normalizeSportTypes(userData.sportTypes);
+    }
+    const user = await User.create(userData);
 
     res.status(201).json({
       success: true,
@@ -87,11 +92,14 @@ exports.updateUser = async (req, res, next) => {
     }
 
     // 手动更新字段以确保 pre-save 钩子(用于密码加密)生效
-    const { name, email, roles, password, phone } = req.body;
+    const { name, email, roles, password, phone, sportTypes } = req.body;
     
     if (name) user.name = name;
     if (email) user.email = email;
     if (roles) user.roles = roles;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'sportTypes')) {
+      user.sportTypes = normalizeSportTypes(sportTypes);
+    }
     if (typeof phone === 'string') {
       user.profile = { ...(user.profile || {}), phone: phone.trim() };
     }
@@ -150,7 +158,10 @@ exports.deleteUser = async (req, res, next) => {
 exports.updateProfile = async (req, res, next) => {
   try {
     // 不允许通过此路由更新密码和角色
-    const { password, role, ...updateData } = req.body;
+    const { password, role, sportTypes, ...updateData } = req.body;
+    if (Object.prototype.hasOwnProperty.call(req.body, 'sportTypes')) {
+      updateData.sportTypes = normalizeSportTypes(sportTypes);
+    }
 
     const user = await User.findByIdAndUpdate(req.user.id, updateData, {
       new: true,

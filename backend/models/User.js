@@ -29,6 +29,13 @@ const UserSchema = new mongoose.Schema({
     enum: ['organization', 'admin', 'referee', 'chief_referee', 'spectator', 'checkin_clerk'],
     default: ['organization'],
   },
+  // Optional during migration: existing accounts remain usable until the
+  // administrator assigns their permitted sport types.
+  sportTypes: {
+    type: [String],
+    enum: ['wushu', 'diving', 'trampoline'],
+    default: undefined
+  },
   profile: {
     phone: String,
     address: String,

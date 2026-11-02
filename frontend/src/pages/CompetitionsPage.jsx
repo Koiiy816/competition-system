@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -30,9 +30,11 @@ import AddIcon from '@mui/icons-material/Add';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 import BrandWatermark from '../components/BrandWatermark';
+import { sportTypeLabel } from '../utils/competitionType';
 
 const CompetitionsPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const isAdmin = user?.roles?.includes('admin');
   
@@ -48,12 +50,19 @@ const CompetitionsPage = () => {
   const [filters, setFilters] = useState({
     search: '',
     status: '',
-    type: '',
+    sportType: '',
     sort: 'newest'
   });
   
   // 显示过滤器
   const [showFilters, setShowFilters] = useState(false);
+
+  // 首页工作区入口通过 URL 明确带入赛事类型，刷新或分享链接后仍保留筛选。
+  useEffect(() => {
+    const sportType = searchParams.get('sportType') || '';
+    setFilters((current) => current.sportType === sportType ? current : { ...current, sportType });
+    setPage(1);
+  }, [searchParams]);
   
   // 获取比赛类型列表
   useEffect(() => {
@@ -83,7 +92,7 @@ const CompetitionsPage = () => {
           limit: 9,
           search: filters.search || undefined,
           status: filters.status || undefined,
-          type: filters.type || undefined
+          sportType: filters.sportType || undefined
         };
         
         // 非管理员只能看到未结束的比赛
@@ -305,8 +314,8 @@ const CompetitionsPage = () => {
                   <Select
                     labelId="type-label"
                     id="type"
-                    name="type"
-                    value={filters.type}
+                    name="sportType"
+                    value={filters.sportType}
                     label="比赛类型"
                     onChange={handleFilterChange}
                   >
@@ -382,7 +391,7 @@ const CompetitionsPage = () => {
                         
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                           <Chip 
-                            label={getTypeName(competition.type)} 
+                            label={sportTypeLabel(competition)}
                             variant="outlined" 
                             size="small" 
                           />

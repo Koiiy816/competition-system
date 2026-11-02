@@ -1,6 +1,11 @@
 const Competition = require('../models/Competition');
 const path = require('path');
 const fs = require('fs');
+const {
+  applyCompetitionSportType,
+  canUserAccessCompetitionType,
+  normalizeSportTypes
+} = require('../utils/competitionType');
 
 const PUBLIC_COMPETITION_STATUSES = ['registration', 'ongoing'];
 
@@ -9,10 +14,14 @@ const isAdminUser = (user) => Array.isArray(user?.roles) && user.roles.includes(
 /**
  * @desc    获取所有比赛
  * @route   GET /api/competitions
- * @access  Public
+ * @access  Private
  */
 exports.getCompetitions = async (req, res, next) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: '请登录后查看赛事' });
+    }
+
     // 构建查询条件
     let query = {};
 
@@ -47,6 +56,23 @@ exports.getCompetitions = async (req, res, next) => {
 
     if (req.query.type) {
       query.type = req.query.type;
+    }
+    if (req.query.sportType) {
+      query.sportType = req.query.sportType;
+    }
+
+    // Once an organisation has sport types configured, the restriction applies
+    // to discovery as well as registration. Accounts without a selection are
+    // legacy accounts and remain temporarily unrestricted for safe migration.
+    const organizationTypes = req.user?.roles?.includes('organization') && !isAdminUser(req.user)
+      ? normalizeSportTypes(req.user.sportTypes)
+      : [];
+    if (organizationTypes.length > 0) {
+      if (req.query.sportType && !organizationTypes.includes(req.query.sportType)) {
+        query._id = null;
+      } else {
+        query.sportType = req.query.sportType || { $in: organizationTypes };
+      }
     }
 
     if (req.query.organizer) {
@@ -126,10 +152,14 @@ exports.getCompetitions = async (req, res, next) => {
 /**
  * @desc    获取单个比赛
  * @route   GET /api/competitions/:id
- * @access  Public
+ * @access  Private
  */
 exports.getCompetition = async (req, res, next) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: '请登录后查看赛事' });
+    }
+
     // The score-entry page only needs the competition name and location.  Avoid
     // populating every participant and schedule on that high-frequency route.
     // The default response remains unchanged for all existing callers.
@@ -171,6 +201,10 @@ exports.getCompetition = async (req, res, next) => {
       });
     }
 
+    if (!canUserAccessCompetitionType(req.user, competition)) {
+      return res.status(404).json({ success: false, message: '未找到該比賽' });
+    }
+
     res.status(200).json({
       success: true,
       data: competition
@@ -202,6 +236,8 @@ exports.createCompetition = async (req, res, next) => {
         }
       }
     });
+
+    applyCompetitionSportType(competitionData);
 
     // 清理前端可能错误添加了双引号的日期字段
     const dateFields = ['startDate', 'endDate', 'registrationDeadline'];
@@ -314,6 +350,12 @@ exports.updateCompetition = async (req, res, next) => {
         }
       }
     });
+
+    // Existing records may predate sportType. Infer it once on their next
+    // edit, and never allow a free-text type to select a different workspace.
+    if (competitionData.sportType || competitionData.type) {
+      applyCompetitionSportType(competitionData);
+    }
 
     // 清理前端可能错误添加了双引号的日期字段
     const dateFields = ['startDate', 'endDate', 'registrationDeadline'];
@@ -734,6 +776,10 @@ exports.registerCompetition = async (req, res, next) => {
         success: false,
         error: '比赛不存在'
       });
+    }
+
+    if (!canUserAccessCompetitionType(req.user, competition)) {
+      return res.status(403).json({ success: false, error: '该单位未获授权参与此赛事类型' });
     }
 
     // 检查比赛状态
