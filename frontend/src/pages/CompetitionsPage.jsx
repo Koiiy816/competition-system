@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
   Typography,
@@ -30,11 +30,15 @@ import AddIcon from '@mui/icons-material/Add';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 import BrandWatermark from '../components/BrandWatermark';
+import { sportTypeLabel } from '../utils/competitionType';
 
 const CompetitionsPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const isAdmin = user?.roles?.includes('admin');
+  const workspaceSportType = searchParams.get('sportType') || '';
+  const workspaceLabel = { wushu: '武术', diving: '跳水', trampoline: '蹦床' }[workspaceSportType] || '';
   
   // 状态
   const [competitions, setCompetitions] = useState([]);
@@ -48,12 +52,20 @@ const CompetitionsPage = () => {
   const [filters, setFilters] = useState({
     search: '',
     status: '',
-    type: '',
+    sportType: workspaceSportType,
     sort: 'newest'
   });
   
   // 显示过滤器
   const [showFilters, setShowFilters] = useState(false);
+
+  // 首页工作区入口通过 URL 明确带入赛事类型，刷新或分享链接后仍保留筛选。
+  useEffect(() => {
+    setFilters((current) => current.sportType === workspaceSportType
+      ? current
+      : { ...current, sportType: workspaceSportType });
+    setPage(1);
+  }, [workspaceSportType]);
   
   // 获取比赛类型列表
   useEffect(() => {
@@ -72,6 +84,7 @@ const CompetitionsPage = () => {
   // 获取比赛列表
   useEffect(() => {
     if (authLoading) return;
+    let isCurrentRequest = true;
     const fetchCompetitions = async () => {
       setLoading(true);
       setError('');
@@ -83,7 +96,7 @@ const CompetitionsPage = () => {
           limit: 9,
           search: filters.search || undefined,
           status: filters.status || undefined,
-          type: filters.type || undefined
+          sportType: filters.sportType || undefined
         };
         
         // 非管理员只能看到未结束的比赛
@@ -117,17 +130,21 @@ const CompetitionsPage = () => {
         const visibleCompetitions = isAdmin
           ? response.data
           : response.data.filter((competition) => ['registration', 'ongoing'].includes(competition.status));
+        // 筛选改变时旧请求可能晚于新请求返回；绝不能让旧的全量结果覆盖工作区结果。
+        if (!isCurrentRequest) return;
         setCompetitions(visibleCompetitions);
         setTotalPages(Math.ceil(response.total / 9));
       } catch (error) {
+        if (!isCurrentRequest) return;
         console.error('获取比赛列表失败 - 详细错误:', error);
         setError(error.message || error.toString() || '获取比赛列表失败');
       } finally {
-        setLoading(false);
+        if (isCurrentRequest) setLoading(false);
       }
     };
     
     fetchCompetitions();
+    return () => { isCurrentRequest = false; };
   }, [page, filters, isAdmin, authLoading]);
   
   // 处理页码变化
@@ -139,6 +156,10 @@ const CompetitionsPage = () => {
   // 处理过滤器变化
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'sportType') {
+      navigate(value ? `/competitions?sportType=${value}` : '/competitions');
+      return;
+    }
     setFilters(prev => ({
       ...prev,
       [name]: value
@@ -154,10 +175,12 @@ const CompetitionsPage = () => {
   
   // 处理重置过滤器
   const handleResetFilters = () => {
+    // “清除筛选”代表离开当前工作区，回到管理员可查看的全部赛事。
+    navigate('/competitions');
     setFilters({
       search: '',
       status: '',
-      type: '',
+      sportType: '',
       sort: 'newest'
     });
     setPage(1);
@@ -188,19 +211,25 @@ const CompetitionsPage = () => {
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          比赛列表
-        </Typography>
+        <Box>
+          <Typography variant="h4" component="h1">
+            {workspaceLabel ? `${workspaceLabel}赛事工作区` : '全部赛事'}
+          </Typography>
+          {workspaceLabel && <Typography color="text.secondary" sx={{ mt: .5 }}>当前仅显示{workspaceLabel}赛事</Typography>}
+        </Box>
         
-        {canCreateCompetition && (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => navigate('/admin/competitions/create')}
-          >
-            创建比赛
-          </Button>
-        )}
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {workspaceLabel && <Button variant="outlined" onClick={() => navigate('/competitions')}>查看全部赛事</Button>}
+          {canCreateCompetition && (
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => navigate(`/admin/competitions/create${workspaceSportType ? `?sportType=${workspaceSportType}` : ''}`)}
+            >
+              创建比赛
+            </Button>
+          )}
+        </Box>
       </Box>
       
       {/* 搜索和过滤 */}
@@ -305,8 +334,8 @@ const CompetitionsPage = () => {
                   <Select
                     labelId="type-label"
                     id="type"
-                    name="type"
-                    value={filters.type}
+                    name="sportType"
+                    value={filters.sportType}
                     label="比赛类型"
                     onChange={handleFilterChange}
                   >
@@ -382,7 +411,7 @@ const CompetitionsPage = () => {
                         
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
                           <Chip 
-                            label={getTypeName(competition.type)} 
+                            label={sportTypeLabel(competition)}
                             variant="outlined" 
                             size="small" 
                           />

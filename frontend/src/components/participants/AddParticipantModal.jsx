@@ -22,11 +22,12 @@ import {
   Switch
 } from '@mui/material';
 import competitionService from '../../services/competitionService';
+import { isDivingCompetition } from '../../utils/competitionType';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseChineseResidentIdentityNumber } from '../../utils/certificateInfo';
 
-const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([participant.event, participant.category].filter(Boolean).join(' '));
+const isDivingEntry = (competition) => isDivingCompetition(competition);
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
 const isStrengthEntry = (participant = {}) => /素质力量/.test([participant.event, participant.category].filter(Boolean).join(' '));
 
@@ -64,7 +65,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const [selectedPartnerId, setSelectedPartnerId] = useState('');
   const [pairLoading, setPairLoading] = useState(false);
   const divingPlan = editData?.additionalInfo?.divingPlan;
-  const showDivingPlan = Boolean(editData && isDivingEntry(editData));
+  const showDivingPlan = Boolean(editData && isDivingEntry(competition));
   const isDoubleDivingEvent = Boolean(editData && /双人|雙人/.test(String(formData.event || '')));
   const existingPairId = editData?.additionalInfo?.divingPair?.pairId || '';
   const sameAthleteRegistrations = pairCandidates.filter((candidate) => (

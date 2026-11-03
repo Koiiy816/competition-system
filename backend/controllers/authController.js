@@ -2,6 +2,7 @@ const User = require('../models/User');
 const InvitationCode = require('../models/InvitationCode');
 const SystemSetting = require('../models/SystemSetting');
 const crypto = require('crypto');
+const { normalizeSportTypes } = require('../utils/competitionType');
 
 /**
  * @desc    Register user
@@ -9,7 +10,7 @@ const crypto = require('crypto');
  * @access  Public
  */
 exports.register = async (req, res, next) => {
-  const { name, email, password, role, roles, profile } = req.body;
+  const { name, email, password, role, roles, profile, sportTypes } = req.body;
 
   console.log('注册请求数据:', { name, email, role, roles, profile });
 
@@ -32,7 +33,8 @@ exports.register = async (req, res, next) => {
       email,
       password,
       roles: userRoles,
-      profile: profile || {}
+      profile: profile || {},
+      sportTypes: userRoles.includes('organization') ? normalizeSportTypes(sportTypes) : undefined
     });
 
     console.log('创建的用户数据:', { id: user._id, name: user.name, email: user.email, roles: user.roles });
@@ -298,7 +300,10 @@ const sendTokenResponse = (user, statusCode, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        roles: user.roles
+        roles: user.roles,
+        // 注册和登录后立即返回赛事类型，避免前端首次进入首页时把新单位
+        // 误判为尚未配置类型的旧账号。
+        sportTypes: user.sportTypes
       }
     });
 };

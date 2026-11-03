@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
+const { getCompetitionSportType, SPORT_TYPES, canUserAccessCompetitionType } = require('../utils/competitionType');
 
 // 本赛事的导入资料存在不同选手共用身份证号码的情况，不能用身份证或照片推断选手身份。
 // 人数统计按报名册中的姓名、单位、性别归并；若三项均缺失则保留为独立记录。
@@ -121,7 +122,7 @@ exports.getParticipants = async (req, res, next) => {
     const participants = await Participant.find(query)
       .populate('user', 'name email')
       .populate('checkedInBy', 'name email')
-      .populate('competition', 'name startDate endDate')
+      .populate('competition', 'name type sportType startDate endDate')
       .skip(startIndex)
       .limit(limit)
       .sort({ registrationDate: -1 });
@@ -405,6 +406,10 @@ exports.createParticipant = async (req, res, next) => {
       });
     }
 
+    if (!canUserAccessCompetitionType(req.user, competition)) {
+      return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
+    }
+
     // 管理员或主裁手动添加可暂不上传照片；参赛单位自主报名仍遵循比赛的照片要求。
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
     if (!isAdmin && !String(req.body.idCard || '').trim()) {
@@ -417,7 +422,10 @@ exports.createParticipant = async (req, res, next) => {
     if (!isAdmin) {
       const registrationError = validateRegistrationAgainstCompetition({ competition, body: req.body });
       if (registrationError) return res.status(400).json({ success: false, message: registrationError });
-      const pairError = validateDivingPairPayload(req.body);
+      const pairError = getCompetitionSportType(competition) === SPORT_TYPES.DIVING ? validateDivingPairPayload(req.body) : null;
+      if (getCompetitionSportType(competition) !== SPORT_TYPES.DIVING && req.body.additionalInfo?.divingPair) {
+        return res.status(400).json({ success: false, message: '只有跳水比赛可以提交双人跳水配对资料' });
+      }
       if (pairError) return res.status(400).json({ success: false, message: pairError });
       const pair = req.body.additionalInfo?.divingPair;
       if (pair) {
@@ -948,7 +956,7 @@ exports.getMyParticipations = async (req, res, next) => {
     }
 
     const participants = await Participant.find(query)
-      .populate('competition', 'name startDate endDate location status')
+      .populate('competition', 'name type sportType startDate endDate location status')
       .sort({ registrationDate: -1 });
 
     res.status(200).json({

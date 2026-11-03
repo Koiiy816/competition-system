@@ -5,6 +5,7 @@ const Participant = require('../models/Participant');
 const { calculateDivingDiveScore } = require('../utils/divingScoring');
 const { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
 const { broadcastScoreEvent, openScoreStream } = require('../utils/scoreUpdateStream');
+const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
@@ -140,9 +141,11 @@ exports.submitDivingScore = async (req, res, next) => {
   const lockKey = 'diving_' + scheduleId + '_' + participantId;
   await acquireLock(lockKey);
   try {
-    const schedule = await Schedule.findById(scheduleId).select('name judgeCount scoringMode divingFormat divingProgram status participants');
+    const schedule = await Schedule.findById(scheduleId).select('competition name judgeCount scoringMode divingFormat divingProgram status participants');
     if (!schedule) return res.status(404).json({ success: false, message: 'Schedule not found' });
     if (schedule.scoringMode !== 'diving') return res.status(400).json({ success: false, message: 'This schedule is not configured for diving scoring' });
+    const competition = await Competition.findById(schedule.competition).select('type sportType');
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.DIVING) return res.status(400).json({ success: false, message: '当前比赛不是跳水工作区，不能提交跳水分数' });
     if ((schedule.judgeCount || 5) !== 5) return res.status(400).json({ success: false, message: 'Diving scoring requires five judges' });
     const participant = await Participant.findById(participantId).populate('teamMembers', 'isCheckedIn checkInStatus additionalInfo event');
     if (!participant) return res.status(404).json({ success: false, message: 'Participant not found' });

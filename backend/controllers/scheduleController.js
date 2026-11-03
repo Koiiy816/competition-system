@@ -3,6 +3,7 @@ const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const { normalizeParticipantGender, getScheduleGender, formatScheduleName, parseScheduleIdentity } = require('../utils/scheduleNaming');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
+const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
 
 function mergeUndersizedAgeGroups(groups, competition) {
   const minimum = competition?.awardRules?.mergeGroupsBelow || 0;
@@ -783,6 +784,10 @@ exports.createSchedule = async (req, res, next) => {
       });
     }
 
+    if (req.body.scoringMode === 'diving' && getCompetitionSportType(competition) !== SPORT_TYPES.DIVING) {
+      return res.status(400).json({ success: false, message: '只有跳水比赛工作区可以创建跳水计分赛程' });
+    }
+
     // 检查用户是否是比赛的组织者或管理员/主裁判
     if (
       competition.organizer?.toString() !== req.user.id &&
@@ -880,6 +885,11 @@ exports.updateSchedule = async (req, res, next) => {
 
     // 获取比赛信息
     const competition = await Competition.findById(schedule.competition);
+
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (req.body.scoringMode === 'diving' && getCompetitionSportType(competition) !== SPORT_TYPES.DIVING) {
+      return res.status(400).json({ success: false, message: '只有跳水比赛工作区可以使用跳水计分' });
+    }
 
     // 检查权限
     const isOrganizer = competition.organizer?.toString() === req.user.id;

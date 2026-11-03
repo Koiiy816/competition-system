@@ -37,7 +37,8 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
-const isDivingEvent = (event = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([event.name, event.displayName, event.category].filter(Boolean).join(' '));
+import { isDivingCompetition } from '../utils/competitionType';
+const isDivingEvent = (competition) => isDivingCompetition(competition);
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const getPairKind = (event = {}, gender = '') => isMixedDivingEvent(event) ? 'mixed' : (gender || 'same-gender');
@@ -552,7 +553,7 @@ const RegisterCompetitionPage = () => {
   const getRegistrantUnit = (entry) => String(entry?.data?.schoolName || entry?.data?.teamName || '').trim();
   const isDivingPairRegistrant = (entry) => {
     const eventConfig = getEventConfigByName(entry?.data?.event);
-    return isDivingEvent(eventConfig) && isSynchronizedDiving(eventConfig);
+    return isDivingEvent(competition) && isSynchronizedDiving(eventConfig);
   };
   const getPairKey = (entry) => {
     const eventConfig = getEventConfigByName(entry.data.event);
@@ -693,7 +694,7 @@ const RegisterCompetitionPage = () => {
         return;
       }
       const detail = selectedEventDetails[eventName];
-      if (!isDivingEvent(eventConfig) && eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
+      if (!isDivingEvent(competition) && eventConfig && eventConfig.registrationDetail && eventConfig.registrationDetail.required && !String(detail || '').trim()) {
         errors['eventDetails.' + eventName] = eventConfig.registrationDetail.label || '请填写项目详情';
       }
     });
@@ -1104,7 +1105,7 @@ const RegisterCompetitionPage = () => {
                   {selectedEvents.length > 1 && <Button color="error" onClick={() => removeEventSelection(index)}>删除</Button>}
                 </Box>
                 {selectedEventType && eventsInType.length === 0 && <FormHelperText>当前年龄组没有可选的{selectedEventType === 'group' ? '集体' : '个人'}项目</FormHelperText>}
-                {selectedEvent && !isDivingEvent(selectedEventConfig) && detailConfig?.required && (
+                {selectedEvent && !isDivingEvent(competition) && detailConfig?.required && (
                   <TextField
                     fullWidth
                     required
@@ -1131,7 +1132,7 @@ const RegisterCompetitionPage = () => {
                     inputProps={{ maxLength: 30 }}
                   />
                 )}
-                {selectedEvent && isDivingEvent(selectedEventConfig) && <Alert severity="info" sx={{ mt: 1 }}>本阶段只确认报名项目。动作代码、姿势和难度将在比赛前由单位通过“补录跳水动作表”统一填写。</Alert>}
+                {selectedEvent && isDivingEvent(competition) && <Alert severity="info" sx={{ mt: 1 }}>本阶段只确认报名项目。动作代码、姿势和难度将在比赛前由单位通过“补录跳水动作表”统一填写。</Alert>}
               </Box>
               );
             })}

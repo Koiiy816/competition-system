@@ -27,6 +27,7 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { useAuth } from '../contexts/AuthContext';
 import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
+import { isDivingCompetition } from '../utils/competitionType';
 
 const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -139,7 +140,7 @@ const compareCourts = (first, second) => courtSortOrder(first) - courtSortOrder(
   || String(first || '').localeCompare(String(second || ''), 'zh-CN');
 
 // 提取弹窗组件以避免父组件在输入时重新渲染
-const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSave }) => {
+const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSave, isDivingWorkspace }) => {
   const [form, setForm] = useState({
     name: '',
     scheduleDate: '',
@@ -202,7 +203,7 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
             value={form.court}
             onChange={(e) => setForm({ ...form, court: e.target.value })}
           />
-          <TextField select label="计分方式" fullWidth value={form.scoringMode || 'standard'} onChange={(e) => setForm({ ...form, scoringMode: e.target.value, divingFormat: e.target.value === 'diving' ? (form.divingFormat || 'individual') : 'individual', divingProgram: e.target.value === 'diving' ? (form.divingProgram || []) : [] })}><MenuItem value="standard">普通计分</MenuItem><MenuItem value="diving">跳水计分（五位裁判）</MenuItem></TextField>
+          <TextField select label="计分方式" fullWidth value={form.scoringMode || 'standard'} onChange={(e) => setForm({ ...form, scoringMode: e.target.value, divingFormat: e.target.value === 'diving' ? (form.divingFormat || 'individual') : 'individual', divingProgram: e.target.value === 'diving' ? (form.divingProgram || []) : [] })}><MenuItem value="standard">普通计分</MenuItem>{isDivingWorkspace && <MenuItem value="diving">跳水计分（五位裁判）</MenuItem>}</TextField>
           {form.scoringMode === 'diving' && <><TextField select label="跳水项目" fullWidth value={form.divingFormat || 'individual'} onChange={(e) => setForm({ ...form, divingFormat: e.target.value })}><MenuItem value="individual">个人</MenuItem><MenuItem value="synchronized">双人</MenuItem></TextField><Alert severity="info">个人和双人：去掉一个最高分和一个最低分后乘难度系数。</Alert>{(form.divingProgram || []).map((dive, index) => <Box key={index} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 1.5 }}><Typography variant="body2" fontWeight="bold" sx={{ mb: 1 }}>第 {index + 1} 轮动作</Typography><Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 0.8fr', gap: 1 }}><TextField size="small" label="动作代码" value={dive.actionCode || ''} onChange={(e) => updateDive(index, 'actionCode', e.target.value)} /><TextField size="small" required label="动作名称" value={dive.actionName || ''} onChange={(e) => updateDive(index, 'actionName', e.target.value)} /><TextField size="small" required type="number" label="难度系数" inputProps={{ min: 0, step: 0.1 }} value={dive.difficulty ?? ''} onChange={(e) => updateDive(index, 'difficulty', e.target.value)} /></Box><Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}><Button color="error" size="small" onClick={() => removeDive(index)}>删除本轮</Button></Box></Box>)}<Button variant="outlined" onClick={addDive}>添加一轮动作</Button></>}
         </Box>
       </DialogContent>
@@ -335,6 +336,7 @@ const CompetitionScheduleManagementPage = () => {
   const [clearing, setClearing] = useState(false);
   const [schedules, setSchedules] = useState([]);
   const [competition, setCompetition] = useState(null);
+  const isDivingWorkspace = isDivingCompetition(competition);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [tabValue, setTabValue] = useState(0);
@@ -1479,7 +1481,7 @@ const CompetitionScheduleManagementPage = () => {
             <TextField select label="项目类型" value={newProject.eventMode} onChange={(event) => setNewProject((current) => ({ ...current, eventMode: event.target.value }))}>
               <MenuItem value="individual">个人项目</MenuItem><MenuItem value="collective">集体项目（按代表单位成队）</MenuItem>
             </TextField>
-            <TextField select label="计分方式" value={newProject.scoringMode} onChange={(event) => setNewProject((current) => ({ ...current, scoringMode: event.target.value, divingFormat: event.target.value === 'diving' ? current.divingFormat : 'individual', divingProgram: event.target.value === 'diving' ? current.divingProgram : [] }))}><MenuItem value="standard">普通计分</MenuItem><MenuItem value="diving">跳水计分（固定五裁判）</MenuItem></TextField>
+            <TextField select label="计分方式" value={newProject.scoringMode} onChange={(event) => setNewProject((current) => ({ ...current, scoringMode: event.target.value, divingFormat: event.target.value === 'diving' ? current.divingFormat : 'individual', divingProgram: event.target.value === 'diving' ? current.divingProgram : [] }))}><MenuItem value="standard">普通计分</MenuItem>{isDivingWorkspace && <MenuItem value="diving">跳水计分（固定五裁判）</MenuItem>}</TextField>
             <TextField label="比赛项目名称" required fullWidth value={newProject.name} onChange={(event) => setNewProject((current) => ({ ...current, name: event.target.value }))} />
             <TextField label="比赛日期" required type="date" InputLabelProps={{ shrink: true }} value={newProject.scheduleDate} onChange={(event) => setNewProject((current) => ({ ...current, scheduleDate: event.target.value }))} />
             <TextField select label="时间段" value={newProject.timeSlot} onChange={(event) => setNewProject((current) => ({ ...current, timeSlot: event.target.value }))}>
@@ -1643,6 +1645,7 @@ const CompetitionScheduleManagementPage = () => {
         initialForm={assignForm}
         onClose={handleCloseAssignDialog}
         onSave={handleAssignSave}
+        isDivingWorkspace={isDivingWorkspace}
       />
       <Dialog open={groupPreviewOpen} onClose={() => setGroupPreviewOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>项目分组预览</DialogTitle>

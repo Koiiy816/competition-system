@@ -17,6 +17,14 @@ const CompetitionSchema = new mongoose.Schema({
     default: '武术',
     trim: true
   },
+  // Canonical business workspace.  `type` remains as the human-readable
+  // legacy label, while all feature decisions use this value.
+  sportType: {
+    type: String,
+    enum: ['wushu', 'diving', 'trampoline', 'other'],
+    required: false,
+    index: true
+  },
   rules: {
     type: String,
     required: false
