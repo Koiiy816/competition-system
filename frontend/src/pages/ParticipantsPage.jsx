@@ -61,6 +61,9 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import ScienceIcon from '@mui/icons-material/Science'; // Import icon for test participant
 import AddParticipantModal from '../components/participants/AddParticipantModal';
 import DivingPlanPrintPreview from '../components/DivingPlanPrintPreview';
+import EditRegistrationModal from '../components/participants/EditRegistrationModal';
+import systemService from '../services/systemService';
+import { getSportType } from '../utils/competitionType';
 import BrandWatermark from '../components/BrandWatermark';
 
 // 标签面板组件
@@ -89,6 +92,30 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const location = useLocation();
   const { user } = useAuth();
   
+  const [registrationEditing, setRegistrationEditing] = useState(null);
+  const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => systemService.getSettings()
+      .then(response => { if (active) setRegistrationEditEnabled(response.data?.some(item => item.key === 'wushu_registration_edit_enabled' && item.value === true)); })
+      .catch(() => { if (active) setRegistrationEditEnabled(false); });
+    if (myRegistrations) {
+      refresh();
+      window.addEventListener('focus', refresh);
+    }
+    return () => { active = false; window.removeEventListener('focus', refresh); };
+  }, [myRegistrations]);
+  const registrationCompetition = participant => competitions.find(item => item._id === (participant.competition?._id || participant.competition)) || participant.competition;
+  const isWushuRegistration = participant => getSportType(registrationCompetition(participant)) === 'wushu';
+  const canEditRegistration = participant => {
+    const competition = registrationCompetition(participant);
+    return myRegistrations && user?.roles?.includes('organization') && registrationEditEnabled
+      && isWushuRegistration(participant) && competition?.status === 'registration'
+      && new Date(competition.registrationDeadline).getTime() > Date.now()
+      && !participant.isVirtualTeam && !participant.isCheckedIn
+      && !['checked', 'absent'].includes(participant.checkInStatus);
+  };
+
   // 状态
   const [participants, setParticipants] = useState([]);
   const [groupedParticipants, setGroupedParticipants] = useState([]);
@@ -1491,7 +1518,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         </Tooltip>
                       )}
 
-                      {(isAdminOrChiefReferee || (myRegistrations && participant.status === 'pending')) && (
+                      {(isAdminOrChiefReferee || (myRegistrations && !isWushuRegistration(participant) && participant.status === 'pending')) && (
                         <Tooltip title="编辑">
                           <IconButton
                             color="primary"
@@ -1530,6 +1557,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         </>
                       )}
                       
+                      {!isAdminOrChiefReferee && canEditRegistration(participant) && (
+                        <Tooltip title="编辑报名项目"><IconButton color="primary" size="small" aria-label="编辑报名项目" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
+                      )}
                       <Tooltip title="删除">
                         <IconButton 
                           color="default" 
@@ -1691,7 +1721,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                               </Tooltip>
                             )}
 
-                            {(isAdminOrChiefReferee || (myRegistrations && participant.status === 'pending')) && (
+                            {(isAdminOrChiefReferee || (myRegistrations && !isWushuRegistration(participant) && participant.status === 'pending')) && (
                               <Tooltip title="编辑">
                                 <IconButton
                                   color="primary"
@@ -1728,7 +1758,10 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                   </Tooltip>
                                 </>
                               )}
-                              <Tooltip title="删除">
+                              {!isAdminOrChiefReferee && canEditRegistration(participant) && (
+                        <Tooltip title="编辑报名项目"><IconButton color="primary" size="small" aria-label="编辑报名项目" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
+                      )}
+                      <Tooltip title="删除">
                                 <IconButton 
                                   color="default" 
                                   size="small"
@@ -2271,6 +2304,11 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         </DialogActions>
       </Dialog>
 
+      <EditRegistrationModal participant={registrationEditing} onClose={() => setRegistrationEditing(null)} onSuccess={() => {
+        setRegistrationEditing(null);
+        setSuccessMessage('报名项目已修改，请等待重新审核');
+        refreshLists();
+      }} />
       {/* 添加参赛者模态框 */}
       {filters.competitionId && (
         <AddParticipantModal

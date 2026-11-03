@@ -43,6 +43,12 @@ router.get(
 );
 
 router.put(
+  '/:id/registration-content',
+  auth, authorize('organization'),
+  participantController.updateRegistrationContent
+);
+
+router.put(
   '/:id/diving-plan',
   auth,
   authorize('admin', 'chief_referee', 'organization'),

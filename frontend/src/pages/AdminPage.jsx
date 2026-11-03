@@ -90,6 +90,9 @@ const AdminPage = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
+  const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  const [registrationSettingBusy, setRegistrationSettingBusy] = useState(false);
+  const [registrationSettingLoaded, setRegistrationSettingLoaded] = useState(false);
   const [refereeLoginEnabled, setRefereeLoginEnabled] = useState(true);
   
   // 对话框状态
@@ -132,6 +135,8 @@ const AdminPage = () => {
   const fetchSettings = async () => {
     try {
       const response = await systemService.getSettings();
+      setRegistrationEditEnabled(response.data?.some(item => item.key === 'wushu_registration_edit_enabled' && item.value === true));
+      setRegistrationSettingLoaded(true);
       const refereeSetting = response.data?.find(s => s.key === 'referee_login_enabled');
       if (refereeSetting !== undefined) {
         setRefereeLoginEnabled(refereeSetting.value);
@@ -152,6 +157,17 @@ const AdminPage = () => {
       fetchSettings();
     }
   }, [isAdmin, isChiefReferee]);
+
+  const handleToggleRegistrationEdit = async (event) => {
+    const enabled = event.target.checked;
+    setRegistrationSettingBusy(true);
+    try {
+      await systemService.updateSetting('wushu_registration_edit_enabled', enabled);
+      setRegistrationEditEnabled(enabled);
+      setSuccessMessage(enabled ? '武术报名项目编辑已开启' : '武术报名项目编辑已关闭');
+    } catch (err) { setError(err.message || '保存开关失败'); }
+    finally { setRegistrationSettingBusy(false); }
+  };
 
   const handleToggleRefereeLogin = async (event) => {
     const newValue = event.target.checked;
@@ -593,6 +609,11 @@ const AdminPage = () => {
               <Divider />
               <CardContent>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="bold">允许参赛单位编辑武术报名项目</Typography>
+                    <Typography variant="body2" color="text.secondary">默认关闭。开启后，本单位可在截止前修改项目资料，修改后重新审核。关闭不影响报名、删除、审核及管理员编辑。</Typography>
+                    <FormControlLabel control={<Switch checked={registrationEditEnabled} disabled={!registrationSettingLoaded || registrationSettingBusy} onChange={handleToggleRegistrationEdit} />} label={registrationEditEnabled ? '已开启' : '已关闭'} />
+                  </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box>
                       <Typography variant="subtitle1" fontWeight="bold">允许裁判登录</Typography>
