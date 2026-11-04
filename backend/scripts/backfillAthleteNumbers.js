@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const { randomUUID } = require('crypto');
 const mongoose = require('mongoose');
-const { planLegacyNumbers } = require('../utils/legacyAthleteNumbers');
+const { planLegacyNumbers, missingIdentityFields } = require('../utils/legacyAthleteNumbers');
 
 async function main() {
   require('dotenv').config({ path: path.join(__dirname, '../config/.env') });
@@ -14,12 +14,16 @@ async function main() {
     const AthleteIdentity = require('../models/AthleteIdentity');
     const rows = await Participant.find({ isVirtualTeam: { $ne: true } }).lean();
     const identities = await AthleteIdentity.find().select('+idCard').lean();
-    const groups = planLegacyNumbers(rows, identities);
+    const unnumbered = rows.filter(row => !row.athleteNumber?.trim());
+    const exceptions = unnumbered.filter(row => missingIdentityFields(row).length)
+      .map(row => ({ id: String(row._id), missingFields: missingIdentityFields(row) }));
+    const groups = planLegacyNumbers(unnumbered.filter(row => !missingIdentityFields(row).length), identities);
     const summary = { database: mongoose.connection.name, registrations: groups.reduce((n, g) => n + g.rows.length, 0),
       groups: groups.length, reuse: groups.filter(g => g.existing).length,
-      separateWithoutDocument: groups.filter(g => !g.source.idCard?.trim()).length };
+      separateWithoutDocument: groups.filter(g => !g.source.idCard?.trim()).length,
+      unresolved: exceptions.length, exceptions };
     console.log(JSON.stringify(summary));
-    if (!process.argv.includes('--apply') || !groups.length) return;
+    if (!process.argv.includes('--apply') || (!groups.length && !exceptions.length)) return;
     // 先写计划，保留每条记录原编号、版本及本次目标编号，便于核查与恢复。
     const reportPath = path.resolve(process.cwd(), `athlete-number-backfill-${Date.now()}.json`);
     const report = { ...summary, changes: groups.map(g => ({
@@ -53,10 +57,12 @@ async function main() {
     }
     const after = await Participant.find({ isVirtualTeam: { $ne: true } }).lean();
     report.remaining = after.filter(row => !row.athleteNumber?.trim()).length;
+    report.actionableRemaining = after.filter(row => !row.athleteNumber?.trim() && !missingIdentityFields(row).length).length;
     report.completed = report.remaining === 0;
     await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
-    console.log(JSON.stringify({ completed: report.completed, remaining: report.remaining, reportPath }));
-    if (!report.completed) throw new Error('仍有未编号记录，请检查报告');
+    console.log(JSON.stringify({ completed: report.completed, remaining: report.remaining,
+      actionableRemaining: report.actionableRemaining, unresolved: exceptions.length, reportPath }));
+    if (report.actionableRemaining) throw new Error('仍有可处理的未编号记录，请检查报告');
   } finally { await mongoose.disconnect(); }
 }
 

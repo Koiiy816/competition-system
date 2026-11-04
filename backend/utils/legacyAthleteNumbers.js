@@ -1,6 +1,8 @@
 const { createHash } = require('crypto');
 
 const text = value => String(value || '').trim();
+const missingIdentityFields = row => ['user', 'competition', 'name', 'schoolName']
+  .filter(field => !text(row[field]));
 const signature = row => JSON.stringify([
   String(row.competition), String(row.user), text(row.schoolName), text(row.name),
   text(row.gender), row.birthDate ? new Date(row.birthDate).toISOString().slice(0, 10) : '',
@@ -15,7 +17,7 @@ function planLegacyNumbers(rows, identities) {
   const groups = new Map();
   for (const row of rows) {
     if (row.isVirtualTeam || text(row.athleteNumber)) continue;
-    if (!row.user || !row.competition || !text(row.name) || !text(row.schoolName)) {
+    if (missingIdentityFields(row).length) {
       throw new Error(`报名 ${row._id} 缺少账号、赛事、姓名或所属单位，未执行补号`);
     }
     const key = backfillKey(row);
@@ -28,4 +30,4 @@ function planLegacyNumbers(rows, identities) {
   return [...groups.values()];
 }
 
-module.exports = { planLegacyNumbers };
+module.exports = { planLegacyNumbers, missingIdentityFields };
