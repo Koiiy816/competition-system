@@ -165,3 +165,16 @@ test('grade field cannot bypass locked age group', () => fixture(async x => {
   assert.equal((await x.invoke()).code, 400);
   assert.equal(x.state.writes.length, 0);
 }));
+
+test('legacy registration without athlete number is blocked until backfill', () => fixture(async x => {
+  delete x.row.athleteNumber;
+  x.req.body.athleteNumber = '';
+  x.stub(AthleteIdentity, 'findOne', assert.fail);
+  assert.equal((await x.invoke()).code, 409);
+  assert.equal(x.state.writes.length, 0);
+}));
+test('legacy registration cannot assign itself another athlete number', () => fixture(async x => {
+  delete x.row.athleteNumber;
+  assert.equal((await x.invoke()).code, 409);
+  assert.equal(x.state.writes.length, 0);
+}));

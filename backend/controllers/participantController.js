@@ -598,10 +598,12 @@ exports.updateRegistrationContent = async (req, res, next) => {
     if (!competition.registrationDeadline || !Number.isFinite(deadline) || Date.now() >= deadline) return fail(400, '报名已截止或未设置有效截止时间');
     if (competition.status !== 'registration') return fail(400, '该比赛当前不在报名阶段');
     if (participant.isVirtualTeam || participant.isCheckedIn || ['checked', 'absent'].includes(participant.checkInStatus)) return fail(409, '该记录已进入比赛流程，请联系管理员');
-    if (!participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员确认人员');
+    if (!participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员完成补号');
     if (req.body.athleteNumber !== participant.athleteNumber) return fail(409, '参赛者编号不匹配，请刷新后重试');
-    try { await resolveAthleteNumber({ ...participant.toObject(), user: req.user.id }, req.user); }
-    catch (error) { return fail(error.statusCode || 500, error.message); }
+    if (participant.athleteNumber) {
+      try { await resolveAthleteNumber({ ...participant.toObject(), user: req.user.id }, req.user); }
+      catch (error) { return fail(error.statusCode || 500, error.message); }
+    }
     const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'updatedAt', 'athleteNumber'];
     if (!req.body || Object.keys(req.body).some(key => !allowed.includes(key))) return fail(400, '提交了不允许修改的字段');
     if (allowed.some(key => typeof req.body[key] !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');

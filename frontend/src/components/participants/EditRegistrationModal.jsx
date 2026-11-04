@@ -35,7 +35,7 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
     <DialogTitle>编辑报名项目</DialogTitle>
     <DialogContent>
       <Typography sx={{ mb: 2 }}>{participant?.name} · {participant?.schoolName}</Typography>
-      <Typography sx={{ mb: 2 }}>参赛者编号：{participant?.athleteNumber || '待管理员确认关联'}</Typography>
+      <Typography sx={{ mb: 2 }}>参赛者编号：{participant?.athleteNumber || '待管理员完成补号'}</Typography>
       <Alert severity="info" sx={{ mb: 2 }}>仅在报名截止前开放。保存后将重新进入待审核；已关联赛程或成绩的报名请联系管理员。</Alert>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {!competition && !error && <CircularProgress />}

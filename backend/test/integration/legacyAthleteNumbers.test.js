@@ -1,0 +1,36 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { promisify } = require('node:util');
+const execFile = promisify(require('node:child_process').execFile);
+const { createFixture } = require('../identityFixture');
+test('backfill assigns numbers, preserves business data, is idempotent and unlocks only linked registrations', async () => {
+  const f = await createFixture();
+  try {
+    const base = { user: f.users.organization._id, competition: f.competition._id, name: '历史选手', schoolName: '联调武术馆', gender: 'male', type: 'individual', grade: 'A组', ageGroup: 'A组', status: 'approved', idCard: 'DOC-MIGRATION', birthDate: new Date('2000-01-01') };
+    const a = await f.Participant.create({ ...base, event: '拳术' });
+    const b = await f.Participant.create({ ...base, event: '剑术' });
+    const c = await f.Participant.create({ ...base, event: '拳术', idCard: undefined });
+    const before = await f.Participant.find().sort({ _id: 1 }).lean();
+    await f.request('/settings/wushu_registration_edit_enabled', { method: 'PUT', role: 'admin', body: { value: true } });
+    const url = `/competitions/${f.competition.id}/participants/${a.id}/registration-content`;
+    const payload = { athleteNumber: '', event: '刀术', ageGroup: 'A组', groupTeam: '', eventDetail: '', updatedAt: a.updatedAt.toISOString() };
+    assert.equal((await f.request(url, { method: 'PUT', body: payload })).status, 409);
+    const run = () => execFile(process.execPath, [path.resolve(__dirname, '../../scripts/backfillAthleteNumbers.js'), '--apply'], { cwd: path.resolve(__dirname, '../../../.tmp'), env: { ...process.env, MONGO_URI: f.uri } });
+    await run();
+    const after = await f.Participant.find().sort({ _id: 1 }).lean();
+    const strip = row => { const { athleteNumber, updatedAt, ...rest } = row; return rest; };
+    assert.deepEqual(after.map(strip), before.map(strip));
+    assert.ok(after.every(row => /^AT-/.test(row.athleteNumber)));
+    const savedA = await f.Participant.findById(a.id);
+    assert.equal(savedA.athleteNumber, (await f.Participant.findById(b.id)).athleteNumber);
+    assert.notEqual(savedA.athleteNumber, (await f.Participant.findById(c.id)).athleteNumber);
+    const count = await f.AthleteIdentity.countDocuments();
+    await run();
+    assert.equal(await f.AthleteIdentity.countDocuments(), count);
+    assert.deepEqual(await f.Participant.find().sort({ _id: 1 }).lean(), after);
+    const result = await f.request(url, { method: 'PUT', body: { ...payload, athleteNumber: savedA.athleteNumber, updatedAt: savedA.updatedAt.toISOString() } });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.equal(result.body.data.status, 'pending');
+  } finally { await f.close(); }
+});

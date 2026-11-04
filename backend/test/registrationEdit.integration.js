@@ -76,6 +76,13 @@ async function main() {
     assert.equal(saved.registrationNumber, entry.registrationNumber);
     assert.equal(saved.user.toString(), unit.toString());
     assert.equal((await request(editUrl, unit, data)).code, 409);
+    const legacy = await Participant.create({ user: unit, competition: competitionId, name: '历史选手', schoolName: '测试单位', gender: 'male', type: 'individual', event: '拳术', grade: 'A', status: 'approved' });
+    const legacyResponse = await request(`/api/competitions/${competitionId}/participants/${legacy._id}/registration-content`, unit, { ...data, athleteNumber: '', updatedAt: legacy.updatedAt.toISOString() });
+    assert.equal(legacyResponse.code, 409);
+    const legacySaved = await Participant.findById(legacy._id);
+    assert.equal(legacySaved.event, '拳术');
+    assert.equal(legacySaved.status, 'approved');
+    assert.equal(legacySaved.athleteNumber, undefined);
     assert.equal((await request(settingUrl, admin, { value: false })).code, 200);
     assert.equal((await request(editUrl, unit, { ...data, updatedAt: saved.updatedAt.toISOString() })).code, 403);
     assert.equal((await request(entryUrl, unit, { event: '拳术' })).code, 403);
