@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createRequestKey } from '../utils/requestKey';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -712,7 +713,7 @@ const RegisterCompetitionPage = () => {
   const addRegistrant = () => {
     if (!validateForm()) return;
     const events = selectedEvents.filter(event => event && event.trim());
-    const baseId = crypto.randomUUID();
+    const baseId = createRequestKey();
     setRegistrants(prev => [...prev, ...events.map((event, index) => ({
       id: `${baseId}-${index}`,
       data: {

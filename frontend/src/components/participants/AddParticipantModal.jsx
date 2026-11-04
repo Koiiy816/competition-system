@@ -27,6 +27,7 @@ import { getSportType, isDivingCompetition } from '../../utils/competitionType';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseChineseResidentIdentityNumber } from '../../utils/certificateInfo';
+import { createRequestKey } from '../../utils/requestKey';
 
 const isDivingEntry = (competition) => isDivingCompetition(competition);
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
@@ -111,7 +112,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   useEffect(() => {
     if (open && competitionId) {
       setAthleteNumber(editData?.athleteNumber || '');
-      setAthleteRequestKey(crypto.randomUUID());
+      setAthleteRequestKey(createRequestKey());
       const fetchCompetition = async () => {
         setLoading(true);
         setError(''); // Reset error state when fetching
