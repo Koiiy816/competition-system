@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import WushuFeeTable from '../components/participants/WushuFeeTable';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Box,
@@ -119,6 +120,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   // 状态
   const [participants, setParticipants] = useState([]);
   const [groupedParticipants, setGroupedParticipants] = useState([]);
+  const groupedRequestVersion = useRef(0);
   const [competitions, setCompetitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingGrouped, setLoadingGrouped] = useState(false);
@@ -684,7 +686,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   // 下载导入模板
   const handleDownloadTemplate = () => {
     const templateData = [
-      ['姓名', '性别(男/女)', '年龄组别', '身份证号', '比赛项目', '代表单位', '领队', '教练', '是否测试人员(是/否)'],
+      ['姓名', '性别(男/女)', '年龄组别', '身份证号', '比赛项目', '代表单位', '领队', '教练', '是否测试人员(是/否)', '双人配对码', '参赛者编号'],
       ['张三', '男', 'U16组', '440304201001011234', '自选长拳', '福田区代表队', '王教练', '李教练', '否'],
       ['李四', '女', '小学乙组', '440304201001011235', '初级刀术', '南山实验教育集团', '张领队', '赵教练', '是']
     ];
@@ -780,6 +782,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           
           const participantData = {
             name: row[0] || '',
+            athleteNumber: String(row[(rows[0] || []).indexOf('参赛者编号')] || '').trim(),
             gender: row[1] === '女' ? 'female' : 'male', // 性别在第2列 (B列)
             ageGroup: parsedAgeGroup,
             grade: parsedAgeGroup, // 同时存入 grade 字段兼容
@@ -901,11 +904,20 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           limit: 5000,
           ...(myRegistrations ? { myRegistrations: true } : {})
         };
+        const version = ++groupedRequestVersion.current;
         const groupResponse = await participantService.getParticipants(competitionId, groupParams);
-        setGroupedParticipants(groupResponse.data || []);
+        if (version === groupedRequestVersion.current) {
+          setGroupedParticipants(groupResponse.data || []);
+          setLoadingGrouped(false);
+        }
       }
     } catch (error) {
       console.error('刷新列表失败:', error);
+      if (tabValue === 2) {
+        setGroupedParticipants([]);
+        setLoadingGrouped(false);
+        setError('刷新费用汇总失败，请重新加载列表');
+      }
     }
   };
 
@@ -996,7 +1008,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
 
   // 获取按项目或按单位分组的参赛者列表
   useEffect(() => {
-    const fetchGrouped = async () => {
+    let active = true;
+    const fetchGrouped = async (background = false) => {
+      const version = ++groupedRequestVersion.current;
       if (!filters.competitionId && competitions.length === 0) return;
       
       // 判断当前是不是在“按项目分组(index 1)”或“按单位分组(index 2)”
@@ -1005,7 +1019,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       
       if (!isEventGroupTab && !isSchoolGroupTab) return;
 
-      setLoadingGrouped(true);
+      if (!background) setLoadingGrouped(true);
       setError('');
 
       try {
@@ -1025,17 +1039,24 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           const response = await participantService.getParticipants(competitionId, params);
           // 后端返回的数据如果不是数组，尝试从 data 属性获取
           const groupData = Array.isArray(response) ? response : (response.data || []);
-          setGroupedParticipants(groupData);
+          if (active && version === groupedRequestVersion.current) setGroupedParticipants(groupData);
         }
       } catch (error) {
+        if (!active || version !== groupedRequestVersion.current) return;
+        setGroupedParticipants([]);
         setError(error.message || '获取分组参赛者失败');
         console.error('获取分组参赛者失败:', error);
       } finally {
-        setLoadingGrouped(false);
+        if (active && version === groupedRequestVersion.current) setLoadingGrouped(false);
       }
     };
 
     fetchGrouped();
+    if (tabValue !== 2) return () => { active = false; };
+    const refresh = () => fetchGrouped(true);
+    window.addEventListener('focus', refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => { active = false; window.removeEventListener('focus', refresh); window.clearInterval(timer); };
   }, [tabValue, filters.competitionId, filters.status, filters.type, filters.search, competitions, canViewParticipants]);
   
   // 处理标签切换
@@ -1197,6 +1218,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     try {
       const competitionId = typeof participant.competition === 'object' ? participant.competition._id : participant.competition;
       await participantService.approveParticipant(competitionId, participant._id);
+      if (tabValue === 2) await refreshLists();
       
       // 更新参赛者列表
       setParticipants(prev => 
@@ -1236,6 +1258,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     try {
       const competitionId = typeof participant.competition === 'object' ? participant.competition._id : participant.competition;
       await participantService.rejectParticipant(competitionId, participant._id);
+      if (tabValue === 2) await refreshLists();
       
       // 更新参赛者列表
       setParticipants(prev => 
@@ -1275,6 +1298,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     try {
       const competitionId = typeof participant.competition === 'object' ? participant.competition._id : participant.competition;
       await participantService.deleteParticipant(competitionId, participant._id);
+      if (tabValue === 2) await refreshLists();
       
       // 更新参赛者列表
       setParticipants(prev => 
@@ -1443,6 +1467,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                       {typeInfo.icon}
                       <Typography sx={{ ml: 1 }}>
                         {participantName}
+                                {participant.athleteNumber && <Typography component="span" display="block" variant="caption">{participant.athleteNumber}</Typography>}
                       </Typography>
                       {participant.isTest && (
                         <Chip label="测试" color="secondary" size="small" sx={{ ml: 1, height: 20 }} />
@@ -1592,6 +1617,72 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   };
   
   // 渲染按项目分组的参赛者
+  const renderGroupedActions = (participant) => (
+    <Box sx={{ display: 'flex', gap: 1 }}>
+      {participant.registrationFormFile && (
+        <Tooltip title="下载报名表">
+          <IconButton
+            color="primary"
+            size="small"
+            onClick={() => handleDownload(participant)}
+          >
+            <DownloadIcon />
+          </IconButton>
+        </Tooltip>
+      )}
+
+      {(isAdminOrChiefReferee || (myRegistrations && !isWushuRegistration(participant) && participant.status === 'pending')) && (
+        <Tooltip title="编辑">
+          <IconButton
+            color="primary"
+            size="small"
+            onClick={() => {
+              setEditingParticipant(participant);
+              setAddParticipantDialogOpen(true);
+            }}
+          >
+            <EditIcon />
+          </IconButton>
+        </Tooltip>
+      )}
+
+      {isAdminOrChiefReferee && participant.status === 'pending' && (
+        <>
+          <Tooltip title="通过">
+              <IconButton
+                color="success"
+                size="small"
+                onClick={() => openDialog('approve', participant)}
+              >
+                <CheckCircleIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="拒绝">
+              <IconButton
+                color="error"
+                size="small"
+                onClick={() => openDialog('reject', participant)}
+              >
+                <CancelIcon />
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
+        {!isAdminOrChiefReferee && canEditRegistration(participant) && (
+  <Tooltip title="编辑报名项目"><IconButton color="primary" size="small" aria-label="编辑报名项目" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
+)}
+<Tooltip title="删除">
+          <IconButton
+            color="default"
+            size="small"
+            onClick={() => openDialog('delete', participant)}
+          >
+            <DeleteIcon />
+          </IconButton>
+        </Tooltip>
+      </Box>
+  );
+
   const renderGroupedByEvent = () => {
     if (!groupedParticipants || groupedParticipants.length === 0) {
       return (
@@ -1636,11 +1727,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     />
                   )}
                 </Box>
-                <Chip label={`人数：${(group.participants || []).length}`} variant="outlined" size="small" />
+                <Chip label={`人数：${group.roster ? group.roster.length : (group.participants || []).length}`} variant="outlined" size="small" />
               </Box>
             </AccordionSummary>
             <AccordionDetails>
-              {(group.participants || []).length === 0 ? (
+              {tabValue === 2 && group.roster ? (
+                <WushuFeeTable roster={group.roster} renderActions={renderGroupedActions} getStatusInfo={getStatusInfo} getGenderLabel={getGenderLabel} />
+              ) : (group.participants || []).length === 0 ? (
                 <Typography variant="body2" color="text.secondary">该项目暂无参赛者</Typography>
               ) : (
                 <TableContainer component={Paper} elevation={0} variant="outlined">
@@ -1708,69 +1801,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                             {new Date(participant.registrationDate).toLocaleString()}
                           </TableCell>
                           <TableCell>
-                          <Box sx={{ display: 'flex', gap: 1 }}>
-                            {participant.registrationFormFile && (
-                              <Tooltip title="下载报名表">
-                                <IconButton
-                                  color="primary"
-                                  size="small"
-                                  onClick={() => handleDownload(participant)}
-                                >
-                                  <DownloadIcon />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-
-                            {(isAdminOrChiefReferee || (myRegistrations && !isWushuRegistration(participant) && participant.status === 'pending')) && (
-                              <Tooltip title="编辑">
-                                <IconButton
-                                  color="primary"
-                                  size="small"
-                                  onClick={() => {
-                                    setEditingParticipant(participant);
-                                    setAddParticipantDialogOpen(true);
-                                  }}
-                                >
-                                  <EditIcon />
-                                </IconButton>
-                              </Tooltip>
-                            )}
-
-                            {isAdminOrChiefReferee && participant.status === 'pending' && (
-                              <>
-                                <Tooltip title="通过">
-                                    <IconButton 
-                                      color="success" 
-                                      size="small"
-                                      onClick={() => openDialog('approve', participant)}
-                                    >
-                                      <CheckCircleIcon />
-                                    </IconButton>
-                                  </Tooltip>
-                                  <Tooltip title="拒绝">
-                                    <IconButton 
-                                      color="error" 
-                                      size="small"
-                                      onClick={() => openDialog('reject', participant)}
-                                    >
-                                      <CancelIcon />
-                                    </IconButton>
-                                  </Tooltip>
-                                </>
-                              )}
-                              {!isAdminOrChiefReferee && canEditRegistration(participant) && (
-                        <Tooltip title="编辑报名项目"><IconButton color="primary" size="small" aria-label="编辑报名项目" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
-                      )}
-                      <Tooltip title="删除">
-                                <IconButton 
-                                  color="default" 
-                                  size="small"
-                                  onClick={() => openDialog('delete', participant)}
-                                >
-                                  <DeleteIcon />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
+                          {renderGroupedActions(participant)}
                           </TableCell>
                         </TableRow>
                       );

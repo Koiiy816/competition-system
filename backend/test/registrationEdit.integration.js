@@ -42,7 +42,8 @@ async function main() {
     await User.collection.insertMany([{ _id: admin, email: 'admin@test.invalid', roles: ['admin'] }, { _id: unit, email: 'unit@test.invalid', roles: ['organization'] }, { _id: other, email: 'other@test.invalid', roles: ['organization'] }]);
     const competitionId = new mongoose.Types.ObjectId();
     await Competition.collection.insertOne({ _id: competitionId, name: '测试武术', type: '武术', sportType: 'wushu', status: 'registration', registrationDeadline: new Date(Date.now() + 86400000), ageGroups: [{ name: 'A' }], events: [{ name: '拳术' }, { name: '剑术', category: '器械' }] });
-    const entry = await Participant.create({ user: unit, competition: competitionId, name: '测试选手', schoolName: '测试单位', gender: 'male', type: 'individual', event: '拳术', grade: 'A', status: 'approved', additionalInfo: { preserved: '保留' } });
+    await require('../models/AthleteIdentity').collection.insertOne({ number: 'AT-integration', user: unit, competition: competitionId, name: '测试选手', schoolName: '测试单位' });
+    const entry = await Participant.create({ athleteNumber: 'AT-integration', user: unit, competition: competitionId, name: '测试选手', schoolName: '测试单位', gender: 'male', type: 'individual', event: '拳术', grade: 'A', status: 'approved', additionalInfo: { preserved: '保留' } });
     const app = express();
     app.use(express.json());
     app.use('/api/settings', require('../routes/settings'));
@@ -58,7 +59,7 @@ async function main() {
     const settingUrl = '/api/settings/wushu_registration_edit_enabled';
     const entryUrl = `/api/competitions/${competitionId}/participants/${entry._id}`;
     const editUrl = entryUrl + '/registration-content';
-    const data = { event: '剑术', ageGroup: 'A', groupTeam: '', eventDetail: '说明', updatedAt: entry.updatedAt.toISOString() };
+    const data = { athleteNumber: 'AT-integration', event: '剑术', ageGroup: 'A', groupTeam: '', eventDetail: '说明', updatedAt: entry.updatedAt.toISOString() };
     assert.equal((await request(editUrl, null, data)).code, 401);
     assert.equal((await request(settingUrl, unit, { value: true })).code, 403);
     assert.equal((await request(settingUrl, admin, { value: 'true' })).code, 400);

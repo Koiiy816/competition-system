@@ -21,8 +21,8 @@ router.get('/', async (req, res, next) => {
 router.put('/:key', protect, authorize(['admin']), async (req, res, next) => {
   try {
     const { value } = req.body;
-    if (req.params.key === 'wushu_registration_edit_enabled' && typeof value !== 'boolean') {
-      return res.status(400).json({ success: false, message: '报名编辑开关必须为布尔值' });
+    if (['wushu_registration_edit_enabled', 'wushu_fee_summary_enabled'].includes(req.params.key) && typeof value !== 'boolean') {
+      return res.status(400).json({ success: false, message: '功能开关必须为布尔值' });
     }
     const setting = await SystemSetting.findOneAndUpdate(
       { key: req.params.key },

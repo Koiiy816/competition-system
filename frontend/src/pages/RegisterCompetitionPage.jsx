@@ -1,3 +1,4 @@
+import AthleteIdentitySelect from '../components/participants/AthleteIdentitySelect';
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -37,7 +38,7 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
-import { isDivingCompetition } from '../utils/competitionType';
+import { getSportType, isDivingCompetition } from '../utils/competitionType';
 const isDivingEvent = (competition) => isDivingCompetition(competition);
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -92,6 +93,7 @@ const RegisterCompetitionPage = () => {
   const [competition, setCompetition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [identityReady, setIdentityReady] = useState(false);
   const [error, setError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
@@ -710,13 +712,15 @@ const RegisterCompetitionPage = () => {
   
   // 同一名运动员的多个项目会拆成对应报名记录，无需重复填写个人资料。
   const addRegistrant = () => {
+    if (getSportType(competition) === 'wushu' && !identityReady) { setError('请确认参赛者编号关联'); return; }
     if (!validateForm()) return;
     const events = selectedEvents.filter(event => event && event.trim());
-    const baseId = `${Date.now()}-${Math.random()}`;
+    const baseId = crypto.randomUUID();
     setRegistrants(prev => [...prev, ...events.map((event, index) => ({
       id: `${baseId}-${index}`,
       data: {
         ...formData,
+        athleteRequestKey: baseId,
         event,
         groupTeam: getAvailableEvents().find(item => item.name === event)?.isGroupEvent
           ? String(selectedTeamAssignments[event] || '').trim()
@@ -733,7 +737,7 @@ const RegisterCompetitionPage = () => {
       },
       photo: selectedPhoto
     }))]);
-    setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', additionalInfo: {} }));
+    setFormData(prev => ({ ...prev, athleteNumber: '', name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', additionalInfo: {} }));
     setSelectedEvents(['']);
     setSelectedEventTypes(['']);
     setSelectedEventDetails({});
@@ -872,6 +876,7 @@ const RegisterCompetitionPage = () => {
           </Grid>
         )}
         
+        {getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect key={registrants.length} competitionId={id} schoolName={formData.schoolName} value={formData.athleteNumber} onReady={setIdentityReady} onChange={athleteNumber => setFormData(prev => ({ ...prev, athleteNumber }))} /></Grid>}
         {/* 个人信息 */}
         {formData.type === 'individual' && (
           <>

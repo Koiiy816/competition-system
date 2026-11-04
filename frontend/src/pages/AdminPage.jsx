@@ -91,6 +91,8 @@ const AdminPage = () => {
   const [tabValue, setTabValue] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
   const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  const [feeSummaryEnabled, setFeeSummaryEnabled] = useState(false);
+  const [feeSettingBusy, setFeeSettingBusy] = useState(false);
   const [registrationSettingBusy, setRegistrationSettingBusy] = useState(false);
   const [registrationSettingLoaded, setRegistrationSettingLoaded] = useState(false);
   const [refereeLoginEnabled, setRefereeLoginEnabled] = useState(true);
@@ -137,6 +139,7 @@ const AdminPage = () => {
       const response = await systemService.getSettings();
       setRegistrationEditEnabled(response.data?.some(item => item.key === 'wushu_registration_edit_enabled' && item.value === true));
       setRegistrationSettingLoaded(true);
+      setFeeSummaryEnabled(response.data?.some(item => item.key === 'wushu_fee_summary_enabled' && item.value === true));
       const refereeSetting = response.data?.find(s => s.key === 'referee_login_enabled');
       if (refereeSetting !== undefined) {
         setRefereeLoginEnabled(refereeSetting.value);
@@ -167,6 +170,17 @@ const AdminPage = () => {
       setSuccessMessage(enabled ? '武术报名项目编辑已开启' : '武术报名项目编辑已关闭');
     } catch (err) { setError(err.message || '保存开关失败'); }
     finally { setRegistrationSettingBusy(false); }
+  };
+
+  const handleToggleFeeSummary = async (event) => {
+    const enabled = event.target.checked;
+    setFeeSettingBusy(true);
+    try {
+      await systemService.updateSetting('wushu_fee_summary_enabled', enabled);
+      setFeeSummaryEnabled(enabled);
+      setSuccessMessage(enabled ? '武术报名费用汇总已开启' : '武术报名费用汇总已关闭');
+    } catch (err) { setError(err.message || '保存开关失败'); }
+    finally { setFeeSettingBusy(false); }
   };
 
   const handleToggleRefereeLogin = async (event) => {
@@ -609,6 +623,11 @@ const AdminPage = () => {
               <Divider />
               <CardContent>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="bold">武术报名费用汇总（按单位）</Typography>
+                    <Typography variant="body2" color="text.secondary">默认关闭。开启后同单位同姓名合并展示全部项目；一至两项每人300元，每增加一项加100元。待审核、已通过项目计费，同名项目去重，已拒绝项目不计费。关闭恢复原表，不修改报名数据。</Typography>
+                    <FormControlLabel control={<Switch checked={feeSummaryEnabled} disabled={!registrationSettingLoaded || feeSettingBusy} onChange={handleToggleFeeSummary} />} label={feeSummaryEnabled ? '已开启' : '已关闭'} />
+                  </Box>
                   <Box>
                     <Typography variant="subtitle1" fontWeight="bold">允许参赛单位编辑武术报名项目</Typography>
                     <Typography variant="body2" color="text.secondary">默认关闭。开启后，本单位可在截止前修改项目资料，修改后重新审核。关闭不影响报名、删除、审核及管理员编辑。</Typography>

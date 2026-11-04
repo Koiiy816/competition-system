@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const AthleteIdentity = require('../models/AthleteIdentity');
 const Participant = require('../models/Participant');
 const Competition = require('../models/Competition');
 const SystemSetting = require('../models/SystemSetting');
@@ -11,7 +12,7 @@ const response = () => ({ code: 0, body: null, status(code) { this.code = code; 
 async function fixture(run) {
   const originals = [];
   const stub = (model, method, fn) => { originals.push([model, method, model[method]]); model[method] = fn; };
-  const row = { _id: 'entry', user: 'unit', competition: 'match', name: '选手', schoolName: '单位', gender: 'male', type: 'individual', status: 'approved', event: '拳术', ageGroup: 'A', updatedAt: new Date('2026-01-01'), additionalInfo: { preserved: true }, toObject() { return { ...this }; } };
+  const row = { _id: 'entry', athleteNumber: 'AT-test', user: 'unit', competition: 'match', name: '选手', schoolName: '单位', gender: 'male', type: 'individual', status: 'approved', event: '拳术', ageGroup: 'A', updatedAt: new Date('2026-01-01'), additionalInfo: { preserved: true }, toObject() { return { ...this }; } };
   const competition = { _id: 'match', name: '武术比赛', sportType: 'wushu', status: 'registration', registrationDeadline: new Date(Date.now() + 86400000), ageGroups: [{ name: 'A' }], events: [{ name: '拳术' }, { name: '剑术', category: '器械', ageGroups: ['A'], genderRestriction: 'male' }, { name: '集体拳', isGroupEvent: true }] };
   const state = { enabled: true, writes: [], scheduled: false, result: false, virtual: false, duplicate: false, conflict: false };
   stub(Participant, 'findById', async () => row);
@@ -22,7 +23,8 @@ async function fixture(run) {
   stub(Result, 'exists', async () => state.result);
   stub(Participant, 'find', async () => []);
   stub(Participant, 'findOneAndUpdate', async (filter, update, options) => { state.writes.push({ filter, update, options }); return state.conflict ? null : { ...row, ...update.$set }; });
-  const req = { user: { id: 'unit', roles: ['organization'] }, params: { id: 'entry', competitionId: 'match' }, body: { event: '剑术', ageGroup: 'A', groupTeam: '', eventDetail: '', updatedAt: row.updatedAt.toISOString() } };
+  stub(AthleteIdentity, 'findOne', () => ({ select: async () => ({ number: 'AT-test', user: 'unit', name: '选手', schoolName: '单位' }) }));
+  const req = { user: { id: 'unit', roles: ['organization'] }, params: { id: 'entry', competitionId: 'match' }, body: { athleteNumber: 'AT-test', event: '剑术', ageGroup: 'A', groupTeam: '', eventDetail: '', updatedAt: row.updatedAt.toISOString() } };
   const invoke = async (handler = controller.updateRegistrationContent) => { const res = response(); await handler(req, res, error => { throw error; }); return res; };
   try { await run({ row, competition, state, req, invoke, stub }); }
   finally { originals.reverse().forEach(([model, method, original]) => { model[method] = original; }); }
@@ -36,7 +38,8 @@ test('approved registration can change event and returns to review, preserving i
   assert.equal(filter.status, 'approved');
   assert.equal(update.$set.status, 'pending');
   assert.equal(update.$set.event, '剑术');
-  assert.equal(update.$set.grade, 'A');
+  assert.equal(Object.hasOwn(update.$set, 'ageGroup'), false);
+  assert.equal(Object.hasOwn(update.$set, 'grade'), false);
   assert.equal(update.$set.category, '器械');
   assert.equal(update.$set.manualEventGroup, '');
   for (const key of ['user', 'competition', 'name', 'registrationNumber', 'photoFile', 'registrationDate']) assert.equal(Object.hasOwn(update.$set, key), false);
@@ -133,5 +136,32 @@ test('legacy null additionalInfo is safely replaced with event details', () => f
 test('database failure is forwarded and never silently permits editing', () => fixture(async x => {
   x.stub(SystemSetting, 'findOne', async () => { throw new Error('database unavailable'); });
   await assert.rejects(x.invoke, /database unavailable/);
+  assert.equal(x.state.writes.length, 0);
+}));
+
+test('organization cannot change to another valid competition age group', () => fixture(async x => {
+  x.competition.ageGroups.push({ name: 'B' });
+  x.competition.events[1].ageGroups.push('B');
+  x.req.body.ageGroup = 'B';
+  const res = await x.invoke();
+  assert.equal(res.code, 400);
+  assert.match(res.body.message, /不能修改组别/);
+  assert.equal(x.state.writes.length, 0);
+}));
+test('legacy grade-only registration can edit event without rewriting group fields', () => fixture(async x => {
+  delete x.row.ageGroup;
+  x.row.grade = 'A';
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(Object.hasOwn(x.state.writes[0].update.$set, 'ageGroup'), false);
+  assert.equal(Object.hasOwn(x.state.writes[0].update.$set, 'grade'), false);
+}));
+test('editing event preserves distinct legacy grade and ageGroup values', () => fixture(async x => {
+  x.row.grade = '原年级';
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(Object.hasOwn(x.state.writes[0].update.$set, 'grade'), false);
+}));
+test('grade field cannot bypass locked age group', () => fixture(async x => {
+  x.req.body.grade = 'B';
+  assert.equal((await x.invoke()).code, 400);
   assert.equal(x.state.writes.length, 0);
 }));

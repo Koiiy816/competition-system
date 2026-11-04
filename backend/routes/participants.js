@@ -6,6 +6,8 @@ const divingPairController = require('../controllers/divingPairController');
 const { protect: auth, authorize } = require('../middlewares/authMiddleware');
 const { uploadParticipantPhoto } = require('../middlewares/uploadMiddleware');
 
+router.get('/athlete-identities', auth, authorize('admin', 'chief_referee', 'organization'), require('../controllers/athleteIdentityController').list);
+
 // @route   GET api/competitions/all/participants/me
 // @desc    获取当前用户的所有参赛记录（不区分比赛）
 // @access  私有/所有已登录用户
