@@ -120,11 +120,8 @@ const competitionService = {
   getCompetitionTypes: async () => {
     // 在实际应用中，这可能是从API获取的
     return Promise.resolve([
-      { id: 'martial_arts', name: '武术比赛' },
-      { id: 'sports', name: '体育竞技' },
-      { id: 'academic', name: '学术竞赛' },
-      { id: 'cultural', name: '文化比赛' },
-      { id: 'other', name: '其他' },
+      { id: 'wushu', name: '武术' },
+      { id: 'diving', name: '跳水' },
     ]);
   },
 

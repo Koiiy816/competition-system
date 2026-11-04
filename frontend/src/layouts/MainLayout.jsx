@@ -23,8 +23,9 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import { useAuth } from '../contexts/AuthContext';
 import participantService from '../services/participantService';
+import { isDivingCompetition } from '../utils/competitionType';
 
-const isDivingRegistration = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant?.event || ''));
+const isDivingRegistration = (participant) => isDivingCompetition(participant?.competition);
 
 const BrandLogo = ({ mobile = false }) => (
   <Box
@@ -32,23 +33,22 @@ const BrandLogo = ({ mobile = false }) => (
     to="/"
     aria-label="赛易通首页"
     sx={{
-      width: 48,
-      height: 40,
+      width: mobile ? 42 : 76,
+      height: mobile ? 40 : 64,
       mr: mobile ? 0 : 1,
-      overflow: 'hidden',
-      display: mobile ? { xs: 'block', md: 'none' } : { xs: 'none', md: 'block' },
+      display: mobile ? { xs: 'flex', md: 'none' } : { xs: 'none', md: 'flex' },
+      alignItems: 'center',
       flexShrink: 0,
     }}
   >
     <Box
       component="img"
-      src="/assets/saiyitong-logo.png"
+      src="/assets/saiyitong-emblem.png"
       alt="赛易通"
       sx={{
-        width: 70,
-        maxWidth: 'none',
-        transform: 'translate(-11px, -5px)',
-        mixBlendMode: 'multiply',
+        width: mobile ? 40 : 58,
+        height: mobile ? 40 : 58,
+        objectFit: 'contain',
       }}
     />
   </Box>
@@ -64,6 +64,7 @@ const MainLayout = () => {
   const [hasDivingRegistration, setHasDivingRegistration] = useState(false);
 
   const isAdmin = Boolean(user?.roles?.includes('admin'));
+  const hasDivingAccess = isAdmin || Boolean(user?.sportTypes?.includes('diving')) || hasDivingRegistration;
 
   useEffect(() => {
     let cancelled = false;
@@ -83,7 +84,7 @@ const MainLayout = () => {
       });
 
     return () => { cancelled = true; };
-  }, [isAdmin, isAuthenticated, user?.roles]);
+  }, [isAdmin, isAuthenticated, user?.roles, user?.sportTypes]);
 
   const handleOpenNavMenu = (event) => {
     setAnchorElNav(event.currentTarget);
@@ -113,12 +114,16 @@ const MainLayout = () => {
 
   // 导航菜单项 - 根据用户角色显示不同菜单
   const getPages = () => {
+    if (!isAuthenticated) {
+      return [{ title: '首页', path: '/' }];
+    }
+
     const pages = [
       { title: '首页', path: '/' },
       { title: '比赛', path: '/competitions' },
     ];
 
-    const canViewScheduleResults = !isAuthenticated || (user?.roles && user.roles.some(role => ['organization', 'admin', 'referee', 'chief_referee', 'checkin_clerk'].includes(role)));
+    const canViewScheduleResults = user?.roles && user.roles.some(role => ['organization', 'admin', 'referee', 'chief_referee', 'checkin_clerk'].includes(role));
 
     // 3. 赛程
     if (canViewScheduleResults) {
@@ -152,7 +157,7 @@ const MainLayout = () => {
         pages.push({ title: '我的报名', path: '/my-registrations' });
       }
 
-      if (isAdmin || (user.roles.includes('organization') && hasDivingRegistration)) {
+      if (isAdmin || (user.roles.includes('organization') && hasDivingAccess)) {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
       }
 

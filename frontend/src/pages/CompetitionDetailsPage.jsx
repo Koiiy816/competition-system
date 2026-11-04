@@ -23,6 +23,7 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import competitionService from '../services/competitionService';
 import EventItem from '../components/competitions/EventItem';
 import { useAuth } from '../contexts/AuthContext';
+import { SPORT_TYPES, getSportType } from '../utils/competitionType';
 
 
 const DIVING_REGULATION_AGE_GROUPS = [
@@ -79,7 +80,7 @@ const DIVING_REGULATION_EVENTS = [
   divingEvent('女子1米跳台', ['U7组'], 'female', '跳台')
 ];
 
-const isDivingCompetition = (type) => String(type || '').trim().includes('跳水');
+const isDivingCompetition = (competition) => getSportType(competition) === SPORT_TYPES.DIVING;
 
 export default function CompetitionDetailsPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
@@ -94,6 +95,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
     registrationDeadline: null,
     status: 'draft',
     type: '武术',
+    sportType: SPORT_TYPES.WUSHU,
     location: '',
     guidingUnits: [],
     hosts: [],
@@ -388,6 +390,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
     // Transform data for backend
     const submissionData = {
       ...competition,
+      sportType: getSportType(competition),
       registrationRules: {
         ...competition.registrationRules,
         teamSizeLimits: {
@@ -412,7 +415,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
 
     // Explicitly define the fields we want to send to the backend
     const stringFields = [
-      'name', 'description', 'status', 'type', 'location', 'rules', 'genderRestriction'
+      'name', 'description', 'status', 'type', 'sportType', 'location', 'rules', 'genderRestriction'
     ];
     
     const numberFields = [
@@ -588,15 +591,23 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                 />
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
-                    <TextField
+                      <TextField
+                        select
                       fullWidth
                       margin="normal"
                       label="比赛类型"
-                      name="type"
-                      value={competition.type}
-                      onChange={handleChange}
+                        name="sportType"
+                        value={getSportType(competition)}
+                        onChange={(event) => setCompetition((current) => ({
+                          ...current,
+                          sportType: event.target.value,
+                          type: event.target.value === SPORT_TYPES.DIVING ? '跳水' : '武术'
+                        }))}
                       required
-                    />
+                      >
+                        <MenuItem value={SPORT_TYPES.WUSHU}>武术</MenuItem>
+                        <MenuItem value={SPORT_TYPES.DIVING}>跳水</MenuItem>
+                      </TextField>
                   </Grid>
                     <Grid item xs={12} sm={6}>
                       <TextField
@@ -745,7 +756,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                 <Box>
                   <Typography variant="h6" sx={{ mb: 2 }}>比赛项目</Typography>
 
-                  {isDivingCompetition(competition.type) && (
+                  {isDivingCompetition(competition) && (
                     <Alert severity="info" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={applyDivingRegulationTemplate}>套用本次规程</Button>}>
                       按本次规程建立 U12、U10、U8、U7 组项目；包含男女项目、双人及混合双人。只会补入缺少的组别和项目，不会覆盖你已填写的内容。
                     </Alert>
@@ -1131,7 +1142,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                 variant="contained" 
                 color="primary"
                 size="large"
-                onClick={() => navigate(`/competitions/${id}/register`)}
+                onClick={() => navigate(`/competitions/${id}/register?sportType=${getSportType(competition)}`)}
                 sx={{ mr: 1 }}
               >
                 立即报名

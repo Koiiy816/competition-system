@@ -1,13 +1,16 @@
 const Participant = require('../models/Participant');
+const { resolveAthleteNumber } = require('../utils/athleteIdentity');
 const Competition = require('../models/Competition');
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
+const { getCompetitionSportType, SPORT_TYPES, canUserAccessCompetitionType } = require('../utils/competitionType');
 
 // 本赛事的导入资料存在不同选手共用身份证号码的情况，不能用身份证或照片推断选手身份。
 // 人数统计按报名册中的姓名、单位、性别归并；若三项均缺失则保留为独立记录。
 const participantRosterKey = (participant) => {
+  if (participant.athleteNumber) return `athlete:${participant.athleteNumber}`;
   const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
   const fields = [normalize(participant.name || participant.teamName), normalize(participant.schoolName || participant.teamName), normalize(participant.gender)];
   if (fields.some(Boolean)) return `roster:${fields.join('|')}`;
@@ -48,6 +51,83 @@ const validateRegistrationAgainstCompetition = ({ competition, body }) => {
   return null;
 };
 
+const validateWushuEventLimits = async (competition, body, excludeId) => {
+  if (!competition.name?.includes('罗湖区') || !competition.name.includes('传统武术')) return null;
+  const participantName = body.name;
+
+  // 查找该选手已报名的项目 (仅按姓名识别，因为身份证非必填)
+  const query = { competition: competition._id, status: { $ne: 'rejected' }, ...(body.athleteNumber ? { athleteNumber: body.athleteNumber } : { name: participantName }) };
+
+  if (excludeId) query._id = { $ne: excludeId };
+  const existingRegistrations = await Participant.find(query);
+  const existingEvents = existingRegistrations.map(r => r.event);
+
+  // 加上当前要报名的项目
+  const allEvents = [...existingEvents, body.event];
+
+  // 项目分类定义
+  const fistEvents = ['三路长拳', '少年规定拳', '初级南拳', '传统拳术', '第三套国际规定长拳', '五步拳', '自选长拳', '第三套国际规定南拳', '自选南拳', '第一套国际规定南拳', '自选太极拳', '42式太极拳', '四十二式太极拳'];
+  const shortEvents = ['初级刀术', '初级剑术', '42式太极剑', '四十二式太极剑', '自选太极剑', '第三套国际规定剑术', '自选剑术', '第三套国际规定刀术', '自选刀术', '第三套国际规定南刀', '自选南刀'];
+  const longEvents = ['初级棍术', '初级枪术', '第三套国际规定枪术', '自选枪术', '第三套国际规定棍术', '自选棍术', '第三套国际规定南棍', '自选南棍'];
+  const traditionalEvents = ['传统器械'];
+  // 集体项目不计入 3 项个人项目限制
+  const groupEvents = ['幼儿集体拳', '集体武术操'];
+
+  let fistCount = 0;
+  let shortCount = 0;
+  let longCount = 0;
+  let tradCount = 0;
+  let individualEventCount = 0;
+
+  allEvents.forEach(e => {
+    if (!e) return;
+
+    // 如果是集体项目，直接跳过统计
+    if (groupEvents.includes(e) || e.includes('集体') || e.includes('操')) {
+      return;
+    }
+
+    // 只有非集体项目才计入个人总数
+    individualEventCount++;
+
+    if (fistEvents.includes(e)) fistCount++;
+    else if (shortEvents.includes(e)) shortCount++;
+    else if (longEvents.includes(e)) longCount++;
+    else if (traditionalEvents.includes(e)) tradCount++;
+    // 对于未能完全匹配名称的，根据字眼做后备判断
+    else if (e.includes('拳')) fistCount++;
+    else if (e.includes('刀') || e.includes('剑')) shortCount++;
+    else if (e.includes('棍') || e.includes('枪')) longCount++;
+  });
+
+  if (individualEventCount > 3) {
+    return `报名失败：每个人最多只能报名3个个人比赛项目（集体项目不计入）。当前已选或已报个人项目总数超出限制。`;
+  }
+
+  if (fistCount > 1) {
+    return `报名失败：拳术大项只能报名1个。当前已选或已报拳术：${fistCount}个`;
+  }
+
+  if (shortCount > 1) {
+    return `报名失败：短器械大项只能报名1个。当前已选或已报短器械：${shortCount}个`;
+  }
+
+  if (longCount > 1) {
+    return `报名失败：长器械大项只能报名1个。当前已选或已报长器械：${longCount}个`;
+  }
+
+  if (tradCount > 1) {
+    return `报名失败：传统器械只能报名1个。当前已选或已报传统器械：${tradCount}个`;
+  }
+
+  // 核心逻辑：传统器械占短器械或长器械的一个名额
+  // 也就是 短器械 + 长器械 + 传统器械 的总数不能超过2
+  if ((shortCount + longCount + tradCount) > 2) {
+    return `报名失败：如果报名了“传统器械”，则会占用一个器械名额（长器械或短器械不能再同时报名）。您当前的选择超出了器械类总名额。`;
+  }
+  return null;
+};
+
 const validateDivingPairPayload = (body) => {
   const pair = body.additionalInfo?.divingPair;
   const synchronized = isSynchronizedDivingEventName(body.event);
@@ -66,6 +146,26 @@ const validateDivingPairPayload = (body) => {
  */
 exports.getParticipants = async (req, res, next) => {
   try {
+    // 独立的只读汇总分支。每次请求读取开关，关闭后完整沿用原列表逻辑。
+    if (req.query.groupBy === 'school' && req.params.competitionId) {
+      const setting = await require('../models/SystemSetting').findOne({ key: 'wushu_fee_summary_enabled' });
+      if (setting?.value === true) {
+        const competition = await Competition.findById(req.params.competitionId);
+        if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
+          const query = { competition: req.params.competitionId, isVirtualTeam: { $ne: true } };
+          if (req.query.myRegistrations === 'true' && req.user) query.user = req.user.id;
+          const rows = await Participant.find(query)
+            .populate('user', 'name email')
+            .populate('competition', 'name type sportType startDate endDate')
+            .sort({ registrationDate: -1 }).lean();
+          const groups = require('../utils/wushuFees').buildWushuFeeGroups(rows, req.query);
+          const count = groups.reduce((sum, group) => sum + group.participants.length, 0);
+          return res.status(200).json({ success: true, feeSummaryEnabled: true, grouped: true,
+            count, total: count, groupCount: groups.length, pagination: {},
+            uniqueParticipantTotal: groups.reduce((sum, group) => sum + group.roster.length, 0), data: groups });
+        }
+      }
+    }
     let query = {};
     
     // 如果URL中包含competitionId，则按比赛ID过滤
@@ -114,14 +214,14 @@ exports.getParticipants = async (req, res, next) => {
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const total = await Participant.countDocuments(query);
-    const identityRows = await Participant.find(query).select('name teamName schoolName gender').lean();
+    const identityRows = await Participant.find(query).select('name teamName schoolName gender athleteNumber').lean();
     const uniqueParticipantTotal = new Set(identityRows.map(participantRosterKey)).size;
 
     // 执行查询
     const participants = await Participant.find(query)
       .populate('user', 'name email')
       .populate('checkedInBy', 'name email')
-      .populate('competition', 'name startDate endDate')
+      .populate('competition', 'name type sportType startDate endDate')
       .skip(startIndex)
       .limit(limit)
       .sort({ registrationDate: -1 });
@@ -405,6 +505,10 @@ exports.createParticipant = async (req, res, next) => {
       });
     }
 
+    if (!canUserAccessCompetitionType(req.user, competition)) {
+      return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
+    }
+
     // 管理员或主裁手动添加可暂不上传照片；参赛单位自主报名仍遵循比赛的照片要求。
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
     if (!isAdmin && !String(req.body.idCard || '').trim()) {
@@ -417,7 +521,10 @@ exports.createParticipant = async (req, res, next) => {
     if (!isAdmin) {
       const registrationError = validateRegistrationAgainstCompetition({ competition, body: req.body });
       if (registrationError) return res.status(400).json({ success: false, message: registrationError });
-      const pairError = validateDivingPairPayload(req.body);
+      const pairError = getCompetitionSportType(competition) === SPORT_TYPES.DIVING ? validateDivingPairPayload(req.body) : null;
+      if (getCompetitionSportType(competition) !== SPORT_TYPES.DIVING && req.body.additionalInfo?.divingPair) {
+        return res.status(400).json({ success: false, message: '只有跳水比赛可以提交双人跳水配对资料' });
+      }
       if (pairError) return res.status(400).json({ success: false, message: pairError });
       const pair = req.body.additionalInfo?.divingPair;
       if (pair) {
@@ -443,98 +550,16 @@ exports.createParticipant = async (req, res, next) => {
       });
     }
 
-    // 特定比赛报名限制检查：2026年深圳市罗湖区青少年传统武术锦标赛
-    // 注意：如果是管理员或主裁判手动添加，则跳过这些限制
-    if (!isAdmin && competition.name && competition.name.includes('罗湖区') && competition.name.includes('传统武术')) {
-      const participantName = req.body.name;
-      
-      // 查找该选手已报名的项目 (仅按姓名识别，因为身份证非必填)
-      const query = { competition: competition._id, status: { $ne: 'rejected' }, name: participantName };
-      
-      const existingRegistrations = await Participant.find(query);
-      const existingEvents = existingRegistrations.map(r => r.event);
-      
-      // 加上当前要报名的项目
-      const allEvents = [...existingEvents, req.body.event];
-      
-      // 项目分类定义
-      const fistEvents = ['三路长拳', '少年规定拳', '初级南拳', '传统拳术', '第三套国际规定长拳', '五步拳', '自选长拳', '第三套国际规定南拳', '自选南拳', '第一套国际规定南拳', '自选太极拳', '42式太极拳', '四十二式太极拳'];
-      const shortEvents = ['初级刀术', '初级剑术', '42式太极剑', '四十二式太极剑', '自选太极剑', '第三套国际规定剑术', '自选剑术', '第三套国际规定刀术', '自选刀术', '第三套国际规定南刀', '自选南刀'];
-      const longEvents = ['初级棍术', '初级枪术', '第三套国际规定枪术', '自选枪术', '第三套国际规定棍术', '自选棍术', '第三套国际规定南棍', '自选南棍'];
-      const traditionalEvents = ['传统器械'];
-      // 集体项目不计入 3 项个人项目限制
-      const groupEvents = ['幼儿集体拳', '集体武术操'];
-      
-      let fistCount = 0;
-      let shortCount = 0;
-      let longCount = 0;
-      let tradCount = 0;
-      let individualEventCount = 0;
-      
-      allEvents.forEach(e => {
-        if (!e) return;
-        
-        // 如果是集体项目，直接跳过统计
-        if (groupEvents.includes(e) || e.includes('集体') || e.includes('操')) {
-          return;
-        }
+    if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
+      // 先验证报名字段，避免资料错误时留下无效的人员档案。
+      await new Participant(req.body).validate();
+      try { req.body.athleteNumber = await resolveAthleteNumber(req.body, req.user, { allowOwnerSelection: true }); }
+      catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
+    } else { delete req.body.athleteNumber; }
 
-        // 只有非集体项目才计入个人总数
-        individualEventCount++;
-
-        if (fistEvents.includes(e)) fistCount++;
-        else if (shortEvents.includes(e)) shortCount++;
-        else if (longEvents.includes(e)) longCount++;
-        else if (traditionalEvents.includes(e)) tradCount++;
-        // 对于未能完全匹配名称的，根据字眼做后备判断
-        else if (e.includes('拳')) fistCount++;
-        else if (e.includes('刀') || e.includes('剑')) shortCount++;
-        else if (e.includes('棍') || e.includes('枪')) longCount++;
-      });
-      
-      if (individualEventCount > 3) {
-        return res.status(400).json({
-          success: false,
-          message: `报名失败：每个人最多只能报名3个个人比赛项目（集体项目不计入）。当前已选或已报个人项目总数超出限制。`
-        });
-      }
-      
-      if (fistCount > 1) {
-        return res.status(400).json({
-          success: false,
-          message: `报名失败：拳术大项只能报名1个。当前已选或已报拳术：${fistCount}个`
-        });
-      }
-      
-      if (shortCount > 1) {
-        return res.status(400).json({
-          success: false,
-          message: `报名失败：短器械大项只能报名1个。当前已选或已报短器械：${shortCount}个`
-        });
-      }
-      
-      if (longCount > 1) {
-        return res.status(400).json({
-          success: false,
-          message: `报名失败：长器械大项只能报名1个。当前已选或已报长器械：${longCount}个`
-        });
-      }
-      
-      if (tradCount > 1) {
-        return res.status(400).json({
-          success: false,
-          message: `报名失败：传统器械只能报名1个。当前已选或已报传统器械：${tradCount}个`
-        });
-      }
-      
-      // 核心逻辑：传统器械占短器械或长器械的一个名额
-      // 也就是 短器械 + 长器械 + 传统器械 的总数不能超过2
-      if ((shortCount + longCount + tradCount) > 2) {
-        return res.status(400).json({
-          success: false,
-          message: `报名失败：如果报名了“传统器械”，则会占用一个器械名额（长器械或短器械不能再同时报名）。您当前的选择超出了器械类总名额。`
-        });
-      }
+    if (!isAdmin) {
+      const limitError = await validateWushuEventLimits(competition, req.body);
+      if (limitError) return res.status(400).json({ success: false, message: limitError });
     }
 
     // 取消同一身份证只能报名一次同一项目的限制，允许参赛单位为多名学生报名同一项目
@@ -557,6 +582,78 @@ exports.createParticipant = async (req, res, next) => {
  * @route   PUT /api/competitions/:competitionId/participants/:id
  * @access  Private
  */
+// 独立入口只更新项目资料；开关每次从数据库读取，不缓存。
+exports.updateRegistrationContent = async (req, res, next) => {
+  try {
+    const fail = (code, message) => res.status(code).json({ success: false, message });
+    const participant = await Participant.findById(req.params.id);
+    if (!participant || String(participant.competition) !== req.params.competitionId) return fail(404, '未找到该比赛的报名记录');
+    if (!req.user.roles?.includes('organization') || String(participant.user) !== req.user.id) return fail(403, '只能编辑本单位账号提交的报名');
+    const competition = await Competition.findById(participant.competition);
+    if (!competition) return fail(404, '比赛不存在');
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.WUSHU || !canUserAccessCompetitionType(req.user, competition)) return fail(403, '此功能仅适用于获授权的武术赛事');
+    const setting = await require('../models/SystemSetting').findOne({ key: 'wushu_registration_edit_enabled' });
+    if (setting?.value !== true) return fail(403, '管理员尚未开启报名项目编辑功能');
+    const deadline = new Date(competition.registrationDeadline).getTime();
+    if (!competition.registrationDeadline || !Number.isFinite(deadline) || Date.now() >= deadline) return fail(400, '报名已截止或未设置有效截止时间');
+    if (competition.status !== 'registration') return fail(400, '该比赛当前不在报名阶段');
+    if (participant.isVirtualTeam || participant.isCheckedIn || ['checked', 'absent'].includes(participant.checkInStatus)) return fail(409, '该记录已进入比赛流程，请联系管理员');
+    if (!participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员完成补号');
+    if (req.body.athleteNumber !== participant.athleteNumber) return fail(409, '参赛者编号不匹配，请刷新后重试');
+    if (participant.athleteNumber) {
+      try { await resolveAthleteNumber({ ...participant.toObject(), user: req.user.id }, req.user); }
+      catch (error) { return fail(error.statusCode || 500, error.message); }
+    }
+    const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'updatedAt', 'athleteNumber'];
+    if (!req.body || Object.keys(req.body).some(key => !allowed.includes(key))) return fail(400, '提交了不允许修改的字段');
+    if (allowed.some(key => typeof req.body[key] !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
+    if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return fail(409, '报名已被修改，请刷新后重试');
+    const eventName = req.body.event.trim();
+    const event = competition.events.find(item => item.name === eventName);
+    if (!event) return fail(400, '所选比赛项目不属于本次比赛');
+    const ageGroup = req.body.ageGroup.trim();
+    if (ageGroup !== normalizeRuleValue(participant.ageGroup || participant.grade)) return fail(400, '参赛单位不能修改组别，如需更正请联系管理员');
+    if (competition.ageGroups?.length && !competition.ageGroups.some(group => normalizeRuleValue(group) === ageGroup)) return fail(400, '请选择本赛事的年龄组别');
+    const ruleError = validateRegistrationAgainstCompetition({ competition, body: { ...participant.toObject(), event: eventName, ageGroup, grade: ageGroup } });
+    if (ruleError) return fail(400, ruleError);
+    const detail = req.body.eventDetail.trim();
+    if (event.registrationDetail?.required && !detail) return fail(400, '请填写项目补充说明');
+    if (detail.length > (event.registrationDetail?.maxLength || 100)) return fail(400, '项目补充说明超过长度限制');
+    const groupTeam = event.isGroupEvent ? req.body.groupTeam.trim() : '';
+    if (event.isGroupEvent && !groupTeam) return fail(400, '请填写集体项目队伍编号');
+    if (groupTeam.length > 30) return fail(400, '队伍编号不能超过30个字符');
+    const limitError = await validateWushuEventLimits(competition, { ...participant.toObject(), event: eventName }, participant._id);
+    if (limitError) return fail(400, limitError);
+    // 项目去重只依据已确认的参赛者编号。
+    if (eventName !== participant.event && await Participant.exists({
+      _id: { $ne: participant._id }, competition: participant.competition,
+      athleteNumber: participant.athleteNumber,
+      event: eventName, status: { $ne: 'rejected' }, isVirtualTeam: { $ne: true }
+    })) return fail(409, '该选手已报名目标项目');
+    const Schedule = require('../models/Schedule');
+    const Result = require('../models/Result');
+    const [scheduled, result, virtualTeam] = await Promise.all([
+      Schedule.exists({ competition: participant.competition, participants: participant._id }),
+      Result.exists({ competition: participant.competition, participant: participant._id }),
+      Participant.exists({ competition: participant.competition, isVirtualTeam: true, teamMembers: participant._id })
+    ]);
+    if (scheduled || result || virtualTeam) return fail(409, '报名已关联赛程、成绩或集体队伍，请联系管理员');
+    const updated = await Participant.findOneAndUpdate(
+      { _id: participant._id, user: req.user.id, competition: participant.competition,
+        updatedAt: participant.updatedAt, status: participant.status, athleteNumber: participant.athleteNumber,
+        isCheckedIn: { $ne: true }, checkInStatus: { $nin: ['checked', 'absent'] } },
+      { $set: { event: eventName, groupTeam,
+        category: event.category || '', manualEventGroup: '', status: 'pending',
+        additionalInfo: { ...participant.additionalInfo, eventDetail: detail,
+          eventDetailLabel: event.registrationDetail?.label || '' },
+        updatedAt: new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1)) } },
+      { new: true, runValidators: true }
+    );
+    if (!updated) return fail(409, '报名状态已变化，请刷新后重试');
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) { next(error); }
+};
+
 exports.updateParticipant = async (req, res, next) => {
   try {
     let participant = await Participant.findById(req.params.id);
@@ -570,6 +667,13 @@ exports.updateParticipant = async (req, res, next) => {
 
     const isPrivileged = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
     const isOrganization = req.user.roles?.includes('organization');
+    // 武术单位报名统一走可开关的专用接口，避免旧接口绕过限制。
+    if (isOrganization && !isPrivileged) {
+      const competition = await Competition.findById(participant.competition);
+      if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
+        return res.status(403).json({ success: false, message: '请使用我的报名中的项目编辑功能' });
+      }
+    }
     // 参赛单位只能编辑自己提交、且尚未审核的报名。
     if (
       participant.user?.toString() !== req.user.id &&
@@ -583,6 +687,27 @@ exports.updateParticipant = async (req, res, next) => {
     if (isOrganization && !isPrivileged && participant.status !== 'pending') {
       return res.status(400).json({ success: false, message: '报名审核后不能自行修改，请联系赛事管理员处理' });
     }
+
+    // 身份关联只能由管理员明确选择；单位修改不能更换编号。
+    if (Object.hasOwn(req.body, 'athleteNumber')) {
+      if (!isPrivileged && req.body.athleteNumber !== participant.athleteNumber) return res.status(403).json({ success: false, message: '不能更换参赛者编号' });
+      if (isPrivileged && req.body.athleteNumber !== participant.athleteNumber) {
+        if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return res.status(409).json({ success: false, message: '报名已变化，请刷新后重新关联' });
+        try { req.body.athleteNumber = await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+        catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
+      }
+    }
+    if (participant.athleteNumber && req.body.schoolName !== undefined && req.body.schoolName.trim() !== participant.schoolName) return res.status(400).json({ success: false, message: '已关联编号的人员不能在项目编辑中更换单位' });
+    if (participant.athleteNumber && !Object.hasOwn(req.body, 'athleteNumber') &&
+        ['name', 'gender', 'birthDate', 'idCard'].some(key => Object.hasOwn(req.body, key))) {
+      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+      catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
+    }
+    if (participant.athleteNumber && req.body.athleteNumber === participant.athleteNumber) {
+      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+      catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
+    }
+    delete req.body.athleteRequestKey;
 
     // 管理员编辑时可选择上传／替换照片；未选择则保留原照片。
     if (req.file) req.body.photoFile = req.file.filename;
@@ -617,10 +742,12 @@ exports.updateParticipant = async (req, res, next) => {
       }
     }
 
-    participant = await Participant.findByIdAndUpdate(req.params.id, req.body, {
+    req.body.updatedAt = new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1));
+    participant = await Participant.findOneAndUpdate({ _id: req.params.id, updatedAt: participant.updatedAt }, req.body, {
       new: true,
       runValidators: true
     });
+    if (!participant) return res.status(409).json({ success: false, message: '报名已变化，请刷新后重试' });
 
     res.status(200).json({
       success: true,
@@ -948,7 +1075,7 @@ exports.getMyParticipations = async (req, res, next) => {
     }
 
     const participants = await Participant.find(query)
-      .populate('competition', 'name startDate endDate location status')
+      .populate('competition', 'name type sportType startDate endDate location status registrationDeadline')
       .sort({ registrationDate: -1 });
 
     res.status(200).json({
@@ -978,7 +1105,7 @@ exports.importParticipants = async (req, res, next) => {
       });
     }
 
-    const competition = await Competition.findById(competitionId).select('_id');
+    const competition = await Competition.findById(competitionId).select('_id sportType type');
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
 
     const createdParticipants = [];
@@ -987,6 +1114,7 @@ exports.importParticipants = async (req, res, next) => {
     const importedKeys = new Set();
     const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
     const duplicateKey = (participant) => {
+      if (participant.athleteNumber) return `athlete:${participant.athleteNumber}:${normalize(participant.event)}`;
       const idCard = normalize(participant.idCard);
       if (idCard) return `id:${idCard}`;
       return `person:${[participant.name, participant.schoolName || participant.teamName, participant.gender, participant.ageGroup || participant.grade, participant.event].map(normalize).join('|')}`;
@@ -1010,9 +1138,17 @@ exports.importParticipants = async (req, res, next) => {
           user: req.user.id,
           members: Array.isArray(sourceData.members) ? sourceData.members : []
         };
+        if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU && participantData.athleteNumber) {
+          participantData.athleteNumber = await resolveAthleteNumber(participantData, req.user, { allowOwnerSelection: true });
+        } else {
+          // 未提供已确认编号的旧模板不猜测身份，保留为待管理员关联。
+          delete participantData.athleteNumber;
+        }
         const key = duplicateKey(participantData);
         if (importedKeys.has(key)) throw new Error('与本次 Excel 中已成功导入的报名重复');
-        const existingQuery = participantData.idCard
+        const existingQuery = participantData.athleteNumber
+          ? { competition: competitionId, athleteNumber: participantData.athleteNumber, event: participantData.event }
+          : participantData.idCard
           ? { competition: competitionId, idCard: participantData.idCard }
           : { competition: competitionId, name: participantData.name, schoolName: participantData.schoolName, gender: participantData.gender, ageGroup: participantData.ageGroup || participantData.grade, event: participantData.event };
         if (await Participant.exists(existingQuery)) throw new Error('该报名已成功导入，不能重复导入');

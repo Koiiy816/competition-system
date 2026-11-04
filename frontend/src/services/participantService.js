@@ -14,6 +14,14 @@ const hasManagementPermission = () => {
  * @namespace participantService
  */
 const participantService = {
+  updateRegistrationContent: async (competitionId, participantId, data) => {
+    try {
+      const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/registration-content`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '修改报名项目失败' };
+    }
+  },
   /**
    * 获取比赛的参赛者列表
    * @param {string} competitionId - 比赛ID

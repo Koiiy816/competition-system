@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const ParticipantSchema = new mongoose.Schema({
+  athleteNumber: { type: String, trim: true, index: true },
   user: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',

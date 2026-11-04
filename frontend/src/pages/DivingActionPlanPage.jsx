@@ -8,8 +8,9 @@ import { useAuth } from '../contexts/AuthContext';
 import divingDifficultyTable from '../data/divingDifficultyTable';
 import DivingPlanPrintPreview from '../components/DivingPlanPrintPreview';
 import { isCompletedDivingPlan } from '../utils/divingPlanPrint';
+import { isDivingCompetition } from '../utils/competitionType';
 
-const isDiving = (participant) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test(String(participant.event || ''));
+const isDiving = (participant) => isDivingCompetition(participant?.competition);
 const isLandDiving = (participant) => /陆上|陸上/.test(String(participant.event || ''));
 const isStrengthEvent = (participant) => /素质力量/.test(String(participant.event || ''));
 const strengthActions = ['垫上两头起10次', '肋木举腿5次', '立定跳远', '提膝跳5次', '提膝跳10次', '引体控20秒', '引体控40秒'];
@@ -220,7 +221,7 @@ export default function DivingActionPlanPage() {
         const participantResponses = await Promise.all(
           competitions.map((competition) => participantService.getParticipants(competition._id, { limit: 10000 }))
         );
-        rows = participantResponses.flatMap((response) => response.data || []).filter(isDiving);
+        rows = participantResponses.flatMap((response, index) => (response.data || []).map((row) => ({ ...row, competition: row.competition || competitions[index] }))).filter(isDiving);
       } else {
         const response = await participantService.getMyParticipations();
         rows = (response.data || []).filter(isDiving);

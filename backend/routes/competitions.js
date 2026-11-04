@@ -21,12 +21,12 @@ router.use('/:competitionId/awards', awardRoutes);
 
 // @route   GET api/competitions
 // @desc    获取所有比赛
-// @access  公开
+// @access  登录后可用（控制器会拒绝匿名请求）
 router.get('/', optionalAuth, competitionController.getCompetitions);
 
 // @route   GET api/competitions/statuses
 // @desc    获取比赛状态列表
-// @access  公开
+// @access  登录后可用（控制器会拒绝匿名请求）
 router.get('/statuses', competitionController.getCompetitionStatuses);
 
 // @route   GET api/competitions/:id

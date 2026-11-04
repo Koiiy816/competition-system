@@ -14,11 +14,17 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
+  FormControl,
+  FormLabel,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Save, Upload } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import userService from '../services/userService';
 import authService from '../services/authService';
+import { PARTICIPATION_SPORT_TYPES } from '../utils/competitionType';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -55,7 +61,8 @@ const ProfilePage = () => {
     phone: user?.profile?.phone || '',
     address: user?.profile?.address || '',
     organization: user?.profile?.organization || '',
-    bio: user?.profile?.bio || ''
+    bio: user?.profile?.bio || '',
+    sportTypes: user?.sportTypes || []
   });
   
   // 密码表单状态
@@ -151,6 +158,7 @@ const ProfilePage = () => {
       const updatedProfile = {
         name: profileData.name,
         email: profileData.email,
+        sportTypes: user?.roles?.includes('organization') ? profileData.sportTypes : undefined,
         profile: {
           phone: profileData.phone,
           address: profileData.address,
@@ -319,6 +327,34 @@ const ProfilePage = () => {
                       required
                     />
                   </Grid>
+                  {user?.roles?.includes('organization') && (
+                    <Grid item xs={12}>
+                      <FormControl component="fieldset" disabled={loading}>
+                        <FormLabel component="legend">可参与赛事类型</FormLabel>
+                        <FormGroup row>
+                          {PARTICIPATION_SPORT_TYPES.map((sport) => (
+                            <FormControlLabel
+                              key={sport.value}
+                              label={sport.label}
+                              control={<Checkbox
+                                checked={profileData.sportTypes.includes(sport.value)}
+                                disabled={sport.disabled}
+                                onChange={(event) => setProfileData((current) => ({
+                                  ...current,
+                                  sportTypes: event.target.checked
+                                    ? [...current.sportTypes, sport.value]
+                                    : current.sportTypes.filter((type) => type !== sport.value)
+                                }))}
+                              />}
+                            />
+                          ))}
+                        </FormGroup>
+                        <Typography variant="caption" color="text.secondary">
+                          只会看到已选择类型的公开赛事；管理员也可在后台为本单位调整。
+                        </Typography>
+                      </FormControl>
+                    </Grid>
+                  )}
                   
                   <Grid item xs={12} sm={6}>
                     <TextField

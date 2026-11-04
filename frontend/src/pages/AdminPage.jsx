@@ -55,6 +55,8 @@ import userService from '../services/userService';
 import systemService from '../services/systemService';
 import Switch from '@mui/material/Switch';
 import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
+import { PARTICIPATION_SPORT_TYPES } from '../utils/competitionType';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -88,6 +90,11 @@ const AdminPage = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [tabValue, setTabValue] = useState(0);
   const [actionLoading, setActionLoading] = useState(false);
+  const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  const [feeSummaryEnabled, setFeeSummaryEnabled] = useState(false);
+  const [feeSettingBusy, setFeeSettingBusy] = useState(false);
+  const [registrationSettingBusy, setRegistrationSettingBusy] = useState(false);
+  const [registrationSettingLoaded, setRegistrationSettingLoaded] = useState(false);
   const [refereeLoginEnabled, setRefereeLoginEnabled] = useState(true);
   
   // 对话框状态
@@ -98,6 +105,7 @@ const AdminPage = () => {
     name: '',
     email: '',
     roles: [],
+    sportTypes: [],
     password: ''
   });
   
@@ -129,6 +137,9 @@ const AdminPage = () => {
   const fetchSettings = async () => {
     try {
       const response = await systemService.getSettings();
+      setRegistrationEditEnabled(response.data?.some(item => item.key === 'wushu_registration_edit_enabled' && item.value === true));
+      setRegistrationSettingLoaded(true);
+      setFeeSummaryEnabled(response.data?.some(item => item.key === 'wushu_fee_summary_enabled' && item.value === true));
       const refereeSetting = response.data?.find(s => s.key === 'referee_login_enabled');
       if (refereeSetting !== undefined) {
         setRefereeLoginEnabled(refereeSetting.value);
@@ -149,6 +160,28 @@ const AdminPage = () => {
       fetchSettings();
     }
   }, [isAdmin, isChiefReferee]);
+
+  const handleToggleRegistrationEdit = async (event) => {
+    const enabled = event.target.checked;
+    setRegistrationSettingBusy(true);
+    try {
+      await systemService.updateSetting('wushu_registration_edit_enabled', enabled);
+      setRegistrationEditEnabled(enabled);
+      setSuccessMessage(enabled ? '武术报名项目编辑已开启' : '武术报名项目编辑已关闭');
+    } catch (err) { setError(err.message || '保存开关失败'); }
+    finally { setRegistrationSettingBusy(false); }
+  };
+
+  const handleToggleFeeSummary = async (event) => {
+    const enabled = event.target.checked;
+    setFeeSettingBusy(true);
+    try {
+      await systemService.updateSetting('wushu_fee_summary_enabled', enabled);
+      setFeeSummaryEnabled(enabled);
+      setSuccessMessage(enabled ? '武术报名费用汇总已开启' : '武术报名费用汇总已关闭');
+    } catch (err) { setError(err.message || '保存开关失败'); }
+    finally { setFeeSettingBusy(false); }
+  };
 
   const handleToggleRefereeLogin = async (event) => {
     const newValue = event.target.checked;
@@ -266,7 +299,8 @@ const AdminPage = () => {
         email: editFormData.email,
         password: editFormData.password,
         role: editFormData.roles[0] || 'organization',
-        roles: editFormData.roles
+        roles: editFormData.roles,
+        sportTypes: editFormData.roles.includes('organization') ? editFormData.sportTypes : []
       };
       const response = await userService.createUser(submitData);
       
@@ -289,6 +323,7 @@ const AdminPage = () => {
       name: user.name || '',
       email: user.email || '',
       roles: user.roles || [],
+      sportTypes: user.sportTypes || [],
       phone: user.profile?.phone || '',
       password: '' // 密码字段初始化为空
     });
@@ -331,6 +366,7 @@ const AdminPage = () => {
       name: '',
       email: '',
       roles: ['organization'], // 默认角色
+      sportTypes: [],
       password: ''
     });
     setDialogAction('create');
@@ -368,7 +404,7 @@ const AdminPage = () => {
     setDialogOpen(false);
     setSelectedUser(null);
     setDialogAction(null);
-    setEditFormData({ name: '', email: '', roles: [], password: '' });
+    setEditFormData({ name: '', email: '', roles: [], sportTypes: [], password: '' });
   };
   
   // 渲染用户表格
@@ -384,6 +420,7 @@ const AdminPage = () => {
               <TableCell>用户</TableCell>
               <TableCell>邮箱</TableCell>
               <TableCell>角色</TableCell>
+              <TableCell>可参与赛事</TableCell>
               <TableCell>注册时间</TableCell>
               <TableCell align="right">操作</TableCell>
             </TableRow>
@@ -414,6 +451,17 @@ const AdminPage = () => {
                   </Box>
                 </TableCell>
                 <TableCell>
+                  {user.roles?.includes('organization') ? (
+                    user.sportTypes?.length ? (
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        {user.sportTypes.map((type) => (
+                          <Chip key={type} label={PARTICIPATION_SPORT_TYPES.find((sport) => sport.value === type)?.label?.replace('（筹备中）', '') || type} size="small" variant="outlined" />
+                        ))}
+                      </Box>
+                    ) : <Typography variant="body2" color="text.secondary">未设置（兼容旧账户）</Typography>
+                  ) : '—'}
+                </TableCell>
+                <TableCell>
                   {new Date(user.createdAt).toLocaleDateString('zh-CN')}
                 </TableCell>
                 <TableCell align="right">
@@ -440,7 +488,7 @@ const AdminPage = () => {
             ))}
             {userList.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} align="center">
+                <TableCell colSpan={6} align="center">
                   <Typography variant="body2" color="text.secondary">
                     暂无用户
                   </Typography>
@@ -575,6 +623,16 @@ const AdminPage = () => {
               <Divider />
               <CardContent>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="bold">武术报名费用汇总（按单位）</Typography>
+                    <Typography variant="body2" color="text.secondary">默认关闭。开启后同单位同姓名合并展示全部项目；一至两项每人300元，每增加一项加100元。待审核、已通过项目计费，同名项目去重，已拒绝项目不计费。关闭恢复原表，不修改报名数据。</Typography>
+                    <FormControlLabel control={<Switch checked={feeSummaryEnabled} disabled={!registrationSettingLoaded || feeSettingBusy} onChange={handleToggleFeeSummary} />} label={feeSummaryEnabled ? '已开启' : '已关闭'} />
+                  </Box>
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight="bold">允许参赛单位编辑武术报名项目</Typography>
+                    <Typography variant="body2" color="text.secondary">默认关闭。开启后，本单位可在截止前修改项目资料，修改后重新审核。关闭不影响报名、删除、审核及管理员编辑。</Typography>
+                    <FormControlLabel control={<Switch checked={registrationEditEnabled} disabled={!registrationSettingLoaded || registrationSettingBusy} onChange={handleToggleRegistrationEdit} />} label={registrationEditEnabled ? '已开启' : '已关闭'} />
+                  </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Box>
                       <Typography variant="subtitle1" fontWeight="bold">允许裁判登录</Typography>
@@ -664,6 +722,32 @@ const AdminPage = () => {
               onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
               helperText={'\u53c2\u8d5b\u5355\u4f4d\u6ce8\u518c\u65f6\u586b\u5199\u7684\u8054\u7cfb\u7535\u8bdd'}
             />
+            {editFormData.roles.includes('organization') && (
+              <Paper variant="outlined" sx={{ p: 1.5, bgcolor: '#f8fbff' }}>
+                <Typography variant="subtitle2" fontWeight={800}>可参与赛事类型</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+                  该单位登录后，只能查看和报名所选类型的公开赛事。
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
+                  {PARTICIPATION_SPORT_TYPES.map((sport) => (
+                    <FormControlLabel
+                      key={sport.value}
+                      label={sport.label}
+                      control={<Checkbox
+                        checked={editFormData.sportTypes.includes(sport.value)}
+                        disabled={sport.disabled}
+                        onChange={(event) => setEditFormData((current) => ({
+                          ...current,
+                          sportTypes: event.target.checked
+                            ? [...current.sportTypes, sport.value]
+                            : current.sportTypes.filter((type) => type !== sport.value)
+                        }))}
+                      />}
+                    />
+                  ))}
+                </Box>
+              </Paper>
+            )}
             <TextField
               label={dialogAction === 'create' ? "登录密码" : "重置密码 (选填)"}
               type="password"

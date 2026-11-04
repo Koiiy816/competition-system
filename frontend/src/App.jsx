@@ -112,12 +112,27 @@ function App() {
           {/* 公共路由 */}
           <Route path="/" element={<MainLayout />}>
             <Route index element={<HomePage />} />
-            <Route path="competitions" element={<CompetitionsPage />} />
-            <Route path="competitions/:id" element={<CompetitionDetailsPage />} />
             <Route path="results" element={<ResultsPage />} />
-            <Route path="schedule" element={<SchedulePage />} />
             <Route path="unauthorized" element={<UnauthorizedPage />} />
             <Route path="test" element={<TestPage />} />
+          </Route>
+
+          {/* 赛事资料仅在登录后按单位权限展示 */}
+          <Route path="/competitions" element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<CompetitionsPage />} />
+            <Route path=":id" element={<CompetitionDetailsPage />} />
+          </Route>
+
+          <Route path="/schedule" element={
+            <ProtectedRoute>
+              <MainLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<SchedulePage />} />
           </Route>
 
           <Route path="/competitions/:id/live-scoreboard" element={<LiveScoreboardPage />} />

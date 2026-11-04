@@ -1,3 +1,4 @@
+import AthleteIdentitySelect from './AthleteIdentitySelect';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -22,11 +23,13 @@ import {
   Switch
 } from '@mui/material';
 import competitionService from '../../services/competitionService';
+import { getSportType, isDivingCompetition } from '../../utils/competitionType';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseChineseResidentIdentityNumber } from '../../utils/certificateInfo';
+import { createRequestKey } from '../../utils/requestKey';
 
-const isDivingEntry = (participant = {}) => /跳水|跳板|跳台|陆上|陸上|冰棍|倒下|素质/.test([participant.event, participant.category].filter(Boolean).join(' '));
+const isDivingEntry = (competition) => isDivingCompetition(competition);
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
 const isStrengthEntry = (participant = {}) => /素质力量/.test([participant.event, participant.category].filter(Boolean).join(' '));
 
@@ -37,7 +40,10 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const [competition, setCompetition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [identityReady, setIdentityReady] = useState(false);
   const [error, setError] = useState('');
+  const [athleteNumber, setAthleteNumber] = useState('');
+  const [athleteRequestKey, setAthleteRequestKey] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -64,7 +70,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const [selectedPartnerId, setSelectedPartnerId] = useState('');
   const [pairLoading, setPairLoading] = useState(false);
   const divingPlan = editData?.additionalInfo?.divingPlan;
-  const showDivingPlan = Boolean(editData && isDivingEntry(editData));
+  const showDivingPlan = Boolean(editData && isDivingEntry(competition));
   const isDoubleDivingEvent = Boolean(editData && /双人|雙人/.test(String(formData.event || '')));
   const existingPairId = editData?.additionalInfo?.divingPair?.pairId || '';
   const sameAthleteRegistrations = pairCandidates.filter((candidate) => (
@@ -105,6 +111,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   // 获取比赛详情及初始化编辑数据
   useEffect(() => {
     if (open && competitionId) {
+      setAthleteNumber(editData?.athleteNumber || '');
+      setAthleteRequestKey(createRequestKey());
       const fetchCompetition = async () => {
         setLoading(true);
         setError(''); // Reset error state when fetching
@@ -295,6 +303,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const handleSubmit = async () => {
+    if (canManageTestStatus && getSportType(competition) === 'wushu' && !identityReady) { setError('请确认参赛者编号关联'); return; }
     if (!validate()) return;
     
     setSubmitting(true);
@@ -304,6 +313,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       // 新增记录沿用管理员直接添加即通过的规则；编辑时不改变原有审核状态。
       const submitData = {
         ...formData,
+        ...(getSportType(competition) === 'wushu' ? { athleteNumber, athleteRequestKey, ...(editData ? { updatedAt: editData.updatedAt } : {}) } : {}),
         grade: formData.grade, // 确保 grade 字段也被正确更新
         ageGroup: formData.grade, // 保持与前台报名一致，保存到 ageGroup 字段
         ...(editData ? {} : { status: 'approved' })
@@ -369,6 +379,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </Grid>
             )}
 
+            {canManageTestStatus && getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} schoolName={formData.schoolName} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
             {showDivingPlan && (
               <Grid item xs={12}>
                 <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}>
