@@ -1,4 +1,4 @@
-const { randomUUID } = require('crypto');
+const { randomUUID, createHash } = require('crypto');
 const AthleteIdentity = require('../models/AthleteIdentity');
 
 const fail = (message, statusCode = 400) => { const error = new Error(message); error.statusCode = statusCode; throw error; };
@@ -9,7 +9,7 @@ const verifyDetails = (identity, data) => {
       (identity.gender && identity.gender !== data.gender) ||
       (identity.birthDate && dateOnly(identity.birthDate) !== dateOnly(data.birthDate)) ||
       (identity.idCard && normalized(identity.idCard).toUpperCase() !== normalized(data.idCard).toUpperCase())) {
-    fail('所选参赛者编号与姓名、性别、出生日期或证件信息不一致，请核对人员；不同人员请选择新增同名人员');
+    fail('参赛者资料与已有编号不一致，请核对姓名、性别、出生日期和证件信息，或联系管理员');
   }
 };
 async function resolveAthleteNumber(data, user, { allowOwnerSelection = false } = {}) {
@@ -26,7 +26,22 @@ async function resolveAthleteNumber(data, user, { allowOwnerSelection = false } 
     verifyDetails(identity, data);
     return identity.number;
   }
-  const requestKey = data.athleteRequestKey || randomUUID();
+  const idCard = normalized(data.idCard).toUpperCase();
+  if (idCard) {
+    const escaped = idCard.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matches = await AthleteIdentity.find({ competition: data.competition, user: data.user,
+      schoolName, name, gender: data.gender, idCard: new RegExp(`^${escaped}$`, 'i') })
+      .select('+idCard').limit(2);
+    if (matches.length > 1) fail('存在多个相同证件、姓名和性别的人员编号，请联系管理员核对，不能重复新增', 409);
+    if (matches.length === 1) {
+      verifyDetails(matches[0], data);
+      return matches[0].number;
+    }
+  }
+  // 证件、姓名、性别和单位构成稳定请求键，跨页面及并发提交也复用编号。
+  const requestKey = idCard ? 'auto-' + createHash('sha256')
+    .update(JSON.stringify([schoolName, name, data.gender, idCard])).digest('hex')
+    : data.athleteRequestKey || randomUUID();
   if (typeof requestKey !== 'string' || requestKey.length > 100) fail('人员关联请求标识无效');
   const filter = { competition: data.competition, user: data.user, requestKey };
   let identity;

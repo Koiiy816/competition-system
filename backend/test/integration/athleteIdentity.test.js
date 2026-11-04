@@ -13,7 +13,7 @@ test('real MongoDB and HTTP: identity lifecycle, privacy, ownership, fees and le
     assert.equal(first.status, 201, JSON.stringify(first.body));
     const number = first.body.data.athleteNumber;
     assert.match(number, /^AT-/);
-    const second = await post({ ...data, event: '剑术' });
+    const second = await post({ ...data, event: '剑术', athleteRequestKey: 'new-page-request' });
     assert.equal(second.body.data.athleteNumber, number);
     const third = await post({ ...data, event: '双人拳', athleteNumber: number });
     assert.equal(third.status, 201);
@@ -76,7 +76,7 @@ test('real MongoDB and HTTP: identity lifecycle, privacy, ownership, fees and le
     const concurrent = await Promise.all(['拳术', '剑术'].map(event => post({ ...data, name: '并发人员', athleteRequestKey: 'concurrent', event })));
     assert.ok(concurrent.every(x => x.status === 201));
     assert.equal(concurrent[0].body.data.athleteNumber, concurrent[1].body.data.athleteNumber);
-    assert.equal(await f.AthleteIdentity.countDocuments({ requestKey: 'concurrent' }), 1);
+    assert.equal(await f.AthleteIdentity.countDocuments({ name: '并发人员' }), 1);
     const stored = await f.AthleteIdentity.findOne({ number }).lean();
     await assert.rejects(f.AthleteIdentity.create({ ...stored, _id: undefined, requestKey: 'collision' }), error => error.code === 11000);
     await f.mongoose.disconnect();

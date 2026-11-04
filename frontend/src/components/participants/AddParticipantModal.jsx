@@ -302,7 +302,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const handleSubmit = async () => {
-    if (getSportType(competition) === 'wushu' && !identityReady) { setError('请确认参赛者编号关联'); return; }
+    if (canManageTestStatus && getSportType(competition) === 'wushu' && !identityReady) { setError('请确认参赛者编号关联'); return; }
     if (!validate()) return;
     
     setSubmitting(true);
@@ -378,7 +378,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </Grid>
             )}
 
-            {getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} schoolName={formData.schoolName} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
+            {canManageTestStatus && getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} schoolName={formData.schoolName} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
             {showDivingPlan && (
               <Grid item xs={12}>
                 <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}>
