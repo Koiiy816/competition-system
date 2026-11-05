@@ -49,6 +49,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     name: '',
     schoolName: '',
     event: '',
+    groupTeam: '',
     manualEventGroup: '',
     grade: '',
     gender: '',
@@ -127,6 +128,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 name: editData.type === 'team' ? (editData.members?.[0]?.name || '') : editData.name || '',
                 schoolName: editData.schoolName || editData.teamName || '',
                 event: editData.event || '',
+                groupTeam: editData.groupTeam || '',
                 manualEventGroup: editData.manualEventGroup || '',
                 grade: editData.grade || editData.ageGroup || '',
                 gender: editData.gender || '',
@@ -159,6 +161,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
         name: '',
         schoolName: '',
         event: '',
+        groupTeam: '',
         manualEventGroup: '',
         grade: '',
         gender: '',
@@ -210,7 +213,12 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     const { name, value, checked, type } = e.target;
     const val = type === 'checkbox' ? checked : value;
     
-    setFormData(prev => ({ ...prev, [name]: val }));
+    setFormData(prev => ({
+      ...prev,
+      [name]: val,
+      // 切换比赛项目时不把上一项目的队伍编号带到新项目。
+      ...(name === 'event' && val !== prev.event ? { groupTeam: '' } : {})
+    }));
     
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
@@ -249,9 +257,13 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     const selectedGender = formData.gender;
     
     if (!selectedGroup) return [];
-    
-    return competition.events.filter(event => {
-      let ageMatch = false;
+
+    const visibleEvents = competition.events.filter(event => {
+      // 编辑时，已保存的项目始终必须可见。赛事配置后来调整时，管理员仍能看到原记录。
+      if (editData && event.name === formData.event) return true;
+
+      // 没有限制年龄组的项目（常见于集体项目）适用于所有已选组别。
+      let ageMatch = !event.ageGroups || event.ageGroups.length === 0;
       if (event.ageGroups && event.ageGroups.length > 0) {
          // 模糊匹配：只要 selectedGroup 包含 U16，且 event 配置里也有 U16 就算匹配
          ageMatch = event.ageGroups.some(g => {
@@ -270,6 +282,12 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       }
       return ageMatch && genderMatch;
     });
+
+    // 即使该历史项目已从赛事配置移除，也要在编辑窗口明确显示其原值，避免看起来像数据丢失。
+    if (editData && formData.event && !visibleEvents.some((event) => event.name === formData.event)) {
+      return [{ name: formData.event, isGroupEvent: Boolean(editData.groupTeam), legacy: true }, ...visibleEvents];
+    }
+    return visibleEvents;
   };
 
   const handlePhotoChange = (event) => {
@@ -296,6 +314,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.gender) newErrors.gender = '请选择性别';
     if (!formData.grade) newErrors.grade = '请选择年龄组别';
     if (!formData.event) newErrors.event = '请选择比赛项目';
+    const eventConfig = competition?.events?.find((event) => event.name === formData.event);
+    if (eventConfig?.isGroupEvent && !formData.groupTeam.trim()) newErrors.groupTeam = '请填写队伍编号';
     // 仅赛事明确要求照片时，管理员才可在此上传。
     
     setErrors(newErrors);
@@ -311,8 +331,10 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     
     try {
       // 新增记录沿用管理员直接添加即通过的规则；编辑时不改变原有审核状态。
+      const eventConfig = competition.events?.find(e => e.name === formData.event);
       const submitData = {
         ...formData,
+        groupTeam: eventConfig?.isGroupEvent ? formData.groupTeam.trim() : '',
         ...(getSportType(competition) === 'wushu' ? { athleteNumber, athleteRequestKey, ...(editData ? { updatedAt: editData.updatedAt } : {}) } : {}),
         grade: formData.grade, // 确保 grade 字段也被正确更新
         ageGroup: formData.grade, // 保持与前台报名一致，保存到 ageGroup 字段
@@ -320,7 +342,6 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       };
 
       // 检查是否为集体项目
-      const eventConfig = competition.events?.find(e => e.name === formData.event);
       if (eventConfig && eventConfig.isGroupEvent) {
          submitData.teamName = formData.schoolName;
          submitData.members = [{ name: formData.name }];
@@ -361,6 +382,9 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const availableEvents = getAvailableEvents();
+  const selectedEventConfig = competition?.events?.find((event) => event.name === formData.event);
+  // legacy 标记用于保留历史资料的可见性；有队伍编号的旧记录也继续按集体项目呈现。
+  const selectedEventIsGroup = Boolean(selectedEventConfig?.isGroupEvent || (editData && editData.event === formData.event && editData.groupTeam));
   const photoRequired = competition?.participantRequirements?.requirePhoto === true;
 
   return (
@@ -511,7 +535,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                   ) : (
                     availableEvents.map(event => (
                       <MenuItem key={event.name} value={event.name}>
-                        {event.name}
+                        {event.name}{event.legacy ? '（历史项目）' : ''}
                       </MenuItem>
                     ))
                   )}
@@ -519,6 +543,22 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 {errors.event && <FormHelperText>{errors.event}</FormHelperText>}
               </FormControl>
             </Grid>
+
+            {selectedEventIsGroup && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  required
+                  label="队伍编号"
+                  name="groupTeam"
+                  value={formData.groupTeam}
+                  onChange={handleChange}
+                  error={!!errors.groupTeam}
+                  helperText={errors.groupTeam || '集体项目同一队伍使用相同编号'}
+                  inputProps={{ maxLength: 30 }}
+                />
+              </Grid>
+            )}
 
             {editData && isDoubleDivingEvent && (
               <Grid item xs={12}>
