@@ -34,3 +34,16 @@ test('empty roster renders no person and no editing action', () => {
   const html = renderToStaticMarkup(React.createElement(WushuFeeTable, { roster: [], renderActions: assert.fail }));
   assert.ok(!html.includes('<button'));
 });
+
+test('project configuration flag controls the individual or collective label', () => {
+  const roster = [{ key: 'person', name: '测试选手', fee: 300, eventCount: 2,
+    registrations: [
+      { _id: 'individual', event: '长拳', status: 'approved', isGroupEvent: false },
+      { _id: 'collective', event: '武术操', status: 'approved', isGroupEvent: true }
+    ] }];
+  const html = renderToStaticMarkup(React.createElement(WushuFeeTable, { roster,
+    renderActions: () => null, getStatusInfo: () => ({ name: '已通过' }), getGenderLabel: () => '-' }));
+
+  assert.equal((html.match(/>个人</g) || []).length, 1);
+  assert.equal((html.match(/>集体</g) || []).length, 1);
+});

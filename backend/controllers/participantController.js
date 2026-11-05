@@ -154,10 +154,15 @@ exports.getParticipants = async (req, res, next) => {
         if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
           const query = { competition: req.params.competitionId, isVirtualTeam: { $ne: true } };
           if (req.query.myRegistrations === 'true' && req.user) query.user = req.user.id;
-          const rows = await Participant.find(query)
+          const groupEventNames = new Set((competition.events || [])
+            .filter((event) => event.isGroupEvent)
+            .map((event) => event.name));
+          const rows = (await Participant.find(query)
             .populate('user', 'name email')
             .populate('competition', 'name type sportType startDate endDate')
-            .sort({ registrationDate: -1 }).lean();
+            .sort({ registrationDate: -1 }).lean())
+            // type 是报名载体，项目“个人／集体”必须取自赛事项目配置。
+            .map((row) => ({ ...row, isGroupEvent: groupEventNames.has(row.event) }));
           const groups = require('../utils/wushuFees').buildWushuFeeGroups(rows, req.query);
           const count = groups.reduce((sum, group) => sum + group.participants.length, 0);
           return res.status(200).json({ success: true, feeSummaryEnabled: true, grouped: true,
@@ -250,7 +255,11 @@ exports.getParticipants = async (req, res, next) => {
         : null;
       const groupEvents = new Set((competition?.events || []).filter(event => event.isGroupEvent).map(event => event.name));
       const groupsMap = {};
-      participants.forEach(p => {
+      // 把项目配置带到分组结果中；前端“类型”列不再误用报名载体 type。
+      participants.map((participant) => {
+        const row = typeof participant.toObject === 'function' ? participant.toObject() : participant;
+        return { ...row, isGroupEvent: groupEvents.has(row.event) };
+      }).forEach(p => {
         let eventName = (p.event && p.event.trim()) ? p.event : '未分类项目';
         let ageGroup = (p.ageGroup && p.ageGroup.trim()) ? p.ageGroup : (p.grade && p.grade.trim() ? p.grade : '');
         let schoolName = (p.schoolName && p.schoolName.trim()) ? p.schoolName : '未知单位';

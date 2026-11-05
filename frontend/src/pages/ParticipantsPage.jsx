@@ -1397,14 +1397,20 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     return statusMap[status] || { name: status, color: 'default' };
   };
   
+  // “个人／集体”属于比赛项目配置，不能以报名记录 type（报名载体）判断。
+  const isCollectiveProject = (participant) => {
+    if (participant.isGroupEvent === true) return true;
+    const competitionId = participant.competition?._id || participant.competition || filters.competitionId;
+    const competition = competitions.find((item) => String(item._id) === String(competitionId));
+    return Boolean(competition?.events?.some((event) => event.name === participant.event && event.isGroupEvent));
+  };
+
   // 获取参赛类型的中文名称和图标
-  const getTypeInfo = (type) => {
-    const typeMap = {
-      'individual': { name: '个人', icon: <PersonIcon /> },
-      'team': { name: '团队', icon: <GroupIcon /> }
-    };
-    
-    return typeMap[type] || { name: type, icon: null };
+  const getTypeInfo = (participant) => {
+    if (isCollectiveProject(participant)) {
+      return { name: '集体', icon: <GroupIcon /> };
+    }
+    return { name: '个人', icon: <PersonIcon /> };
   };
 
   // 获取性别的中文名称
@@ -1455,7 +1461,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           <TableBody>
             {participants.map((participant) => {
               const statusInfo = getStatusInfo(participant.status);
-              const typeInfo = getTypeInfo(participant.type);
+              const typeInfo = getTypeInfo(participant);
               const participantName = participant.type === 'team' ? 
                 participant.teamName : 
                 (participant.name || participant.user?.name || '未知参赛者');
@@ -1707,9 +1713,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         {groupedParticipants.map((group) => (
           <Accordion key={group.displayName || group.event} TransitionProps={{ unmountOnExit: true }} sx={{ mb: 2 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Typography variant="h6">{group.displayName || group.event || '未分类项目'}</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0, gap: 2, pr: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{group.displayName || group.event || '未分类项目'}</Typography>
                   {group.ageGroup && (
                     <Chip 
                       label={group.ageGroup} 
@@ -1727,7 +1733,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     />
                   )}
                 </Box>
-                <Chip label={`人数：${group.roster ? group.roster.length : (group.participants || []).length}`} variant="outlined" size="small" />
+                <Chip label={`人数：${group.roster ? group.roster.length : (group.participants || []).length}`} variant="outlined" size="small" sx={{ flexShrink: 0 }} />
               </Box>
             </AccordionSummary>
             <AccordionDetails>
@@ -1754,7 +1760,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                   <TableBody>
                     {group.participants.map((participant) => {
                       const statusInfo = getStatusInfo(participant.status);
-                      const typeInfo = getTypeInfo(participant.type);
+                      const typeInfo = getTypeInfo(participant);
                       const participantName = participant.type === 'team' ? 
                         participant.teamName : 
                         (participant.name || participant.user?.name || '未知参赛者');

@@ -69,6 +69,7 @@ test('event grouping uses the configured collective flag without a name suffix',
     assert.equal(response.body.groupCount, 1);
     assert.equal(response.body.data[0].schoolName, '同一单位');
     assert.equal(response.body.data[0].participants.length, 2);
+    assert.equal(response.body.data[0].participants[0].isGroupEvent, true);
   } finally {
     Participant.find = originalFind;
     Participant.countDocuments = originalCount;
