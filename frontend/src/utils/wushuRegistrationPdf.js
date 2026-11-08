@@ -1,6 +1,6 @@
 const detailColumns = [
-  ['序号', 44], ['姓名', 120], ['性别', 42], ['出生日期', 85], ['证件号码', 170],
-  ['参赛单位', 160], ['报名项目', 190], ['组别', 80], ['队伍', 85], ['报名状态', 80]
+  ['序号', 44], ['姓名', 160], ['性别', 42], ['出生日期', 100],
+  ['参赛单位', 210], ['报名项目', 255], ['组别', 80], ['队伍', 85], ['报名状态', 80]
 ];
 const groupedColumns = [
   ['参赛者', 150], ['所属单位', 180], ['性别', 60], ['年龄组别', 100],
@@ -16,20 +16,10 @@ export const toWushuRegistrationRows = (participants, competition) => participan
     && String(participant.competition?._id || participant.competition) === String(competition._id))
   .map((participant, index) => ({
     cells: [index + 1, participant.name, genderLabels[participant.gender] || participant.gender,
-      dateText(participant.birthDate), participant.idCard, participant.schoolName,
+      dateText(participant.birthDate), participant.schoolName,
       [participant.event, participant.additionalInfo?.eventDetail].filter(Boolean).join(' / '),
       participant.ageGroup || participant.grade, participant.groupTeam || participant.teamName,
-      statusLabels[participant.status] || participant.status].map(value => String(value || '-')),
-    details: [
-      `序号：${index + 1}`,
-      `报名编号：${participant.registrationNumber || '-'}`,
-      `运动员编号：${participant.athleteNumber || '-'}`,
-      `报名日期：${dateText(participant.registrationDate)}`,
-      `联系电话：${participant.phone || '-'}`,
-      `领队：${participant.teamLeader || '-'}（${participant.leaderPhone || '-'}）`,
-      `教练：${participant.coach || '-'}（${participant.coachPhone || '-'}）`,
-      `备注：${participant.additionalInfo?.notes || '-'}`
-    ].join('　　')
+      statusLabels[participant.status] || participant.status].map(value => String(value || '-'))
   }));
 
 export const toWushuRegistrationGroups = (groups, competition) => groups.map(group => ({
@@ -157,7 +147,6 @@ async function renderWushuRegistrationPdf(sections, competition, grouped) {
     startPage();
     section.rows.forEach(row => {
       drawWrappedRow(row.cells, columns.map(([, size]) => size));
-      if (row.details) drawWrappedRow([row.details], [tableWidth]);
     });
   });
   finishPage();

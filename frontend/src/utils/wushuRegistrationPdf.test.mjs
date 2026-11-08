@@ -12,20 +12,22 @@ const participant = {
   additionalInfo: { eventDetail: '陈式', notes: '报名备注' }
 };
 
-test('export retains each event, all statuses and registration details', () => {
+test('roster export retains events and statuses without identity numbers or supplementary rows', () => {
   const rows = toWushuRegistrationRows([
     participant,
     { ...participant, event: '太极剑', status: 'approved' },
     { ...participant, status: 'rejected' }
   ], competition);
   assert.equal(rows.length, 3);
-  assert.equal(rows[0].cells[6], '太极拳 / 陈式');
-  assert.deepEqual(rows.map(row => row.cells[9]), ['待审核', '已通过', '已拒绝']);
-  for (const value of ['440301201001020011', '测试单位', '少年组', '1队']) {
+  assert.equal(rows[0].cells[5], '太极拳 / 陈式');
+  assert.deepEqual(rows.map(row => row.cells[8]), ['待审核', '已通过', '已拒绝']);
+  for (const value of ['测试单位', '少年组', '1队']) {
     assert.ok(rows[0].cells.includes(value));
   }
-  for (const value of ['领队甲', '13800000001', '教练乙', '13800000002', '报名备注', 'CP-2026-123456']) {
-    assert.ok(rows[0].details.includes(value));
+  assert.equal(rows[0].cells.length, 9);
+  for (const row of rows) assert.equal(Object.hasOwn(row, 'details'), false);
+  for (const value of ['440301201001020011', '领队甲', '13800000001', '教练乙', '13800000002', '报名备注', 'CP-2026-123456']) {
+    assert.ok(!JSON.stringify(rows).includes(value));
   }
 });
 
