@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const { randomUUID } = require('crypto');
 const mongoose = require('mongoose');
 const { planLegacyNumbers, missingIdentityFields } = require('../utils/legacyAthleteNumbers');
+const { identityKey } = require('../utils/athleteIdentityKey');
 
 async function main() {
   require('dotenv').config({ path: path.join(__dirname, '../config/.env') });
@@ -36,9 +37,11 @@ async function main() {
       const group = groups[i], entry = report.changes[i], source = group.source;
       let identity = group.existing;
       if (!identity) {
+        const key = identityKey(source);
         identity = await AthleteIdentity.findOneAndUpdate(
-          { competition: source.competition, user: source.user, requestKey: group.key },
+          key ? { competition: source.competition, identityKey: key } : { competition: source.competition, user: source.user, requestKey: group.key },
           { $setOnInsert: { _id: new mongoose.Types.ObjectId(entry.identityId), number: entry.number,
+            user: source.user, requestKey: group.key,
             name: source.name.trim(), schoolName: source.schoolName.trim(), gender: source.gender,
             birthDate: source.birthDate, idCard: source.idCard } },
           { upsert: true, new: true, runValidators: true }

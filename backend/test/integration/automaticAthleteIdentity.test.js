@@ -17,16 +17,20 @@ test('automatic identity matching reuses exact document/name/gender across reque
     assert.equal(second.body.data.athleteNumber, number);
     assert.notEqual(second.body.data._id, first.body.data._id);
     const conflict = await post({ ...data, birthDate: '2001-01-01' });
-    assert.equal(conflict.status, 400);
-    assert.equal(await f.AthleteIdentity.countDocuments({ name: '自动匹配' }), 1);
-    for (const changed of [{ name: '同证件另一姓名' }, { gender: 'female' }, { idCard: 'different-document' }, { schoolName: '其他单位' }]) {
+    assert.equal(conflict.status, 201);
+    assert.notEqual(conflict.body.data.athleteNumber, number);
+    assert.equal(await f.AthleteIdentity.countDocuments({ name: '自动匹配' }), 2);
+    for (const changed of [{ name: '同证件另一姓名' }, { idCard: 'different-document' }]) {
       const result = await post({ ...data, ...changed });
       assert.equal(result.status, 201, JSON.stringify(result.body));
       assert.notEqual(result.body.data.athleteNumber, number);
     }
     const other = await post(data, 'other');
     assert.equal(other.status, 201);
-    assert.notEqual(other.body.data.athleteNumber, number);
+    assert.equal(other.body.data.athleteNumber, number);
+    for (const changed of [{ gender: 'female' }, { schoolName: '其他单位' }]) {
+      assert.equal((await post({ ...data, ...changed })).body.data.athleteNumber, number);
+    }
     const concurrent = await Promise.all(Array.from({ length: 6 }, (_, i) => post({ ...data,
       name: '跨页面并发', idCard: 'concurrent-doc', athleteRequestKey: `page-${i}` })));
     assert.ok(concurrent.every(row => row.status === 201), JSON.stringify(concurrent));
@@ -34,14 +38,15 @@ test('automatic identity matching reuses exact document/name/gender across reque
     assert.equal(await f.AthleteIdentity.countDocuments({ name: '跨页面并发' }), 1);
     // 兼容迁移/管理员创建的旧请求键，不要求重新分配编号。
     const legacy = await f.AthleteIdentity.create({ competition: f.competition._id, user: f.users.organization._id,
-      schoolName: data.schoolName, name: '历史编号', gender: 'male', idCard: 'legacy-doc', requestKey: 'legacy-migration-key' });
+      schoolName: data.schoolName, name: '历史编号', gender: 'male', birthDate: data.birthDate, idCard: 'legacy-doc', requestKey: 'legacy-migration-key' });
     const reused = await post({ ...data, name: '历史编号', idCard: 'LEGACY-DOC' });
     assert.equal(reused.status, 201);
     assert.equal(reused.body.data.athleteNumber, legacy.number);
     await f.AthleteIdentity.create({ competition: f.competition._id, user: f.users.organization._id,
-      schoolName: data.schoolName, name: '历史编号', gender: 'male', idCard: 'legacy-doc', requestKey: 'old-duplicate-key' });
+      schoolName: data.schoolName, name: '历史编号', gender: 'male', birthDate: data.birthDate, idCard: 'legacy-doc', requestKey: 'old-duplicate-key' });
     const ambiguous = await post({ ...data, name: '历史编号', idCard: 'legacy-doc' });
-    assert.equal(ambiguous.status, 409);
+    assert.equal(ambiguous.status, 201);
+    assert.equal(ambiguous.body.data.athleteNumber, legacy.number);
     assert.equal(await f.AthleteIdentity.countDocuments({ name: '历史编号' }), 2);
     assert.equal((await post({ ...data, idCard: '' })).status, 400);
   } finally { await f.close(); }

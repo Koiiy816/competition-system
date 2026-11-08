@@ -155,7 +155,6 @@ exports.getParticipants = async (req, res, next) => {
         const competition = await Competition.findById(req.params.competitionId);
         if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
           const query = { competition: req.params.competitionId, isVirtualTeam: { $ne: true } };
-          if (req.query.myRegistrations === 'true' && req.user) query.user = req.user.id;
           const groupEventNames = new Set((competition.events || [])
             .filter((event) => event.isGroupEvent)
             .map((event) => event.name));
@@ -165,11 +164,13 @@ exports.getParticipants = async (req, res, next) => {
             .sort({ registrationDate: -1 }).lean())
             // type 是报名载体，项目“个人／集体”必须取自赛事项目配置。
             .map((row) => ({ ...row, isGroupEvent: groupEventNames.has(row.event) }));
-          const groups = require('../utils/wushuFees').buildWushuFeeGroups(rows, req.query);
+          const displayRows = req.query.myRegistrations === 'true' && req.user
+            ? rows.filter(row => String(row.user?._id || row.user) === req.user.id) : rows;
+          const groups = require('../utils/wushuFees').buildWushuFeeGroups(displayRows, req.query, rows);
           const count = groups.reduce((sum, group) => sum + group.participants.length, 0);
           return res.status(200).json({ success: true, feeSummaryEnabled: true, grouped: true,
             count, total: count, groupCount: groups.length, pagination: {},
-            uniqueParticipantTotal: groups.reduce((sum, group) => sum + group.roster.length, 0), data: groups });
+            uniqueParticipantTotal: new Set(groups.flatMap(group => group.roster.map(person => person.key))).size, data: groups });
         }
       }
     }
@@ -616,7 +617,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
     if (!participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员完成补号');
     if (req.body.athleteNumber !== participant.athleteNumber) return fail(409, '参赛者编号不匹配，请刷新后重试');
     if (participant.athleteNumber) {
-      try { await resolveAthleteNumber({ ...participant.toObject(), user: req.user.id }, req.user); }
+      try { await resolveAthleteNumber({ ...participant.toObject(), user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return fail(error.statusCode || 500, error.message); }
     }
     const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'updatedAt', 'athleteNumber'];
@@ -708,18 +709,17 @@ exports.updateParticipant = async (req, res, next) => {
       if (!isPrivileged && req.body.athleteNumber !== participant.athleteNumber) return res.status(403).json({ success: false, message: '不能更换参赛者编号' });
       if (isPrivileged && req.body.athleteNumber !== participant.athleteNumber) {
         if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return res.status(409).json({ success: false, message: '报名已变化，请刷新后重新关联' });
-        try { req.body.athleteNumber = await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+        try { req.body.athleteNumber = await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
         catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
       }
     }
-    if (participant.athleteNumber && req.body.schoolName !== undefined && req.body.schoolName.trim() !== participant.schoolName) return res.status(400).json({ success: false, message: '已关联编号的人员不能在项目编辑中更换单位' });
     if (participant.athleteNumber && !Object.hasOwn(req.body, 'athleteNumber') &&
         ['name', 'gender', 'birthDate', 'idCard'].some(key => Object.hasOwn(req.body, key))) {
-      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
     }
     if (participant.athleteNumber && req.body.athleteNumber === participant.athleteNumber) {
-      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
     }
     delete req.body.athleteRequestKey;

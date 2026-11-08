@@ -25,7 +25,7 @@ test('merged table renders one person, every original project action, and fee in
   assert.deepEqual(calls, ['id-0', 'id-1', 'id-2']);
   assert.equal((html.match(/>陈光前</g) || []).length, 1);
   for (const event of ['拳术', '剑术', '双人拳']) assert.ok(html.includes(event));
-  assert.match(html, /报名费用（元）/);
+  assert.match(html, /会务费（元）/);
   assert.match(html, />400<\/p>/);
   assert.ok(html.lastIndexOf('400') > html.lastIndexOf('data-id="id-2"'));
 });
@@ -33,6 +33,17 @@ test('merged table renders one person, every original project action, and fee in
 test('empty roster renders no person and no editing action', () => {
   const html = renderToStaticMarkup(React.createElement(WushuFeeTable, { roster: [], renderActions: assert.fail }));
   assert.ok(!html.includes('<button'));
+});
+
+test('a second unit shows already counted with the complete personal fee instead of charging another base', () => {
+  const html = renderToStaticMarkup(React.createElement(WushuFeeTable, {
+    roster: [{ key: 'same-person', name: '跨单位选手', athleteNumber: 'AT-one', fee: 0, totalFee: 400,
+      eventCount: 3, schoolCount: 2, billingSchoolName: '最早单位', isFeeBillingUnit: false, registrations: [] }],
+    renderActions: assert.fail
+  }));
+  assert.ok(html.includes('已计费'));
+  assert.ok(html.includes('个人合计400元'));
+  assert.ok(html.includes('最早单位'));
 });
 
 test('project configuration flag controls the individual or collective label', () => {

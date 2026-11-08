@@ -26,9 +26,9 @@ test('real MongoDB and HTTP: identity lifecycle, privacy, ownership, fees and le
     assert.equal(masked.body.data.find(x => x.number === number).gender, 'male');
     assert.ok(!JSON.stringify(masked.body).includes(data.idCard));
     assert.equal((await f.request(`${path}/athlete-identities`, { role: 'other' })).body.data.length, 0);
-    assert.equal((await f.request(path, { method: 'POST', role: 'other', body: { ...data, athleteNumber: number } })).status, 403);
+    assert.equal((await f.request(path, { method: 'POST', role: 'other', body: { ...data, athleteNumber: number } })).status, 201);
     assert.equal((await post({ ...data, athleteNumber: number, birthDate: '2002-02-03' })).status, 400);
-    assert.equal((await post({ ...data, athleteNumber: number, schoolName: '其他单位' })).status, 400);
+    assert.equal((await post({ ...data, athleteNumber: number, schoolName: '其他单位' })).status, 201);
 
     const settings = key => `/settings/${key}`;
     const toggle = (key, value) => f.request(settings(key), { role: 'admin', method: 'PUT', body: { value } });

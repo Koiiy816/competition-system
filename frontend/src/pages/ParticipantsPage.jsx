@@ -1,4 +1,5 @@
 import WushuFeeTable from '../components/participants/WushuFeeTable';
+import MergeAthleteDialog from '../components/participants/MergeAthleteDialog';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -96,6 +97,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   const [registrationEditing, setRegistrationEditing] = useState(null);
   const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
   useEffect(() => {
     let active = true;
     const refresh = () => systemService.getSettings()
@@ -1736,6 +1738,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     
     // 计算总人数
     const totalGrouped = groupedParticipants.reduce((acc, group) => acc + (group.participants || []).length, 0);
+    const feePeople = new Map(groupedParticipants.flatMap(group => group.roster || []).map(person => [person.key, person]));
+    const personalFeeTotal = [...feePeople.values()].reduce((sum, person) => sum + (person.totalFee ?? person.fee ?? 0), 0);
+    const unconfirmedFees = [...feePeople.values()].filter(person => person.fee === null).length;
 
   return (
     <Box>
@@ -1743,6 +1748,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           <Typography variant="h6" color="primary">
             当前报名项目数: {totalGrouped}
           </Typography>
+          {tabValue === 2 && feePeople.size > 0 && <Typography sx={{ ml: 2 }} color="primary">按个人去重：{feePeople.size}人｜{unconfirmedFees ? '已确认' : ''}会务费合计：{personalFeeTotal}元{unconfirmedFees > 0 && `（另有${unconfirmedFees}人待确认）`}</Typography>}
         </Box>
         {groupedParticipants.map((group) => (
           <Accordion key={group.displayName || group.event} TransitionProps={{ unmountOnExit: true }} sx={{ mb: 2 }}>
@@ -2118,6 +2124,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         一键通过
                       </Button>
                     )}
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: '100%' }}>
                     {isAdminOrChiefReferee && (
                       <Button
                         variant="contained"
@@ -2135,6 +2142,10 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         一键清空
                       </Button>
                     )}
+                    {!myRegistrations && user?.roles?.includes('admin') && getSportType(selectedCompetition) === 'wushu' && (
+                      <Button variant="outlined" onClick={() => setMergeAthleteOpen(true)}>合并重复参赛者编号</Button>
+                    )}
+                    </Box>
                   </Box>
                 </Grid>
               </Grid>
@@ -2395,6 +2406,10 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         </DialogActions>
       </Dialog>
 
+      <MergeAthleteDialog open={mergeAthleteOpen} competitionId={filters.competitionId} onClose={() => setMergeAthleteOpen(false)} onSuccess={async result => {
+        setSuccessMessage(`编号已统一为 ${result.target.number}；合并后 ${result.participantCount} 人，费用 ${result.fee} 元`);
+        await refreshLists();
+      }} />
       <EditRegistrationModal participant={registrationEditing} onClose={() => setRegistrationEditing(null)} onSuccess={() => {
         setRegistrationEditing(null);
         setSuccessMessage('报名项目已修改，请等待重新审核');

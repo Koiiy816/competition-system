@@ -239,6 +239,16 @@ ParticipantSchema.pre('save', async function(next) {
     return next(error);
   }
 });
+// 合并期间正在提交的报名也在保存后归到保留编号，避免旧编号的在途请求留下孤立记录。
+ParticipantSchema.post('save', async function(doc) {
+  if (!doc.athleteNumber) return;
+  const AthleteIdentity = require('./AthleteIdentity');
+  const identity = await AthleteIdentity.findOne({ number: doc.athleteNumber });
+  if (!identity?.mergedInto) return;
+  const target = await require('../utils/athleteIdentity').canonicalIdentity(identity);
+  await this.constructor.updateOne({ _id: doc._id, athleteNumber: doc.athleteNumber }, { $set: { athleteNumber: target.number } });
+  doc.athleteNumber = target.number;
+});
 // 虚拟字段：成绩
 ParticipantSchema.virtual('results', {
   ref: 'Result',

@@ -625,7 +625,7 @@ const AdminPage = () => {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <Box>
                     <Typography variant="subtitle1" fontWeight="bold">武术报名费用汇总（按单位）</Typography>
-                    <Typography variant="body2" color="text.secondary">默认关闭。开启后同单位同姓名合并展示全部项目；一至两项每人300元，每增加一项加100元。待审核、已通过项目计费，同名项目去重，已拒绝项目不计费。关闭恢复原表，不修改报名数据。</Typography>
+                    <Typography variant="body2" color="text.secondary">默认关闭。按参赛者编号跨单位汇总全赛事项目：一至两项每人300元，每增加一项加100元，只计算一次收费基准。费用显示在最早有效报名所属单位，其他单位标注已计费。待审核、已通过项目计费，同名项目去重，已拒绝项目不计费。关闭恢复原表。</Typography>
                     <FormControlLabel control={<Switch checked={feeSummaryEnabled} disabled={!registrationSettingLoaded || feeSettingBusy} onChange={handleToggleFeeSummary} />} label={feeSummaryEnabled ? '已开启' : '已关闭'} />
                   </Box>
                   <Box>

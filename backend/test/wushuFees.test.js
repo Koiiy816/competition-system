@@ -7,7 +7,7 @@ const SystemSetting = require('../models/SystemSetting');
 const { getParticipants } = require('../controllers/participantController');
 
 const entry = (id, event, extra = {}) => ({ _id: id, athleteNumber: 'AT-main', name: '陈光前', schoolName: '甲单位',
-  competition: 'match', gender: 'male', type: 'individual', status: 'approved', event, ...extra });
+  competition: 'match', user: 'unit', gender: 'male', type: 'individual', status: 'approved', event, ...extra });
 const response = () => ({ code: 0, body: null, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 
 for (const [count, fee] of [[0, 0], [1, 300], [2, 300], [3, 400], [4, 500], [10, 1100]]) {
@@ -95,7 +95,7 @@ test('API reads full competition without pagination; retains raw records and use
   assert.equal(res.code, 200);
   assert.equal(res.body.data[0].roster[0].fee, 400);
   assert.equal(res.body.data[0].participants.length, 3);
-  assert.deepEqual(state.queries, [{ competition: 'match', isVirtualTeam: { $ne: true }, user: 'unit' }]);
+  assert.deepEqual(state.queries, [{ competition: 'match', isVirtualTeam: { $ne: true } }]);
   assert.deepEqual(state.pages, []);
 }));
 
