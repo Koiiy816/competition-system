@@ -137,16 +137,17 @@ const MainLayout = () => {
 
     const pages = [{ title: '首页', path: '/' }];
 
-    // 管理员必须先从首页选择武术、跳水或蹦床工作区。这样不相关的动作表和
-    // 计分入口不会同时堆在导航栏里；全局管理能力仍保留在右上角用户菜单。
+    // 管理员始终保留完整的全局管理入口；选择工作区后，再追加该项目专属的动作表和难度表。
     if (isAdmin) {
-      if (!activeWorkspace) return pages;
-      pages.push({ title: `${activeWorkspaceLabel}赛事`, path: `/competitions?sportType=${activeWorkspace}` });
+      pages.push({ title: activeWorkspace ? `${activeWorkspaceLabel}赛事` : '赛事', path: activeWorkspace ? `/competitions?sportType=${activeWorkspace}` : '/competitions' });
       pages.push({ title: '赛程', path: '/schedule' });
       pages.push({ title: '参赛者管理', path: '/admin/participants' });
       pages.push({ title: '检录', path: '/checkin' });
       pages.push({ title: '裁判打分', path: '/competitions' });
       pages.push({ title: '成绩', path: '/results' });
+      pages.push({ title: '创建比赛', path: '/admin/competitions/create' });
+      pages.push({ title: '后台管理', path: '/admin' });
+      pages.push({ title: '控制面板', path: '/dashboard' });
       if (activeWorkspace === 'diving') {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
         pages.push({ title: '跳水难度系数表', path: '/diving-difficulties' });
@@ -322,12 +323,12 @@ const MainLayout = () => {
               </Typography>
             </Box>
             {/* Desktop menu */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, alignItems: 'center', minWidth: 0 }}>
               {pages.map((page) => (
                 <Button
                   key={page.title}
                   onClick={() => handleMenuClick(page.path)}
-                  sx={{ my: 2, color: 'inherit', display: 'block' }}
+                  sx={{ my: 2, px: { md: .7, lg: 1 }, minWidth: 'auto', color: 'inherit', display: 'block', whiteSpace: 'nowrap', fontSize: { md: '.82rem', lg: '.875rem' } }}
                 >
                   {page.title}
                 </Button>
