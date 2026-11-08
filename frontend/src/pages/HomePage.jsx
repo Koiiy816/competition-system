@@ -36,17 +36,19 @@ export default function HomePage() {
   // 以免把后台管理能力和不属于该单位的赛事暴露在注册前页面。
   if (!isAuthenticated) {
     return <Container maxWidth="md" sx={{ py: { xs: 5, md: 9 } }}>
-      <Paper elevation={0} sx={{ overflow: 'hidden', borderRadius: 5, bgcolor: '#0f2d57', color: '#fff', textAlign: 'center' }}>
-        <Box sx={{ px: { xs: 3, sm: 6 }, py: { xs: 5, sm: 7 }, background: 'radial-gradient(circle at 82% 12%, rgba(56,189,248,.32), transparent 30%), linear-gradient(135deg, #082f5f 0%, #164e8b 100%)' }}>
-          <Box component="img" src="/assets/saiyitong-emblem.png" alt="赛易通" sx={{ width: 104, height: 104, objectFit: 'contain', mb: 2 }} />
-          <Chip label="赛易通赛事服务平台" sx={{ color: '#e0f2fe', bgcolor: 'rgba(255,255,255,.12)', fontWeight: 700 }} />
-          <Typography component="h1" sx={{ fontSize: { xs: '2rem', sm: '2.8rem' }, fontWeight: 900, lineHeight: 1.2, mt: 2 }}>让赛事报名与管理更简单</Typography>
-          <Typography sx={{ fontSize: { xs: '1rem', sm: '1.15rem' }, color: '#dbeafe', mt: 2, lineHeight: 1.8, mx: 'auto', maxWidth: 620 }}>
+      <Paper elevation={0} sx={{ overflow: 'hidden', borderRadius: 5, bgcolor: '#f8fafc', color: '#102a43', textAlign: 'center', border: '1px solid #d8e1ec', boxShadow: '0 18px 40px rgba(15, 23, 42, .10)' }}>
+        <Box sx={{ px: { xs: 3, sm: 6 }, py: { xs: 5, sm: 7 }, background: 'radial-gradient(circle at 84% 12%, rgba(14, 116, 144, .10), transparent 27%), radial-gradient(circle at 14% 88%, rgba(245, 158, 11, .10), transparent 28%), #f8fafc' }}>
+          <Stack direction="row" justifyContent="center" alignItems="center" spacing={1.25} sx={{ minHeight: 74 }}>
+            <Box component="img" src="/assets/saiyitong-emblem.png" alt="赛易通" sx={{ display: 'block', width: 74, height: 74, objectFit: 'contain', flex: '0 0 auto' }} />
+            <Chip label="赛易通赛事服务平台" sx={{ color: '#34516f', bgcolor: '#e8eef5', border: '1px solid #cbd7e5', fontWeight: 800, height: 32 }} />
+          </Stack>
+          <Typography component="h1" sx={{ fontSize: { xs: '2rem', sm: '2.8rem' }, fontWeight: 900, lineHeight: 1.2, mt: 2.5 }}>让赛事报名与管理更简单</Typography>
+          <Typography sx={{ fontSize: { xs: '1rem', sm: '1.15rem' }, color: '#526475', mt: 2, lineHeight: 1.8, mx: 'auto', maxWidth: 620 }}>
             登录后，系统会根据参赛单位已开通的赛事类型，展示对应的赛事、报名和服务。
           </Typography>
           <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="center" spacing={1.5} sx={{ mt: 4 }}>
-            <Button variant="contained" size="large" onClick={() => navigate('/auth/login')} sx={{ bgcolor: '#fff', color: '#0f3b73', fontWeight: 800, '&:hover': { bgcolor: '#e0f2fe' } }}>登录</Button>
-            <Button variant="outlined" size="large" onClick={() => navigate('/auth/register')} sx={{ borderColor: 'rgba(255,255,255,.65)', color: '#fff', fontWeight: 700 }}>注册参赛单位</Button>
+            <Button variant="contained" size="large" onClick={() => navigate('/auth/login')} sx={{ bgcolor: '#245fa6', fontWeight: 800, '&:hover': { bgcolor: '#174b86' } }}>登录</Button>
+            <Button variant="outlined" size="large" onClick={() => navigate('/auth/register')} sx={{ borderColor: '#7d9bbb', color: '#245fa6', fontWeight: 700, '&:hover': { borderColor: '#245fa6', bgcolor: '#edf4fb' } }}>注册参赛单位</Button>
           </Stack>
         </Box>
       </Paper>
