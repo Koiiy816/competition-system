@@ -1,4 +1,5 @@
 import WushuFeeTable from '../components/participants/WushuFeeTable';
+import MergeAthleteDialog from '../components/participants/MergeAthleteDialog';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -66,6 +67,7 @@ import EditRegistrationModal from '../components/participants/EditRegistrationMo
 import systemService from '../services/systemService';
 import { getSportType } from '../utils/competitionType';
 import BrandWatermark from '../components/BrandWatermark';
+import { createWushuRegistrationPdf, createWushuGroupedRegistrationPdf } from '../utils/wushuRegistrationPdf';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -95,6 +97,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   const [registrationEditing, setRegistrationEditing] = useState(null);
   const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
   useEffect(() => {
     let active = true;
     const refresh = () => systemService.getSettings()
@@ -130,6 +133,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [divingPlanPrintOpen, setDivingPlanPrintOpen] = useState(false);
   const [divingPlanPrintParticipants, setDivingPlanPrintParticipants] = useState([]);
+  const [exportingWushuPdf, setExportingWushuPdf] = useState(false);
   
   // 分页状态
   const [page, setPage] = useState(0);
@@ -175,6 +179,38 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   // 决定是否能查看标签页和列表（管理员/主裁/裁判 或 开启了"我的报名"功能）
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
+
+  const handleExportWushuPdf = async () => {
+    if (!selectedCompetition || getSportType(selectedCompetition) !== 'wushu') return;
+    setExportingWushuPdf(true);
+    setError('');
+    try {
+      // /me 由后端按登录账号限定范围，不使用当前列表的分页或筛选结果。
+      const response = await participantService.getMyParticipations(selectedCompetition._id);
+      const pdf = await createWushuRegistrationPdf(response.data || [], selectedCompetition);
+      const filename = `${selectedCompetition.name}_报名明细`.replace(/[\\/:*?"<>|]/g, '_');
+      pdf.save(`${filename}.pdf`);
+    } catch (err) {
+      setError(err.message || '导出报名 PDF 失败，请重试');
+    } finally {
+      setExportingWushuPdf(false);
+    }
+  };
+
+  const handleExportWushuGroupedPdf = async () => {
+    if (!selectedCompetition || getSportType(selectedCompetition) !== 'wushu' || loadingGrouped) return;
+    setExportingWushuPdf(true);
+    setError('');
+    try {
+      const pdf = await createWushuGroupedRegistrationPdf(groupedParticipants, selectedCompetition);
+      const filename = `${selectedCompetition.name}_按项目分组报名表`.replace(/[\\/:*?"<>|]/g, '_');
+      pdf.save(`${filename}.pdf`);
+    } catch (err) {
+      setError(err.message || '导出项目分组 PDF 失败，请重试');
+    } finally {
+      setExportingWushuPdf(false);
+    }
+  };
   
   // 导出参赛者（按单位格式，仅在按单位分组标签下有效）
   const handleExportSchoolFormat = async () => {
@@ -1702,6 +1738,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     
     // 计算总人数
     const totalGrouped = groupedParticipants.reduce((acc, group) => acc + (group.participants || []).length, 0);
+    const feePeople = new Map(groupedParticipants.flatMap(group => group.roster || []).map(person => [person.key, person]));
+    const personalFeeTotal = [...feePeople.values()].reduce((sum, person) => sum + (person.totalFee ?? person.fee ?? 0), 0);
+    const unconfirmedFees = [...feePeople.values()].filter(person => person.fee === null).length;
 
   return (
     <Box>
@@ -1709,6 +1748,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           <Typography variant="h6" color="primary">
             当前报名项目数: {totalGrouped}
           </Typography>
+          {tabValue === 2 && feePeople.size > 0 && <Typography sx={{ ml: 2 }} color="primary">按个人去重：{feePeople.size}人｜{unconfirmedFees ? '已确认' : ''}会务费合计：{personalFeeTotal}元{unconfirmedFees > 0 && `（另有${unconfirmedFees}人待确认）`}</Typography>}
         </Box>
         {groupedParticipants.map((group) => (
           <Accordion key={group.displayName || group.event} TransitionProps={{ unmountOnExit: true }} sx={{ mb: 2 }}>
@@ -2001,6 +2041,17 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     </Select>
                   </FormControl>
                 </Grid>
+                {myRegistrations && user?.roles?.includes('organization') && getSportType(selectedCompetition) === 'wushu' && (
+                  <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                    <Tooltip title="导出当前赛事下本账号的全部报名项目，不受搜索、筛选和分页影响。">
+                      <span>
+                        <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExportWushuPdf} disabled={exportingWushuPdf}>
+                          {exportingWushuPdf ? '正在导出…' : '导出报名明细 PDF'}
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </Grid>
+                )}
                 
                 <Grid item xs={12} md={5}>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -2073,6 +2124,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         一键通过
                       </Button>
                     )}
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', width: '100%' }}>
                     {isAdminOrChiefReferee && (
                       <Button
                         variant="contained"
@@ -2090,6 +2142,10 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         一键清空
                       </Button>
                     )}
+                    {!myRegistrations && user?.roles?.includes('admin') && getSportType(selectedCompetition) === 'wushu' && (
+                      <Button variant="outlined" onClick={() => setMergeAthleteOpen(true)}>合并重复参赛者编号</Button>
+                    )}
+                    </Box>
                   </Box>
                 </Grid>
               </Grid>
@@ -2164,6 +2220,15 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       {canViewParticipants && (
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            {myRegistrations && user?.roles?.includes('organization') && getSportType(selectedCompetition) === 'wushu' && (
+              <Tooltip title="按当前页面的项目分组、顺序和筛选结果导出，包含所有折叠分组。">
+                <span>
+                  <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExportWushuGroupedPdf} disabled={exportingWushuPdf || loadingGrouped}>
+                    {exportingWushuPdf ? '正在导出…' : '导出项目分组 PDF'}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
             {isAdminOrChiefReferee && (
               <>
                 <Button
@@ -2341,6 +2406,10 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         </DialogActions>
       </Dialog>
 
+      <MergeAthleteDialog open={mergeAthleteOpen} competitionId={filters.competitionId} onClose={() => setMergeAthleteOpen(false)} onSuccess={async result => {
+        setSuccessMessage(`编号已统一为 ${result.target.number}；合并后 ${result.participantCount} 人，费用 ${result.fee} 元`);
+        await refreshLists();
+      }} />
       <EditRegistrationModal participant={registrationEditing} onClose={() => setRegistrationEditing(null)} onSuccess={() => {
         setRegistrationEditing(null);
         setSuccessMessage('报名项目已修改，请等待重新审核');

@@ -58,7 +58,7 @@ const ScheduleSchema = new mongoose.Schema({
   }],
   judgeCount: {
     type: Number,
-    enum: [3, 4, 5],
+    enum: [2, 3, 4, 5, 7],
     default: 5
   },
   scoringMode: {

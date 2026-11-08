@@ -3,15 +3,12 @@ const { createHash } = require('crypto');
 const text = value => String(value || '').trim();
 const missingIdentityFields = row => ['user', 'competition', 'name', 'schoolName']
   .filter(field => !text(row[field]));
-const signature = row => JSON.stringify([
-  String(row.competition), String(row.user), text(row.schoolName), text(row.name),
-  text(row.gender), row.birthDate ? new Date(row.birthDate).toISOString().slice(0, 10) : '',
-  text(row.idCard).toUpperCase()
-]);
+const { identityKey } = require('./athleteIdentityKey');
+const signature = row => { const key = identityKey(row); return key ? JSON.stringify([String(row.competition), key]) : null; };
 
-// 缺少证件时逐记录分配，不能仅凭同名或生日推断同一人。
-const backfillKey = row => 'legacy-v1-' + createHash('sha256')
-  .update(text(row.idCard) ? signature(row) : String(row._id)).digest('hex');
+// 三要素完整才跨单位归并；缺少生日或证件时逐记录分配。
+const backfillKey = row => 'legacy-v2-' + createHash('sha256')
+  .update(signature(row) || String(row._id)).digest('hex');
 
 function planLegacyNumbers(rows, identities) {
   const groups = new Map();
@@ -22,7 +19,7 @@ function planLegacyNumbers(rows, identities) {
     }
     const key = backfillKey(row);
     if (!groups.has(key)) {
-      const matches = text(row.idCard) ? identities.filter(identity => signature(identity) === signature(row)) : [];
+      const matches = signature(row) ? identities.filter(identity => !identity.mergedInto && signature(identity) === signature(row)) : [];
       groups.set(key, { key, source: row, existing: matches.length === 1 ? matches[0] : null, rows: [] });
     }
     groups.get(key).rows.push(row);

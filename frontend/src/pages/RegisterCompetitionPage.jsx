@@ -38,7 +38,8 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
-import { isDivingCompetition } from '../utils/competitionType';
+import { isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
+import { getTrampolineEventGroup, getTrampolineEvents } from '../utils/trampolineRegistration';
 const isDivingEvent = (competition) => isDivingCompetition(competition);
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -247,6 +248,7 @@ const RegisterCompetitionPage = () => {
 
   // 获取当前年级可选的比赛项目
   const getAvailableEvents = () => {
+    if (isTrampolineCompetition(competition)) return getTrampolineEvents(competition, formData.birthDate, formData.gender);
     // 优先使用动态配置的比赛项目
     if (competition?.events?.length > 0) {
       const selectedGroup = formData.grade;
@@ -679,7 +681,7 @@ const RegisterCompetitionPage = () => {
     if (!formData.schoolName || !formData.schoolName.trim()) {
       errors.schoolName = '请输入所属单位';
     }
-    if (!formData.grade || !formData.grade.trim()) {
+    if (!isTrampolineCompetition(competition) && (!formData.grade || !formData.grade.trim())) {
       errors.grade = '请输入年龄组别';
     }
   
@@ -718,6 +720,10 @@ const RegisterCompetitionPage = () => {
       id: `${baseId}-${index}`,
       data: {
         ...formData,
+        ...(isTrampolineCompetition(competition) ? {
+          type: 'individual',
+          grade: getTrampolineEventGroup(competition, competition.events.find(item => item.name === event), formData.birthDate)
+        } : {}),
         athleteRequestKey: baseId,
         event,
         groupTeam: getAvailableEvents().find(item => item.name === event)?.isGroupEvent
@@ -1020,7 +1026,7 @@ const RegisterCompetitionPage = () => {
         </Grid>
 
         {/* 年级/年龄组别 (自动计算后禁用或只读，或者允许微调) */}
-        <Grid item xs={12} sm={6}>
+        {!isTrampolineCompetition(competition) && <Grid item xs={12} sm={6}>
           <FormControl fullWidth required>
             <InputLabel id="grade-label">年龄组别 (根据出生日期自动匹配)</InputLabel>
             <Select
@@ -1058,8 +1064,8 @@ const RegisterCompetitionPage = () => {
               <FormHelperText error>{formErrors.grade}</FormHelperText>
             )}
           </FormControl>
-        </Grid>
-        
+        </Grid>}
+        {isTrampolineCompetition(competition) && <Grid item xs={12}><Alert severity="info">按出生日期和性别列出符合规程的项目，每项自动匹配组别。蹦床操请逐名添加队员，同单位、同项目、同队伍编号合为一队；只有一队可不填队伍编号。本阶段无需填写动作代码。</Alert></Grid>}
         {/* 比赛项目：同一名运动员可连续选择多个项目 */}
         <Grid item xs={12}>
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -1080,7 +1086,7 @@ const RegisterCompetitionPage = () => {
                       value={selectedEventType}
                       label="项目类别"
                       onChange={(event) => handleEventTypeChange(index, event.target.value)}
-                      disabled={!formData.grade}
+                      disabled={isTrampolineCompetition(competition) ? !formData.birthDate || !formData.gender : !formData.grade}
                     >
                       <MenuItem value="individual">个人项目</MenuItem>
                       <MenuItem value="group">集体项目</MenuItem>
@@ -1094,7 +1100,7 @@ const RegisterCompetitionPage = () => {
                     value={selectedEvent}
                     label={'比赛项目' + ' ' + (index + 1)}
                     onChange={(event) => handleEventSelectionChange(index, event.target.value)}
-                    disabled={!formData.grade}
+                    disabled={isTrampolineCompetition(competition) ? !formData.birthDate || !formData.gender : !formData.grade}
                     renderValue={(value) => eventsInType.find(event => event.name === value)?.displayName || value}
                   >
                     {eventsInType.map((event) => (

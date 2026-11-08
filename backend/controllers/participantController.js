@@ -1,5 +1,6 @@
 const Participant = require('../models/Participant');
 const { resolveAthleteNumber } = require('../utils/athleteIdentity');
+const { validateTrampolineRegistration } = require('../utils/trampolineRegistration');
 const Competition = require('../models/Competition');
 const fs = require('fs');
 const path = require('path');
@@ -28,6 +29,7 @@ const dateOnly = (value) => {
 // 报名页面的筛选只是辅助；这里才是所有报名入口都必须遵守的最终规则。
 const validateRegistrationAgainstCompetition = ({ competition, body }) => {
   if (competition.registrationDeadline && new Date() > new Date(competition.registrationDeadline)) return '报名已截止，只有管理员或主裁判可以代为修改报名资料';
+  if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) return validateTrampolineRegistration(competition, body);
   const birthDate = dateOnly(body.birthDate);
   const configuredAgeGroups = (competition.ageGroups || []).filter((group) => group.birthDateStart || group.birthDateEnd);
   if (configuredAgeGroups.length) {
@@ -153,7 +155,6 @@ exports.getParticipants = async (req, res, next) => {
         const competition = await Competition.findById(req.params.competitionId);
         if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
           const query = { competition: req.params.competitionId, isVirtualTeam: { $ne: true } };
-          if (req.query.myRegistrations === 'true' && req.user) query.user = req.user.id;
           const groupEventNames = new Set((competition.events || [])
             .filter((event) => event.isGroupEvent)
             .map((event) => event.name));
@@ -163,11 +164,13 @@ exports.getParticipants = async (req, res, next) => {
             .sort({ registrationDate: -1 }).lean())
             // type 是报名载体，项目“个人／集体”必须取自赛事项目配置。
             .map((row) => ({ ...row, isGroupEvent: groupEventNames.has(row.event) }));
-          const groups = require('../utils/wushuFees').buildWushuFeeGroups(rows, req.query);
+          const displayRows = req.query.myRegistrations === 'true' && req.user
+            ? rows.filter(row => String(row.user?._id || row.user) === req.user.id) : rows;
+          const groups = require('../utils/wushuFees').buildWushuFeeGroups(displayRows, req.query, rows);
           const count = groups.reduce((sum, group) => sum + group.participants.length, 0);
           return res.status(200).json({ success: true, feeSummaryEnabled: true, grouped: true,
             count, total: count, groupCount: groups.length, pagination: {},
-            uniqueParticipantTotal: groups.reduce((sum, group) => sum + group.roster.length, 0), data: groups });
+            uniqueParticipantTotal: new Set(groups.flatMap(group => group.roster.map(person => person.key))).size, data: groups });
         }
       }
     }
@@ -520,6 +523,10 @@ exports.createParticipant = async (req, res, next) => {
 
     // 管理员或主裁手动添加可暂不上传照片；参赛单位自主报名仍遵循比赛的照片要求。
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
+    if (isAdmin && getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+      const error = validateTrampolineRegistration(competition, req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
+    }
     if (!isAdmin && !String(req.body.idCard || '').trim()) {
       return res.status(400).json({ success: false, message: '请填写证件号码' });
     }
@@ -610,7 +617,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
     if (!participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员完成补号');
     if (req.body.athleteNumber !== participant.athleteNumber) return fail(409, '参赛者编号不匹配，请刷新后重试');
     if (participant.athleteNumber) {
-      try { await resolveAthleteNumber({ ...participant.toObject(), user: req.user.id }, req.user); }
+      try { await resolveAthleteNumber({ ...participant.toObject(), user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return fail(error.statusCode || 500, error.message); }
     }
     const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'updatedAt', 'athleteNumber'];
@@ -702,18 +709,17 @@ exports.updateParticipant = async (req, res, next) => {
       if (!isPrivileged && req.body.athleteNumber !== participant.athleteNumber) return res.status(403).json({ success: false, message: '不能更换参赛者编号' });
       if (isPrivileged && req.body.athleteNumber !== participant.athleteNumber) {
         if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return res.status(409).json({ success: false, message: '报名已变化，请刷新后重新关联' });
-        try { req.body.athleteNumber = await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+        try { req.body.athleteNumber = await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
         catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
       }
     }
-    if (participant.athleteNumber && req.body.schoolName !== undefined && req.body.schoolName.trim() !== participant.schoolName) return res.status(400).json({ success: false, message: '已关联编号的人员不能在项目编辑中更换单位' });
     if (participant.athleteNumber && !Object.hasOwn(req.body, 'athleteNumber') &&
         ['name', 'gender', 'birthDate', 'idCard'].some(key => Object.hasOwn(req.body, key))) {
-      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
     }
     if (participant.athleteNumber && req.body.athleteNumber === participant.athleteNumber) {
-      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user); }
+      try { await resolveAthleteNumber({ ...participant.toObject(), ...req.body, competition: participant.competition, user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: error.message }); }
     }
     delete req.body.athleteRequestKey;
@@ -1114,7 +1120,7 @@ exports.importParticipants = async (req, res, next) => {
       });
     }
 
-    const competition = await Competition.findById(competitionId).select('_id sportType type');
+    const competition = await Competition.findById(competitionId).select('_id sportType type events ageGroups');
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
 
     const createdParticipants = [];
@@ -1125,7 +1131,7 @@ exports.importParticipants = async (req, res, next) => {
     const duplicateKey = (participant) => {
       if (participant.athleteNumber) return `athlete:${participant.athleteNumber}:${normalize(participant.event)}`;
       const idCard = normalize(participant.idCard);
-      if (idCard) return `id:${idCard}`;
+      if (idCard) return getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE ? `id:${idCard}:${normalize(participant.event)}` : `id:${idCard}`;
       return `person:${[participant.name, participant.schoolName || participant.teamName, participant.gender, participant.ageGroup || participant.grade, participant.event].map(normalize).join('|')}`;
     };
     const readableError = (error) => {
@@ -1154,10 +1160,14 @@ exports.importParticipants = async (req, res, next) => {
           delete participantData.athleteNumber;
         }
         const key = duplicateKey(participantData);
+        if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+          const error = validateTrampolineRegistration(competition, participantData);
+          if (error) throw new Error(error);
+        }
         if (importedKeys.has(key)) throw new Error('与本次 Excel 中已成功导入的报名重复');
         const existingQuery = participantData.athleteNumber
           ? { competition: competitionId, athleteNumber: participantData.athleteNumber, event: participantData.event }
-          : participantData.idCard
+          : participantData.idCard && getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE
           ? { competition: competitionId, idCard: participantData.idCard }
           : { competition: competitionId, name: participantData.name, schoolName: participantData.schoolName, gender: participantData.gender, ageGroup: participantData.ageGroup || participantData.grade, event: participantData.event };
         if (await Participant.exists(existingQuery)) throw new Error('该报名已成功导入，不能重复导入');

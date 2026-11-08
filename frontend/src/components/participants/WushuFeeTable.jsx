@@ -8,12 +8,12 @@ export default function WushuFeeTable({ roster, renderActions, getStatusInfo, ge
 
   return (
     <Box>
-      <Alert severity="info" sx={{ mb: 2 }}>一至两项每人300元，每增加一项加100元（双人项目每人各计一项）。同名项目去重，已拒绝项目不计费。筛选仅筛选人员，费用按该人全部报名计算。</Alert>
+      <Alert severity="info" sx={{ mb: 2 }}>按参赛者编号跨单位统计：一至两项每人300元，每增加一项加100元。同名项目去重，已拒绝项目不计费。费用显示在最早有效报名所属单位，其他单位标注“已计费”；筛选不截断个人全赛事费用。</Alert>
       <TableContainer sx={{ overflowX: 'auto' }}>
         <Table size="small" aria-label="单位参赛者报名费用" sx={{ minWidth: 1356, tableLayout: 'fixed' }}>
           <colgroup>{outerColumnWidths.map((width) => <col key={width} style={{ width }} />)}</colgroup>
           <TableHead><TableRow>
-            <TableCell>参赛者</TableCell><TableCell>报名项目信息及操作</TableCell><TableCell align="right">报名费用（元）</TableCell>
+            <TableCell>参赛者</TableCell><TableCell>报名项目信息及操作</TableCell><TableCell align="right">会务费（元）</TableCell>
           </TableRow></TableHead>
           <TableBody>{roster.map(person => (
             <TableRow key={person.key}>
@@ -39,8 +39,9 @@ export default function WushuFeeTable({ roster, renderActions, getStatusInfo, ge
                 </Table>
               </TableCell>
               <TableCell align="right" sx={{ verticalAlign: 'top', whiteSpace: 'nowrap' }}>
-                <Typography fontWeight="bold">{person.fee === null ? '待确认' : person.fee}</Typography>
+                <Typography fontWeight="bold">{person.fee === null ? '待确认' : person.isFeeBillingUnit === false ? '已计费' : person.fee}</Typography>
                 <Typography variant="caption">{person.eventCount}个计费项目</Typography>
+                {person.schoolCount > 1 && <Typography variant="caption" display="block" sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>个人合计{person.totalFee}元{person.isFeeBillingUnit === false && `，已在${person.billingSchoolName}列计`}</Typography>}
               </TableCell>
             </TableRow>
           ))}</TableBody>

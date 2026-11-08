@@ -25,7 +25,7 @@ export default function AthleteIdentitySelect({ competitionId, schoolName, value
   return <>
     {error && <Alert severity="error">{error}</Alert>}
     <TextField select fullWidth label="参赛者编号关联" value={value || (confirmed ? '' : '__choose__')} disabled={disabled || loading || Boolean(error)} onChange={e => { setConfirmed(true); onChange(e.target.value); }}
-      helperText="请选择已有人员或明确新增同名人员。证件仅显示尾号；所选编号须与填写的人员资料一致。历史记录由管理员逐人确认关联。">
+      helperText="编号在本赛事内跨单位共用。姓名、生日和证件号一致时自动复用编号；共用编号不改变各账号的报名管理权限。证件仅显示尾号。">
       <MenuItem value="__choose__" disabled>请选择已有人员或新增人员</MenuItem>
       <MenuItem value="">新增人员 / 新增同名人员（系统分配新编号）</MenuItem>
       {value && !identities.some(item => item.number === value) && <MenuItem value={value}>{value}（当前单位不可用）</MenuItem>}

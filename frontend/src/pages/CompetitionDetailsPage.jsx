@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Box, Typography, CircularProgress, Alert, TextField, Button, Paper, 
   FormControl, InputLabel, Select, MenuItem, Grid, IconButton, Card, 
@@ -85,6 +85,9 @@ const isDivingCompetition = (competition) => getSportType(competition) === SPORT
 export default function CompetitionDetailsPage({ isCreate = false, isEdit = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const workspaceType = searchParams.get('sportType');
+  const workspaceLabel = { wushu: '武术', diving: '跳水', trampoline: '蹦床' }[workspaceType];
   const { user, loading: authLoading } = useAuth();
   
   const [competition, setCompetition] = useState({
@@ -94,8 +97,8 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
     endDate: null,
     registrationDeadline: null,
     status: 'draft',
-    type: '武术',
-    sportType: SPORT_TYPES.WUSHU,
+    type: workspaceLabel || '武术',
+    sportType: workspaceLabel ? workspaceType : SPORT_TYPES.WUSHU,
     location: '',
     guidingUnits: [],
     hosts: [],
@@ -154,7 +157,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
           if (parsedDraft.endDate) parsedDraft.endDate = new Date(parsedDraft.endDate);
           if (parsedDraft.registrationDeadline) parsedDraft.registrationDeadline = new Date(parsedDraft.registrationDeadline);
           
-          setCompetition(parsedDraft);
+          setCompetition({ ...parsedDraft, ...(workspaceLabel ? { sportType: workspaceType, type: workspaceLabel } : {}) });
           setDraftLoaded(true);
         } catch (e) {
           console.error('Error parsing draft:', e);
@@ -601,12 +604,13 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                         onChange={(event) => setCompetition((current) => ({
                           ...current,
                           sportType: event.target.value,
-                          type: event.target.value === SPORT_TYPES.DIVING ? '跳水' : '武术'
+                          type: { wushu: '武术', diving: '跳水', trampoline: '蹦床' }[event.target.value]
                         }))}
                       required
                       >
                         <MenuItem value={SPORT_TYPES.WUSHU}>武术</MenuItem>
                         <MenuItem value={SPORT_TYPES.DIVING}>跳水</MenuItem>
+                        <MenuItem value={SPORT_TYPES.TRAMPOLINE}>蹦床</MenuItem>
                       </TextField>
                   </Grid>
                     <Grid item xs={12} sm={6}>

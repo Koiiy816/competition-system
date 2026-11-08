@@ -7,6 +7,8 @@ const { protect: auth, authorize } = require('../middlewares/authMiddleware');
 const { uploadParticipantPhoto } = require('../middlewares/uploadMiddleware');
 
 router.get('/athlete-identities', auth, authorize('admin', 'chief_referee', 'organization'), require('../controllers/athleteIdentityController').list);
+router.post('/athlete-identities/merge-preview', auth, authorize('admin'), require('../controllers/athleteIdentityController').previewMerge);
+router.post('/athlete-identities/merge', auth, authorize('admin'), require('../controllers/athleteIdentityController').merge);
 
 // @route   GET api/competitions/all/participants/me
 // @desc    获取当前用户的所有参赛记录（不区分比赛）

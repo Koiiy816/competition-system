@@ -120,7 +120,6 @@ const MainLayout = () => {
 
     const pages = [
       { title: '首页', path: '/' },
-      { title: '比赛', path: '/competitions' },
     ];
 
     const canViewScheduleResults = user?.roles && user.roles.some(role => ['organization', 'admin', 'referee', 'chief_referee', 'checkin_clerk'].includes(role));

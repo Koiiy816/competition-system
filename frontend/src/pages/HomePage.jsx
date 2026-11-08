@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { PARTICIPATION_SPORT_TYPES } from '../utils/competitionType';
 
 const workspaces = [
+  { key: 'trampoline', title: '蹦床赛事工作区', eyebrow: 'TRAMPOLINE', description: '按出生日期选择大网、小网个人项目，按单位组队报名蹦床操。', features: ['大网与小网项目', '蹦床操团体报名', '报名阶段无需动作代码'], color: '#047857', background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)', icon: <EmojiEventsIcon sx={{ fontSize: 34 }} /> },
   { key: 'wushu', title: '武术赛事工作区', eyebrow: 'WUSHU', description: '管理武术项目、报名、检录、赛程编排、裁判评分与成绩发布。', features: ['武术项目配置', '常规赛程与打分', '成绩与奖项管理'], color: '#b45309', background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)', icon: <EmojiEventsIcon sx={{ fontSize: 34 }} /> },
   { key: 'diving', title: '跳水赛事工作区', eyebrow: 'DIVING', description: '管理跳水报名、双人配对、动作表补录、分轮打分和跳水成绩。', features: ['动作表与双人配对', '五裁判分轮打分', '跳水排名与奖项'], color: '#0369a1', background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)', icon: <PoolIcon sx={{ fontSize: 34 }} /> }
 ];
