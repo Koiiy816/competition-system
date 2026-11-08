@@ -1,4 +1,5 @@
 const Schedule = require('../models/Schedule');
+const { applyTrampolineJudgeCount } = require('../utils/trampolineScoring');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const { normalizeParticipantGender, getScheduleGender, formatScheduleName, parseScheduleIdentity } = require('../utils/scheduleNaming');
@@ -131,6 +132,7 @@ exports.generateStartList = async (req, res, next) => {
         const normal = schedule.participants.filter((participant) => !isTestById.get(participant.toString()));
         const test = schedule.participants.filter((participant) => isTestById.get(participant.toString()));
         schedule.participants = [...shuffle(normal), ...shuffle(test)];
+        applyTrampolineJudgeCount(competition, schedule);
         await schedule.save();
       }));
       return res.status(200).json({
@@ -400,7 +402,7 @@ exports.generateStartList = async (req, res, next) => {
             }
             await subSchedule.save();
           } else {
-            subSchedule = await Schedule.create({
+            subSchedule = await Schedule.create(applyTrampolineJudgeCount(competition, {
               competition: competitionId,
               name: subScheduleName,
               type: 'preliminary',
@@ -409,7 +411,7 @@ exports.generateStartList = async (req, res, next) => {
               location: competition.location || '待定',
               participants: shuffled,
               status: 'scheduled'
-            });
+            }));
           }
           createdSchedules.push(subSchedule);
         }
@@ -458,7 +460,7 @@ exports.generateStartList = async (req, res, next) => {
           await schedule.save();
         } else {
           // 如果不存在，创建新赛程
-          schedule = await Schedule.create({
+          schedule = await Schedule.create(applyTrampolineJudgeCount(competition, {
             competition: competitionId,
             name: name,
             type: 'preliminary', // 默认为预赛
@@ -467,7 +469,7 @@ exports.generateStartList = async (req, res, next) => {
             location: competition.location || '待定',
             participants: shuffled,
             status: 'scheduled'
-          });
+          }));
         }
         createdSchedules.push(schedule);
       }
@@ -856,7 +858,7 @@ exports.createSchedule = async (req, res, next) => {
     normalizeDivingScheduleConfig(req.body);
 
     // 创建赛程
-    const schedule = await Schedule.create(req.body);
+    const schedule = await Schedule.create(applyTrampolineJudgeCount(competition, req.body));
 
     res.status(201).json({
       success: true,
@@ -975,6 +977,10 @@ exports.updateSchedule = async (req, res, next) => {
       await schedule.save();
     }
 
+    if (isOrganizer || isAdmin) {
+      const config = applyTrampolineJudgeCount(competition, { name: req.body.name ?? schedule.name });
+      if (config.judgeCount) req.body.judgeCount = config.judgeCount;
+    }
     schedule = await Schedule.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
@@ -2062,10 +2068,11 @@ exports.importCollectiveRoster = async (req, res, next) => {
         virtualTeamIds.push(virtualTeam._id);
       }
       if (item.scheduleId) {
-        await Schedule.findByIdAndUpdate(item.scheduleId, { $set: { participants: virtualTeamIds } });
+        const config = applyTrampolineJudgeCount(competition, { name: item.name });
+        await Schedule.findByIdAndUpdate(item.scheduleId, { $set: { participants: virtualTeamIds, ...(config.judgeCount ? { judgeCount: config.judgeCount } : {}) } });
       } else {
         const times = collectivePendingScheduleTimes(competition);
-        await Schedule.create({
+        await Schedule.create(applyTrampolineJudgeCount(competition, {
           competition: req.params.competitionId,
           name: item.name,
           description: '由集体项目名单 Excel 导入；请管理员再编排日期、场地和时段。',
@@ -2078,7 +2085,7 @@ exports.importCollectiveRoster = async (req, res, next) => {
           exactTime: '',
           court: '',
           participants: virtualTeamIds
-        });
+        }));
         createdScheduleCount += 1;
       }
     }

@@ -275,11 +275,14 @@ const participantService = {
 
   /**
    * 获取当前用户的所有参赛记录
+   * @param {string} [competitionId] - 可选，限定到指定比赛
    * @returns {Promise} - 返回参赛记录列表
    */
-  getMyParticipations: async () => {
+  getMyParticipations: async (competitionId) => {
     try {
-      const response = await api.get('/competitions/all/participants/all/me');
+      const response = await api.get(competitionId
+        ? `/competitions/${competitionId}/participants/me`
+        : '/competitions/all/participants/all/me');
       return response.data;
     } catch (error) {
       throw error.response ? error.response.data : { message: '获取我的参赛记录失败' };

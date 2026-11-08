@@ -8,7 +8,7 @@ export const SPORT_TYPES = Object.freeze({
 export const PARTICIPATION_SPORT_TYPES = [
   { value: SPORT_TYPES.WUSHU, label: '武术' },
   { value: SPORT_TYPES.DIVING, label: '跳水' },
-  { value: SPORT_TYPES.TRAMPOLINE, label: '蹦床（筹备中）', disabled: true }
+  { value: SPORT_TYPES.TRAMPOLINE, label: '蹦床' }
 ];
 
 export const normalizeSportType = (value) => {
@@ -22,4 +22,5 @@ export const normalizeSportType = (value) => {
 
 export const getSportType = (competition) => normalizeSportType(competition?.sportType) || normalizeSportType(competition?.type) || SPORT_TYPES.OTHER;
 export const isDivingCompetition = (competition) => getSportType(competition) === SPORT_TYPES.DIVING;
+export const isTrampolineCompetition = (competition) => getSportType(competition) === SPORT_TYPES.TRAMPOLINE;
 export const sportTypeLabel = (competition) => ({ wushu: '武术', diving: '跳水', trampoline: '蹦床', other: '其他' }[getSportType(competition)] || '其他');

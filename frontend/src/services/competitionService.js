@@ -122,6 +122,7 @@ const competitionService = {
     return Promise.resolve([
       { id: 'wushu', name: '武术' },
       { id: 'diving', name: '跳水' },
+      { id: 'trampoline', name: '蹦床' },
     ]);
   },
 

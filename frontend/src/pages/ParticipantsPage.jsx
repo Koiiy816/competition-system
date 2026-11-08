@@ -66,6 +66,7 @@ import EditRegistrationModal from '../components/participants/EditRegistrationMo
 import systemService from '../services/systemService';
 import { getSportType } from '../utils/competitionType';
 import BrandWatermark from '../components/BrandWatermark';
+import { createWushuRegistrationPdf, createWushuGroupedRegistrationPdf } from '../utils/wushuRegistrationPdf';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -130,6 +131,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [divingPlanPrintOpen, setDivingPlanPrintOpen] = useState(false);
   const [divingPlanPrintParticipants, setDivingPlanPrintParticipants] = useState([]);
+  const [exportingWushuPdf, setExportingWushuPdf] = useState(false);
   
   // 分页状态
   const [page, setPage] = useState(0);
@@ -175,6 +177,38 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   // 决定是否能查看标签页和列表（管理员/主裁/裁判 或 开启了"我的报名"功能）
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
+
+  const handleExportWushuPdf = async () => {
+    if (!selectedCompetition || getSportType(selectedCompetition) !== 'wushu') return;
+    setExportingWushuPdf(true);
+    setError('');
+    try {
+      // /me 由后端按登录账号限定范围，不使用当前列表的分页或筛选结果。
+      const response = await participantService.getMyParticipations(selectedCompetition._id);
+      const pdf = await createWushuRegistrationPdf(response.data || [], selectedCompetition);
+      const filename = `${selectedCompetition.name}_报名明细`.replace(/[\\/:*?"<>|]/g, '_');
+      pdf.save(`${filename}.pdf`);
+    } catch (err) {
+      setError(err.message || '导出报名 PDF 失败，请重试');
+    } finally {
+      setExportingWushuPdf(false);
+    }
+  };
+
+  const handleExportWushuGroupedPdf = async () => {
+    if (!selectedCompetition || getSportType(selectedCompetition) !== 'wushu' || loadingGrouped) return;
+    setExportingWushuPdf(true);
+    setError('');
+    try {
+      const pdf = await createWushuGroupedRegistrationPdf(groupedParticipants, selectedCompetition);
+      const filename = `${selectedCompetition.name}_按项目分组报名表`.replace(/[\\/:*?"<>|]/g, '_');
+      pdf.save(`${filename}.pdf`);
+    } catch (err) {
+      setError(err.message || '导出项目分组 PDF 失败，请重试');
+    } finally {
+      setExportingWushuPdf(false);
+    }
+  };
   
   // 导出参赛者（按单位格式，仅在按单位分组标签下有效）
   const handleExportSchoolFormat = async () => {
@@ -2001,6 +2035,17 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     </Select>
                   </FormControl>
                 </Grid>
+                {myRegistrations && user?.roles?.includes('organization') && getSportType(selectedCompetition) === 'wushu' && (
+                  <Grid item xs={12} md={4} sx={{ display: 'flex', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                    <Tooltip title="导出当前赛事下本账号的全部报名项目，不受搜索、筛选和分页影响。">
+                      <span>
+                        <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExportWushuPdf} disabled={exportingWushuPdf}>
+                          {exportingWushuPdf ? '正在导出…' : '导出报名明细 PDF'}
+                        </Button>
+                      </span>
+                    </Tooltip>
+                  </Grid>
+                )}
                 
                 <Grid item xs={12} md={5}>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -2164,6 +2209,15 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       {canViewParticipants && (
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            {myRegistrations && user?.roles?.includes('organization') && getSportType(selectedCompetition) === 'wushu' && (
+              <Tooltip title="按当前页面的项目分组、顺序和筛选结果导出，包含所有折叠分组。">
+                <span>
+                  <Button variant="contained" startIcon={<DownloadIcon />} onClick={handleExportWushuGroupedPdf} disabled={exportingWushuPdf || loadingGrouped}>
+                    {exportingWushuPdf ? '正在导出…' : '导出项目分组 PDF'}
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
             {isAdminOrChiefReferee && (
               <>
                 <Button

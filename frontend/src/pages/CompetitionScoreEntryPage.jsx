@@ -15,6 +15,7 @@ import resultService from '../services/resultService';
 import { useAuth } from '../contexts/AuthContext';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import { calculateDivingDiveScore } from '../utils/divingScoring';
+import { getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from '../utils/trampolineRegistration';
 
 const normalizeCheckInStatus = (participant) => {
   if (!participant) return 'not_checked';
@@ -139,8 +140,8 @@ const formatScheduleTime = (schedule) => {
   return schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : '';
 };
 
-const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus }) => {
-  const [scores, setScores] = useState(['', '', '', '', '']);
+export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus, hideParticipantName, scoringType }) => {
+  const [scores, setScores] = useState(Array(Math.max(5, judgeCount)).fill(''));
   const [deduction, setDeduction] = useState('');
   const [finalScore, setFinalScore] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -149,28 +150,32 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
 
   useEffect(() => {
     if (initialResult) {
-      const savedScores = initialResult.details?.scores || initialResult.scores || [];
-      const newScores = [...savedScores];
-      while (newScores.length < 5) newScores.push('');
+      const savedScores = scoringType && initialResult.details?.scoringType !== scoringType ? [] : initialResult.details?.scores || initialResult.scores || [];
+      const newScores = savedScores.map(score => score ?? '');
+      while (newScores.length < Math.max(5, judgeCount)) newScores.push('');
       // 如果当前行没有在被编辑，才用后端的最新数据覆盖，防止打断用户输入
       if (!isDirty) {
-        setScores(newScores.slice(0, 5));
-        setDeduction(initialResult.details?.deduction ?? initialResult.deduction ?? '');
-        setFinalScore(initialResult.score ?? initialResult.finalScore ?? 0);
+        setScores(newScores.slice(0, Math.max(5, judgeCount)));
+        setDeduction(scoringType && initialResult.details?.scoringType !== scoringType ? '' : initialResult.details?.deduction ?? initialResult.deduction ?? '');
+        setFinalScore(scoringType && initialResult.details?.scoringType !== scoringType ? 0 : initialResult.score ?? initialResult.finalScore ?? 0);
         setIsAbsent(checkInStatus === 'absent' || initialResult.details?.isAbsent || false);
       }
     } else {
       if (!isDirty) {
-        setScores(['', '', '', '', '']);
+        setScores(Array(Math.max(5, judgeCount)).fill(''));
         setDeduction('');
         setFinalScore(0);
         setIsAbsent(checkInStatus === 'absent');
       }
     }
-  }, [initialResult, isDirty, checkInStatus]);
+  }, [initialResult, isDirty, checkInStatus, judgeCount, scoringType]);
 
   useEffect(() => {
     if (!isDirty) return;
+    if (scoringType) {
+      setFinalScore(calculateTrampolineScore(scores, deduction, scoringType));
+      return;
+    }
     let totalCalculated = 0;
     const activeScores = scores.slice(0, judgeCount);
     const filledScores = activeScores.filter(s => s !== '').map(parseFloat);
@@ -184,7 +189,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
     // 这里把 deduction 的逻辑改成直接相加，因为我们要支持加分（正数）和减分（负数）
     const finalCalculated = totalCalculated + numericDeduction;
     setFinalScore(Math.round(finalCalculated * 100) / 100);
-  }, [scores, deduction, isDirty, judgeCount]);
+  }, [scores, deduction, isDirty, judgeCount, scoringType]);
 
   const handleScoreChange = (idx, value) => {
     const newScores = [...scores];
@@ -194,6 +199,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
   };
 
   const handleDeductionChange = (value) => {
+    if (scoringType && value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0)) return;
     setDeduction(value);
     setIsDirty(true);
   };
@@ -201,7 +207,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
   const handleSave = async () => {
     setIsSaving(true);
     // 把空字符串转为0，而不是 null，这样后端接收到的依然是数字数组，方便过滤
-    const flatScores = scores.map(s => s === '' || s === null ? 0 : parseFloat(s));
+    const flatScores = scores.map(s => s === '' || s == null ? (scoringType ? null : 0) : parseFloat(s));
     try {
       await onSave(participant._id, {
         scores: flatScores,
@@ -231,7 +237,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
     : 0;
   // 只有当自己打的分数大于 0 时，或者裁判长已经确认（verified）时才锁定
   // 如果分数是 0，说明被重置了，应该解锁
-  const isLockedForMe = !isChiefOrAdmin && (myInitialScore > 0 || initialResult?.status === 'verified');
+  const isLockedForMe = !isChiefOrAdmin && ((scoringType ? initialResult?.details?.scoringType === scoringType && initialResult?.details?.scores?.[allowedIndex] != null : myInitialScore > 0) || ((!scoringType || initialResult?.details?.scoringType === scoringType) && initialResult?.status === 'verified'));
 
   const isMakeupTarget = makeupParticipantId && String(participant._id) === String(makeupParticipantId);
   const disabled = (isCompleted && !isMakeupTarget) || !canEdit || isLockedForMe || isAbsent || isNotChecked || isMixed;
@@ -246,13 +252,13 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
       }}
     >
       <TableCell sx={{ verticalAlign: 'middle' }}>{index + 1}</TableCell>
-      <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '250px', lineHeight: '1.8', verticalAlign: 'middle', py: 1.5 }}>
+      {!hideParticipantName && <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '250px', lineHeight: '1.8', verticalAlign: 'middle', py: 1.5 }}>
         {displayNameContent}
         {participant.isTest && (
           <Chip label="测试" color="secondary" size="small" sx={{ ml: 1, height: 20, verticalAlign: 'middle' }} />
         )}
-      </TableCell>
-      <TableCell sx={{ verticalAlign: 'middle' }}>{participant.schoolName || (participant.user && participant.user.schoolName) || '-'}</TableCell>
+      </TableCell>}
+      <TableCell sx={{ verticalAlign: 'middle' }}>{participant.schoolName || (participant.user && participant.user.schoolName) || (hideParticipantName && participant.teamName) || '-'}</TableCell>
       <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
         <Chip size="small" label={checkInMeta.label} color={checkInMeta.color} />
         {canCheckIn && (
@@ -288,7 +294,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
               value={displayValue}
               onChange={(e) => handleScoreChange(idx, e.target.value)}
               disabled={disabled || !isMyField}
-              inputProps={{ step: "0.01", min: "0", max: "10", style: { textAlign: 'center', padding: '6px 2px' } }}
+              inputProps={{ step: "0.01", min: "0", ...(scoringType ? {} : { max: "10" }), style: { textAlign: 'center', padding: '6px 2px' } }}
               sx={{ width: '100%', minWidth: '45px', bgcolor: isDirty && isMyField && scores[idx] !== '' ? '#fff8e1' : 'inherit' }}
               className="no-print"
             />
@@ -307,7 +313,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
           onChange={(e) => handleDeductionChange(e.target.value)}
           disabled={disabled || !isChiefOrAdmin}
           color={parseFloat(deduction) > 0 ? "success" : "error"}
-          inputProps={{ step: "0.01", style: { textAlign: 'center', padding: '6px 2px', color: parseFloat(deduction) > 0 ? '#2e7d32' : '#d32f2f' } }}
+          inputProps={{ step: "0.01", ...(scoringType ? { min: 0 } : {}), style: { textAlign: 'center', padding: '6px 2px', color: parseFloat(deduction) > 0 ? '#2e7d32' : '#d32f2f' } }}
           sx={{ width: '100%', minWidth: '45px', bgcolor: isDirty && deduction !== '' ? (parseFloat(deduction) > 0 ? '#e8f5e9' : '#ffebee') : 'inherit' }}
           className="no-print"
         />
@@ -331,7 +337,7 @@ const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipan
             display: 'inline-block'
           }}
         >
-          {isAbsent ? '缺席/弃权' : (finalScore > 0 ? finalScore.toFixed(2) : '-')}
+          {isAbsent ? '缺席/弃权' : (finalScore > 0 || (scoringType && (isDirty || initialResult?.details?.scoringType === scoringType)) ? finalScore.toFixed(2) : '-')}
         </Typography>
       </TableCell>}
 
@@ -556,7 +562,9 @@ const CompetitionScoreEntryPage = () => {
     schedule?.name?.includes('5月31') ||
     schedule?.name?.includes('6月13') ||
     competition?.name?.includes('第五届南山区中小学教育集团联盟');
-  const judgeCount = isThreeRefereesMode ? 3 : (schedule?.judgeCount || 5);
+  const { scoringType, judgeLabels, hideParticipantName } = getTrampolineScoringOptions(competition, schedule);
+  const judgeCount = judgeLabels?.length || (isThreeRefereesMode ? 3 : (schedule?.judgeCount || 5));
+  if (!isChiefOrAdmin && user && scoringType) allowedIndex = getTrampolineJudgeIndex(user, scoringType);
   
   useEffect(() => {
     fetchData();
@@ -1139,6 +1147,9 @@ const CompetitionScoreEntryPage = () => {
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
             {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : <TableContainer sx={{ p: 2 }}>
+            {scoringType && <Alert severity="info" sx={{ mb: 2 }}>{scoringType === 'large'
+              ? '大网：E1–E4 去掉一个最高分和一个最低分，剩余两项相加，再减裁判长扣分。D1（难度）、T1（高度）、H1（位移）单独记录，不计入总分。'
+              : '小网：E1＋E2－裁判长扣分。'}扣分请输入非负数。</Alert>}
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
                <Typography variant="h4" align="center" gutterBottom>{schedule?.name} - 成绩单</Typography>
@@ -1151,13 +1162,17 @@ const CompetitionScoreEntryPage = () => {
               <TableHead>
                 <TableRow>
                   <TableCell width="5%">序号</TableCell>
-                  <TableCell width="23%">姓名</TableCell>
+                  {!hideParticipantName && <TableCell width="23%">姓名</TableCell>}
                   <TableCell width="14%">代表队/学校</TableCell>
                   <TableCell width="9%" align="center">检录状态</TableCell>
                   {Array.from({ length: judgeCount }, (_, index) => (
-                    <TableCell key={index} width="7%" align="center">裁{index + 1}</TableCell>
+                    <TableCell key={index} width="7%" align="center" sx={scoringType ? { minWidth: 64, fontWeight: 'bold' } : undefined}>
+                      {judgeLabels?.[index] ? judgeLabels[index].split('\n').map((line, lineIndex) => (
+                        <Box component="span" key={lineIndex} sx={{ display: 'block', whiteSpace: 'nowrap' }}>{line}</Box>
+                      )) : `裁${index + 1}`}
+                    </TableCell>
                   ))}
-                  <TableCell width="7%" align="center">裁判长加减分</TableCell>
+                  <TableCell width="7%" align="center" sx={scoringType ? { whiteSpace: 'nowrap', minWidth: 110, fontWeight: 'bold' } : undefined}>{scoringType ? '裁判长扣分' : '裁判长加减分'}</TableCell>
                   {isChiefOrAdmin && <TableCell width="8%" align="center">最后得分</TableCell>}
                   {isChiefOrAdmin && <TableCell width="5%" align="center">实时排名</TableCell>}
                   <TableCell width="5%" align="center" className="no-print">操作</TableCell>
@@ -1202,9 +1217,11 @@ const CompetitionScoreEntryPage = () => {
                       isCheckInUpdating={checkInUpdatingId === p._id}
                       index={index}
                       displayNameContent={displayNameContent}
+                      hideParticipantName={hideParticipantName}
                       isChiefOrAdmin={isChiefOrAdmin}
                       allowedIndex={allowedIndex}
                       judgeCount={judgeCount}
+                      scoringType={scoringType}
                       currentRank={participantRanks[p._id]}
                       isDuplicateScore={duplicateScores.includes(getResultScore(result))}
                       checkInStatus={checkInStatus}

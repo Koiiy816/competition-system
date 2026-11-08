@@ -160,14 +160,14 @@ exports.getCompetition = async (req, res, next) => {
       return res.status(401).json({ success: false, message: '请登录后查看赛事' });
     }
 
-    // The score-entry page only needs the competition name and location.  Avoid
+    // Include the sport type so score entry can select the correct rules. Avoid
     // populating every participant and schedule on that high-frequency route.
     // The default response remains unchanged for all existing callers.
     const isScoreContext = req.query.fields === 'score-context';
     let competitionQuery = Competition.findById(req.params.id);
 
     if (isScoreContext) {
-      competitionQuery = competitionQuery.select('name location status');
+      competitionQuery = competitionQuery.select('name location status sportType type');
     } else {
       competitionQuery = competitionQuery
         .populate('organizer', 'name email')

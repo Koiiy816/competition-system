@@ -1,3 +1,4 @@
+const { getTrampolineScoringType, calculateTrampolineScore, getTrampolineJudgeIndex } = require('../utils/trampolineScoring');
 const Result = require('../models/Result');
 const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
@@ -641,11 +642,19 @@ exports.submitScore = async (req, res, next) => {
   await acquireLock(lockKey);
 
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount status');
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount status name competition');
     if (!schedule) {
       return res.status(404).json({ success: false, message: '未找到对应赛程' });
     }
-    const judgeCount = schedule.judgeCount || 5;
+    const competition = await Competition.findById(schedule.competition);
+    const scoringType = getTrampolineScoringType(competition, schedule);
+    const judgeCount = scoringType ? (scoringType === 'large' ? 7 : 2) : (schedule.judgeCount || 5);
+    const scoreSlots = scoringType ? judgeCount : 5;
+    const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
+    if (scoringType && (!Array.isArray(scores) || (isChiefOrAdmin && deduction != null
+      && (!Number.isFinite(Number(deduction)) || Number(deduction) < 0)))) {
+      return res.status(400).json({ success: false, message: '评分须为数组，裁判长扣分须为非负数' });
+    }
 
     const participant = await Participant.findById(participantId).populate(
       'teamMembers',
@@ -676,16 +685,16 @@ exports.submitScore = async (req, res, next) => {
     }
 
     let finalScore = 0;
-    let newScores = scores.map(s => parseFloat(s) || 0).slice(0, 5);
-    while (newScores.length < 5) newScores.push(0);
-    for (let index = judgeCount; index < 5; index += 1) newScores[index] = 0;
+    let newScores = scores.map(s => parseFloat(s) || 0).slice(0, scoreSlots);
+    while (newScores.length < scoreSlots) newScores.push(0);
+    for (let index = judgeCount; index < scoreSlots; index += 1) newScores[index] = 0;
     let newDeduction = parseFloat(deduction) || 0;
     let finalIsAbsent = effectiveCheckInStatus === 'absent';
 
     // 缺席状态由检录决定，自动写入弃权成绩
     if (finalIsAbsent) {
       finalScore = 0;
-      newScores = [0, 0, 0, 0, 0];
+      newScores = Array(scoreSlots).fill(0);
       newDeduction = 0;
     } else {
       // 由服务器按赛程规则计算，避免客户端传入的最终分数影响结果。
@@ -699,7 +708,25 @@ exports.submitScore = async (req, res, next) => {
       participant: participantId
     });
 
-    if (result) {
+    if (scoringType) {
+      const allowedIndex = isChiefOrAdmin ? -1 : getTrampolineJudgeIndex(req.user, scoringType);
+      if (!isChiefOrAdmin && allowedIndex < 0) {
+        return res.status(403).json({ success: false, message: '当前赛程未分配此裁判评分栏位' });
+      }
+      const previous = result?.details?.scoringType === scoringType ? result.details.scores || [] : [];
+      newScores = Array.from({ length: judgeCount }, (_, index) => {
+        const value = isChiefOrAdmin || index === allowedIndex ? scores[index] : previous[index];
+        return value === '' || value == null ? null : Number(value);
+      });
+      if (newScores.some(value => value !== null && (!Number.isFinite(value) || value < 0))) {
+        return res.status(400).json({ success: false, message: '裁判分数须为非负数' });
+      }
+      newDeduction = isChiefOrAdmin ? Number(deduction || 0) : Number(result?.details?.scoringType === scoringType ? result.details.deduction || 0 : 0);
+      if (finalIsAbsent) { newScores = Array(judgeCount).fill(0); newDeduction = 0; }
+      finalScore = finalIsAbsent ? 0 : calculateTrampolineScore(newScores, newDeduction, scoringType);
+    }
+
+    if (result && !scoringType) {
       if (!req.user.roles?.includes('chief_referee') && !req.user.roles?.includes('admin')) {
         let allowedIndex = -1;
         if (req.user.name) {
@@ -724,8 +751,8 @@ exports.submitScore = async (req, res, next) => {
         if (!finalIsAbsent) {
           newScores = [...(result.details?.scores || [0, 0, 0, 0, 0])];
           newScores[allowedIndex] = req.body.scores[allowedIndex] ? parseFloat(req.body.scores[allowedIndex]) || 0 : 0;
-          while (newScores.length < 5) newScores.push(0);
-          for (let index = judgeCount; index < 5; index += 1) newScores[index] = 0;
+          while (newScores.length < scoreSlots) newScores.push(0);
+          for (let index = judgeCount; index < scoreSlots; index += 1) newScores[index] = 0;
           newDeduction = result.details?.deduction || 0;
           finalIsAbsent = effectiveCheckInStatus === 'absent';
 
@@ -739,8 +766,6 @@ exports.submitScore = async (req, res, next) => {
       }
     }
 
-    const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
-
     // 核心修改：如果裁判长把分数全改成了 0（或把某几个裁判的分数改成0退回重打），
     // 则把状态重置为 'pending'，这样普通裁判前端才会解除锁定。
     let newStatus = 'pending';
@@ -748,7 +773,7 @@ exports.submitScore = async (req, res, next) => {
       // 只有全部有效裁判栏位都已录入，并且裁判长点击保存，才发布到大屏。
       const allJudgeScoresEntered = newScores
         .slice(0, judgeCount)
-        .every(score => Number(score) > 0);
+        .every(score => scoringType ? score !== null && Number.isFinite(score) && score >= 0 : Number(score) > 0);
       if (allJudgeScoresEntered || finalIsAbsent) {
         newStatus = 'verified';
       } else {
@@ -766,6 +791,7 @@ exports.submitScore = async (req, res, next) => {
       participant: participantId,
       score: finalScore,
       details: {
+        ...(scoringType ? { scoringType } : {}),
         scores: newScores,
         deduction: newDeduction,
         isAbsent: finalIsAbsent,

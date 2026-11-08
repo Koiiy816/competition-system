@@ -1,5 +1,6 @@
 const Participant = require('../models/Participant');
 const { resolveAthleteNumber } = require('../utils/athleteIdentity');
+const { validateTrampolineRegistration } = require('../utils/trampolineRegistration');
 const Competition = require('../models/Competition');
 const fs = require('fs');
 const path = require('path');
@@ -28,6 +29,7 @@ const dateOnly = (value) => {
 // 报名页面的筛选只是辅助；这里才是所有报名入口都必须遵守的最终规则。
 const validateRegistrationAgainstCompetition = ({ competition, body }) => {
   if (competition.registrationDeadline && new Date() > new Date(competition.registrationDeadline)) return '报名已截止，只有管理员或主裁判可以代为修改报名资料';
+  if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) return validateTrampolineRegistration(competition, body);
   const birthDate = dateOnly(body.birthDate);
   const configuredAgeGroups = (competition.ageGroups || []).filter((group) => group.birthDateStart || group.birthDateEnd);
   if (configuredAgeGroups.length) {
@@ -520,6 +522,10 @@ exports.createParticipant = async (req, res, next) => {
 
     // 管理员或主裁手动添加可暂不上传照片；参赛单位自主报名仍遵循比赛的照片要求。
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
+    if (isAdmin && getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+      const error = validateTrampolineRegistration(competition, req.body);
+      if (error) return res.status(400).json({ success: false, message: error });
+    }
     if (!isAdmin && !String(req.body.idCard || '').trim()) {
       return res.status(400).json({ success: false, message: '请填写证件号码' });
     }
@@ -1114,7 +1120,7 @@ exports.importParticipants = async (req, res, next) => {
       });
     }
 
-    const competition = await Competition.findById(competitionId).select('_id sportType type');
+    const competition = await Competition.findById(competitionId).select('_id sportType type events ageGroups');
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
 
     const createdParticipants = [];
@@ -1125,7 +1131,7 @@ exports.importParticipants = async (req, res, next) => {
     const duplicateKey = (participant) => {
       if (participant.athleteNumber) return `athlete:${participant.athleteNumber}:${normalize(participant.event)}`;
       const idCard = normalize(participant.idCard);
-      if (idCard) return `id:${idCard}`;
+      if (idCard) return getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE ? `id:${idCard}:${normalize(participant.event)}` : `id:${idCard}`;
       return `person:${[participant.name, participant.schoolName || participant.teamName, participant.gender, participant.ageGroup || participant.grade, participant.event].map(normalize).join('|')}`;
     };
     const readableError = (error) => {
@@ -1154,10 +1160,14 @@ exports.importParticipants = async (req, res, next) => {
           delete participantData.athleteNumber;
         }
         const key = duplicateKey(participantData);
+        if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+          const error = validateTrampolineRegistration(competition, participantData);
+          if (error) throw new Error(error);
+        }
         if (importedKeys.has(key)) throw new Error('与本次 Excel 中已成功导入的报名重复');
         const existingQuery = participantData.athleteNumber
           ? { competition: competitionId, athleteNumber: participantData.athleteNumber, event: participantData.event }
-          : participantData.idCard
+          : participantData.idCard && getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE
           ? { competition: competitionId, idCard: participantData.idCard }
           : { competition: competitionId, name: participantData.name, schoolName: participantData.schoolName, gender: participantData.gender, ageGroup: participantData.ageGroup || participantData.grade, event: participantData.event };
         if (await Participant.exists(existingQuery)) throw new Error('该报名已成功导入，不能重复导入');
