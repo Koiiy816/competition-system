@@ -47,6 +47,13 @@ test('approved registration can change event and returns to review, preserving i
   assert.equal(options.runValidators, true);
 }));
 
+test('organization can standardize its representative unit name when editing a registration', () => fixture(async x => {
+  x.req.body.schoolName = '  统一代表单位  ';
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(x.state.writes[0].update.$set.schoolName, '统一代表单位');
+  assert.equal(x.state.writes[0].update.$set.status, 'pending');
+}));
+
 const cases = [
   ['switch off', x => { x.state.enabled = false; }, 403],
   ['missing switch', x => { x.state.enabled = undefined; }, 403],
@@ -74,6 +81,8 @@ const cases = [
   ['date of birth restriction', x => { x.competition.ageGroups[0].birthDateStart = '2020-01-01'; }, 400],
   ['required event detail', x => { x.competition.events[1].registrationDetail = { required: true }; }, 400],
   ['detail too long', x => { x.req.body.eventDetail = 'x'.repeat(101); }, 400],
+  ['blank representative unit', x => { x.req.body.schoolName = '   '; }, 400],
+  ['representative unit too long', x => { x.req.body.schoolName = 'x'.repeat(101); }, 400],
   ['team number required', x => { x.req.body.event = '集体拳'; }, 400],
   ['protected fields', x => { x.req.body.status = 'approved'; }, 400],
   ['operator injection', x => { x.req.body.$set = { user: 'other' }; }, 400],

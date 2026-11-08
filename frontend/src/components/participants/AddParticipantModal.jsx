@@ -608,7 +608,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 value={formData.idCard}
                 onChange={handleChange}
                 error={!!errors.idCard}
-                helperText={errors.idCard || "大陆居民身份证及港澳台居民居住证可自动识别生日和性别；香港/澳门本地身份证、护照等请手动填写"}
+                helperText={errors.idCard || "可填写大陆、港澳台及海外护照等任何有效证件号码。大陆居民身份证及港澳台居民居住证可自动识别生日和性别；其他证件请手动填写。"}
               />
             </Grid>
 

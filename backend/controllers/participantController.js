@@ -620,9 +620,10 @@ exports.updateRegistrationContent = async (req, res, next) => {
       try { await resolveAthleteNumber({ ...participant.toObject(), user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return fail(error.statusCode || 500, error.message); }
     }
-    const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'updatedAt', 'athleteNumber'];
+    const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'schoolName', 'updatedAt', 'athleteNumber'];
     if (!req.body || Object.keys(req.body).some(key => !allowed.includes(key))) return fail(400, '提交了不允许修改的字段');
-    if (allowed.some(key => typeof req.body[key] !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
+    const required = allowed.filter(key => key !== 'schoolName');
+    if (required.some(key => typeof req.body[key] !== 'string') || (req.body.schoolName !== undefined && typeof req.body.schoolName !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
     if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return fail(409, '报名已被修改，请刷新后重试');
     const eventName = req.body.event.trim();
     const event = competition.events.find(item => item.name === eventName);
@@ -630,6 +631,9 @@ exports.updateRegistrationContent = async (req, res, next) => {
     const ageGroup = req.body.ageGroup.trim();
     if (ageGroup !== normalizeRuleValue(participant.ageGroup || participant.grade)) return fail(400, '参赛单位不能修改组别，如需更正请联系管理员');
     if (competition.ageGroups?.length && !competition.ageGroups.some(group => normalizeRuleValue(group) === ageGroup)) return fail(400, '请选择本赛事的年龄组别');
+    const schoolName = String(req.body.schoolName ?? participant.schoolName ?? '').trim();
+    if (!schoolName) return fail(400, '请填写代表单位 / 学校');
+    if (schoolName.length > 100) return fail(400, '代表单位 / 学校不能超过100个字符');
     const ruleError = validateRegistrationAgainstCompetition({ competition, body: { ...participant.toObject(), event: eventName, ageGroup, grade: ageGroup } });
     if (ruleError) return fail(400, ruleError);
     const detail = req.body.eventDetail.trim();
@@ -658,7 +662,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
       { _id: participant._id, user: req.user.id, competition: participant.competition,
         updatedAt: participant.updatedAt, status: participant.status, athleteNumber: participant.athleteNumber,
         isCheckedIn: { $ne: true }, checkInStatus: { $nin: ['checked', 'absent'] } },
-      { $set: { event: eventName, groupTeam,
+      { $set: { event: eventName, groupTeam, schoolName,
         category: event.category || '', manualEventGroup: '', status: 'pending',
         additionalInfo: { ...participant.additionalInfo, eventDetail: detail,
           eventDetailLabel: event.registrationDetail?.label || '' },

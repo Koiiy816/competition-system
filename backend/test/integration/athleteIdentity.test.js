@@ -43,7 +43,7 @@ test('real MongoDB and HTTP: identity lifecycle, privacy, ownership, fees and le
       }
     }
     await toggle('wushu_registration_edit_enabled', true);
-    const edit = { athleteNumber: number, event: '刀术', ageGroup: 'A组', groupTeam: '', eventDetail: '', updatedAt: third.body.data.updatedAt };
+    const edit = { athleteNumber: number, schoolName: '联调武术馆（规范名称）', event: '刀术', ageGroup: 'A组', groupTeam: '', eventDetail: '', updatedAt: third.body.data.updatedAt };
     const editPath = `${path}/${third.body.data._id}/registration-content`;
     const missing = { ...edit }; delete missing.athleteNumber;
     assert.equal((await f.request(editPath, { method: 'PUT', body: missing })).status, 409);
@@ -58,6 +58,7 @@ test('real MongoDB and HTTP: identity lifecycle, privacy, ownership, fees and le
     const updated = await f.request(editPath, { method: 'PUT', body: edit });
     assert.equal(updated.status, 200, JSON.stringify(updated.body));
     assert.equal(updated.body.data.athleteNumber, number);
+    assert.equal(updated.body.data.schoolName, '联调武术馆（规范名称）');
     assert.equal(updated.body.data.ageGroup, 'A组');
     assert.equal(updated.body.data.grade, 'A组');
     assert.equal((await f.request(editPath, { method: 'PUT', body: edit })).status, 409);

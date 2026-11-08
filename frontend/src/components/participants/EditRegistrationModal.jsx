@@ -14,7 +14,7 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
     setForm(null);
     setError('');
     if (participant) {
-      setForm({ athleteNumber: participant.athleteNumber || '', event: participant.event || '', ageGroup: participant.ageGroup || participant.grade || '', groupTeam: participant.groupTeam || '', eventDetail: participant.additionalInfo?.eventDetail || '', updatedAt: participant.updatedAt });
+      setForm({ athleteNumber: participant.athleteNumber || '', schoolName: participant.schoolName || '', event: participant.event || '', ageGroup: participant.ageGroup || participant.grade || '', groupTeam: participant.groupTeam || '', eventDetail: participant.additionalInfo?.eventDetail || '', updatedAt: participant.updatedAt });
       competitionService.getCompetition(participant.competition?._id || participant.competition)
         .then(response => { if (active) setCompetition(response.data); })
         .catch(err => { if (active) setError(err.message || '获取比赛失败'); });
@@ -32,7 +32,7 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
     finally { setSaving(false); }
   };
   return <Dialog open={Boolean(participant)} onClose={saving ? undefined : onClose} fullWidth maxWidth="sm">
-    <DialogTitle>编辑报名项目</DialogTitle>
+    <DialogTitle>编辑报名信息</DialogTitle>
     <DialogContent>
       <Typography sx={{ mb: 2 }}>{participant?.name} · {participant?.schoolName}</Typography>
       <Typography sx={{ mb: 2 }}>参赛者编号：{participant?.athleteNumber || '待管理员完成补号'}</Typography>
@@ -44,10 +44,11 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
           {(competition.events || []).map(item => <MenuItem key={item.name} value={item.name}>{item.displayName || item.name}</MenuItem>)}
         </TextField>
         <TextField fullWidth label="年龄组别" margin="normal" value={form.ageGroup} disabled helperText="组别不可自行修改，如需更正请联系管理员" />
+        <TextField fullWidth required label="代表单位 / 学校" margin="normal" value={form.schoolName} disabled={saving} inputProps={{ maxLength: 100 }} helperText="请统一填写本次报名使用的代表单位名称" onChange={e => setForm({ ...form, schoolName: e.target.value })} />
         {event?.isGroupEvent && <TextField fullWidth required label="队伍编号" margin="normal" value={form.groupTeam} disabled={saving} inputProps={{ maxLength: 30 }} onChange={e => setForm({ ...form, groupTeam: e.target.value })} />}
         <TextField fullWidth label={event?.registrationDetail?.label || '项目补充说明'} required={event?.registrationDetail?.required} margin="normal" value={form.eventDetail} disabled={saving} inputProps={{ maxLength: event?.registrationDetail?.maxLength || 100 }} onChange={e => setForm({ ...form, eventDetail: e.target.value })} />
       </>}
     </DialogContent>
-    <DialogActions><Button onClick={onClose} disabled={saving}>取消</Button><Button variant="contained" onClick={save} disabled={saving || !competition || !form?.event || !participant?.athleteNumber}>{saving ? '保存中…' : '保存并提交审核'}</Button></DialogActions>
+    <DialogActions><Button onClick={onClose} disabled={saving}>取消</Button><Button variant="contained" onClick={save} disabled={saving || !competition || !form?.event || !form?.schoolName?.trim() || !participant?.athleteNumber}>{saving ? '保存中…' : '保存并提交审核'}</Button></DialogActions>
   </Dialog>;
 }

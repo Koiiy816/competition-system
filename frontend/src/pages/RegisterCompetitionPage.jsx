@@ -939,7 +939,7 @@ const RegisterCompetitionPage = () => {
             value={formData.idCard}
             onChange={handleFormChange}
             error={!!formErrors.idCard}
-            helperText={formErrors.idCard || (isAdmin ? '管理员手动新增可留空' : '大陆居民身份证及港澳台居民居住证可自动识别出生日期、性别和年龄组；香港/澳门本地身份证、护照等请手动填写生日和性别')}
+            helperText={formErrors.idCard || (isAdmin ? '管理员手动新增可留空' : '可填写大陆、港澳台及海外护照等任何有效证件号码。大陆居民身份证及港澳台居民居住证可自动识别出生日期、性别和年龄组；其他证件请手动填写生日和性别。')}
           />
         </Grid>
 

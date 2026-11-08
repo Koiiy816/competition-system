@@ -1625,7 +1625,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                       )}
                       
                       {!isAdminOrChiefReferee && canEditRegistration(participant) && (
-                        <Tooltip title="编辑报名项目"><IconButton color="primary" size="small" aria-label="编辑报名项目" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
+                        <Tooltip title="编辑报名信息"><IconButton color="primary" size="small" aria-label="编辑报名信息" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
                       )}
                       <Tooltip title="删除">
                         <IconButton 
@@ -1711,7 +1711,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           </>
         )}
         {!isAdminOrChiefReferee && canEditRegistration(participant) && (
-  <Tooltip title="编辑报名项目"><IconButton color="primary" size="small" aria-label="编辑报名项目" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
+  <Tooltip title="编辑报名信息"><IconButton color="primary" size="small" aria-label="编辑报名信息" onClick={() => setRegistrationEditing(participant)}><EditIcon /></IconButton></Tooltip>
 )}
 <Tooltip title="删除">
           <IconButton
@@ -2412,7 +2412,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       }} />
       <EditRegistrationModal participant={registrationEditing} onClose={() => setRegistrationEditing(null)} onSuccess={() => {
         setRegistrationEditing(null);
-        setSuccessMessage('报名项目已修改，请等待重新审核');
+        setSuccessMessage('报名信息已修改，请等待重新审核');
         refreshLists();
       }} />
       {/* 添加参赛者模态框 */}
