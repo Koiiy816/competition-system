@@ -13,5 +13,7 @@ test('imports every row from the four-column trampoline difficulty table', () =>
 test('looks up each applicable difficulty by action code and posture', () => {
   assert.deepEqual(findTrampolineDifficulties('11003', '< /').map(({ difficulty }) => difficulty), [2]);
   assert.deepEqual(findTrampolineDifficulties('50').map(({ difficulty }) => difficulty), [0.6, 0.7]);
+  assert.deepEqual(findTrampolineDifficulties('30', '<').map(({ difficulty }) => difficulty), [0.3]);
+  assert.deepEqual(findTrampolineDifficulties('50', '/').map(({ difficulty }) => difficulty), [0.7]);
   assert.equal(findTrampolineDifficulties('999').length, 0);
 });

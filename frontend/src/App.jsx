@@ -43,6 +43,7 @@ import AdminPage from './pages/AdminPage';
 import TestPage from './pages/TestPage';
 import DivingActionPlanPage from './pages/DivingActionPlanPage';
 import TrampolineDifficultyTablePage from './pages/TrampolineDifficultyTablePage';
+import TrampolineActionPlanPage from './pages/TrampolineActionPlanPage';
 
 const theme = createTheme({
   palette: {
@@ -254,6 +255,14 @@ function App() {
             </ProtectedRoute>
           }>
             <Route index element={<DivingActionPlanPage />} />
+          </Route>
+
+          <Route path="/trampoline-action-plans" element={
+            <ProtectedRoute allowedRoles={['organization', 'admin', 'chief_referee', 'referee']}>
+              <MainLayout />
+            </ProtectedRoute>
+          }>
+            <Route index element={<TrampolineActionPlanPage />} />
           </Route>
 
           {/* 受保护路由 - 需要特定角色 */}

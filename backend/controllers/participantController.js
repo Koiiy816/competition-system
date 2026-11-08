@@ -1438,6 +1438,24 @@ const normalizeDivingPlan = (plan, participant) => {
   };
 };
 
+const normalizeTrampolinePlan = (plan) => {
+  const actions = Array.isArray(plan?.actions) ? plan.actions : [];
+  if (actions.length < 10) throw new Error('请至少填写 10 个动作');
+  const normalizedActions = actions.map((action, index) => {
+    const actionCode = String(action?.actionCode || '').normalize('NFKC').trim().toUpperCase().replace(/\s+/g, '');
+    const posture = String(action?.posture || '').trim();
+    const hasDifficulty = action?.difficulty !== '' && action?.difficulty !== null && action?.difficulty !== undefined;
+    const difficulty = hasDifficulty ? Number(action.difficulty) : undefined;
+    if (!actionCode) throw new Error(`第 ${index + 1} 个动作代码不能为空`);
+    if (!/^\d+$/.test(actionCode)) throw new Error(`第 ${index + 1} 个动作代码只能填写数字部分`);
+    if (!posture) throw new Error(`请选择第 ${index + 1} 个动作的姿势`);
+    if (hasDifficulty && (!Number.isFinite(difficulty) || difficulty <= 0 || difficulty > 10)) throw new Error(`第 ${index + 1} 个动作难度系数无效`);
+    return { actionCode, posture, ...(hasDifficulty ? { difficulty } : {}) };
+  });
+  const totalDifficulty = Math.round(normalizedActions.reduce((total, action) => total + (action.difficulty || 0), 0) * 100) / 100;
+  return { actions: normalizedActions, totalDifficulty };
+};
+
 exports.saveDivingPlan = async (req, res, next) => {
   try {
     const participant = await Participant.findOne({ _id: req.params.id, competition: req.params.competitionId, isVirtualTeam: { $ne: true } });
@@ -1461,5 +1479,27 @@ exports.saveDivingPlan = async (req, res, next) => {
     }
     res.status(200).json({ success: true, message: pairId ? '双人共用动作表已保存并同步到两位搭档' : '动作表已保存', data: participant, syncedCount });  } catch (error) {
     next(error);
+  }
+};
+
+exports.saveTrampolinePlan = async (req, res, next) => {
+  try {
+    const participant = await Participant.findOne({ _id: req.params.id, competition: req.params.competitionId, isVirtualTeam: { $ne: true } });
+    if (!participant) return res.status(404).json({ success: false, message: '未找到该报名记录' });
+    const competition = await Competition.findById(participant.competition).select('sportType type');
+    if (!competition || getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(400).json({ success: false, message: '仅蹦床项目可以补录动作表' });
+
+    const roles = req.user.roles || [];
+    const canManageAll = roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role));
+    const isTrampolineOrganization = roles.includes('organization') && Array.isArray(req.user.sportTypes) && req.user.sportTypes.includes(SPORT_TYPES.TRAMPOLINE);
+    if (!canManageAll && (!isTrampolineOrganization || participant.user?.toString() !== req.user.id)) return res.status(403).json({ success: false, message: '没有权限补录该蹦床动作表' });
+
+    let trampolinePlan;
+    try { trampolinePlan = normalizeTrampolinePlan(req.body); } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+    participant.additionalInfo = { ...(participant.additionalInfo || {}), trampolinePlan };
+    await participant.save();
+    return res.status(200).json({ success: true, message: `蹦床动作表已保存，预计难度总分 ${trampolinePlan.totalDifficulty.toFixed(2)}`, data: participant });
+  } catch (error) {
+    return next(error);
   }
 };

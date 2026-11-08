@@ -296,6 +296,15 @@ const participantService = {
     } catch (error) {
       throw error.response ? error.response.data : { message: '保存跳水动作表失败' };
     }
+  },
+
+  saveTrampolinePlan: async (competitionId, participantId, plan) => {
+    try {
+      const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/trampoline-plan`, plan);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '保存蹦床动作表失败' };
+    }
   }
 };
 

@@ -60,6 +60,13 @@ router.put(
 );
 
 router.put(
+  '/:id/trampoline-plan',
+  auth,
+  authorize('admin', 'chief_referee', 'referee', 'organization'),
+  participantController.saveTrampolinePlan
+);
+
+router.put(
   '/:id/diving-pair',
   auth,
   authorize('admin', 'chief_referee', 'organization'),

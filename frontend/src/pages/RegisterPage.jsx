@@ -11,9 +11,9 @@ import {
   TextField,
   FormControl,
   FormLabel,
-  FormGroup,
   FormControlLabel,
-  Checkbox,
+  RadioGroup,
+  Radio,
   FormHelperText,
   Alert,
   Button,
@@ -64,8 +64,8 @@ const RegisterPage = () => {
       toast.error('两次输入的密码不一致');
       return;
     }
-    if (selectedRoles.includes('organization') && sportTypes.length === 0) {
-      toast.error('请至少选择一种可参与赛事类型');
+    if (selectedRoles.includes('organization') && sportTypes.length !== 1) {
+      toast.error('请选择一种可参与赛事类型');
       return;
     }
     setLoading(true);
@@ -113,22 +113,19 @@ const RegisterPage = () => {
           {selectedRoles.includes('organization') && (
             <FormControl component="fieldset" margin="normal" required>
               <FormLabel component="legend">可参与赛事类型</FormLabel>
-              <FormGroup row>
+              <RadioGroup row value={sportTypes[0] || ''} onChange={(event) => setSportTypes([event.target.value])}>
                 {PARTICIPATION_SPORT_TYPES.map((sport) => (
                   <FormControlLabel
                     key={sport.value}
-                    control={<Checkbox
-                      checked={sportTypes.includes(sport.value)}
-                      onChange={(event) => setSportTypes((current) => event.target.checked
-                        ? [...current, sport.value]
-                        : current.filter((type) => type !== sport.value))}
+                    control={<Radio
+                      value={sport.value}
                       disabled={sport.disabled || isLinkedSportType}
                     />}
                     label={sport.label}
                   />
                 ))}
-              </FormGroup>
-              <FormHelperText>{isLinkedSportType ? '您正从赛事报名入口注册，系统已自动分配对应赛事类型。以后可在单位资料中调整。' : '系统将只展示所选类型的赛事；以后可在单位资料中调整。'}</FormHelperText>
+              </RadioGroup>
+              <FormHelperText>{isLinkedSportType ? '您正从赛事报名入口注册，系统已自动分配对应赛事类型。' : '请选择一个赛事类型；系统将只展示该类型的赛事。'}</FormHelperText>
             </FormControl>
           )}
           {selectedRoles.includes('organization') && (

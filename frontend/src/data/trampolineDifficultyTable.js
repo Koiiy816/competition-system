@@ -25,13 +25,14 @@ export const trampolineDifficultyTable = Object.freeze(rows.map((row) => {
   return Object.freeze({ code, posture, difficulty: Number(difficulty), sourceColumn: Number(sourceColumn) });
 }));
 
-export const trampolinePostures = Object.freeze([...new Set(trampolineDifficultyTable.map(({ posture }) => posture))]);
+// 原表中“o < /”表示该动作可使用多个姿势，录入时按单个姿势选择即可。
+export const trampolinePostures = Object.freeze([...new Set(trampolineDifficultyTable.flatMap(({ posture }) => posture.split(/\s+/)))].sort());
 
 export function findTrampolineDifficulties(code, posture) {
   const normalizedCode = String(code || '').trim();
   const normalizedPosture = String(posture || '').trim();
   return trampolineDifficultyTable.filter((entry) => (
     (!normalizedCode || entry.code === normalizedCode)
-    && (!normalizedPosture || entry.posture === normalizedPosture)
+    && (!normalizedPosture || entry.posture === normalizedPosture || entry.posture.split(/\s+/).includes(normalizedPosture))
   ));
 }

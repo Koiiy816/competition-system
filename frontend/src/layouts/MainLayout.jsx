@@ -65,6 +65,7 @@ const MainLayout = () => {
 
   const isAdmin = Boolean(user?.roles?.includes('admin'));
   const hasDivingAccess = isAdmin || Boolean(user?.sportTypes?.includes('diving')) || hasDivingRegistration;
+  const hasTrampolineAccess = isAdmin || Boolean(user?.sportTypes?.includes('trampoline'));
 
   useEffect(() => {
     let cancelled = false;
@@ -160,7 +161,11 @@ const MainLayout = () => {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
       }
 
-      if (user.roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role))) {
+      if (user.roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
+        pages.push({ title: '补录蹦床动作表', path: '/trampoline-action-plans' });
+      }
+
+      if (user.roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
         pages.push({ title: '蹦床难度系数表', path: '/trampoline-difficulties' });
       }
 
