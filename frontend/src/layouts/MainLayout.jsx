@@ -26,6 +26,8 @@ import participantService from '../services/participantService';
 import { isDivingCompetition } from '../utils/competitionType';
 
 const isDivingRegistration = (participant) => isDivingCompetition(participant?.competition);
+const workspaceLabels = { wushu: '武术', diving: '跳水', trampoline: '蹦床' };
+const isWorkspace = (value) => Object.prototype.hasOwnProperty.call(workspaceLabels, value);
 
 const BrandLogo = ({ mobile = false }) => (
   <Box
@@ -62,6 +64,11 @@ const MainLayout = () => {
   const [anchorElNav, setAnchorElNav] = useState(null);
   const [anchorElUser, setAnchorElUser] = useState(null);
   const [hasDivingRegistration, setHasDivingRegistration] = useState(false);
+  const routeQuery = new URLSearchParams(location.search);
+  // 工作区由 URL 保存；刷新、复制链接或在工作区内跳转后都不会丢失上下文。
+  const workspaceSportType = routeQuery.get('workspace') || routeQuery.get('sportType') || '';
+  const activeWorkspace = isWorkspace(workspaceSportType) ? workspaceSportType : '';
+  const activeWorkspaceLabel = workspaceLabels[activeWorkspace] || '';
 
   const isAdmin = Boolean(user?.roles?.includes('admin'));
   const hasDivingAccess = isAdmin || Boolean(user?.sportTypes?.includes('diving')) || hasDivingRegistration;
@@ -103,8 +110,17 @@ const MainLayout = () => {
     setAnchorElUser(null);
   };
 
+  const workspacePath = (path) => {
+    if (!isAdmin || !activeWorkspace || path === '/') return path;
+    const [pathname, search = ''] = path.split('?');
+    const params = new URLSearchParams(search);
+    params.set('workspace', activeWorkspace);
+    if (pathname === '/competitions') params.set('sportType', activeWorkspace);
+    return `${pathname}?${params.toString()}`;
+  };
+
   const handleMenuClick = (path) => {
-    navigate(path);
+    navigate(workspacePath(path));
     handleCloseNavMenu();
   };
 
@@ -119,9 +135,25 @@ const MainLayout = () => {
       return [{ title: '首页', path: '/' }];
     }
 
-    const pages = [
-      { title: '首页', path: '/' },
-    ];
+    const pages = [{ title: '首页', path: '/' }];
+
+    // 管理员必须先从首页选择武术、跳水或蹦床工作区。这样不相关的动作表和
+    // 计分入口不会同时堆在导航栏里；全局管理能力仍保留在右上角用户菜单。
+    if (isAdmin) {
+      if (!activeWorkspace) return pages;
+      pages.push({ title: `${activeWorkspaceLabel}赛事`, path: `/competitions?sportType=${activeWorkspace}` });
+      pages.push({ title: '赛程', path: '/schedule' });
+      pages.push({ title: '参赛者管理', path: '/admin/participants' });
+      pages.push({ title: '检录', path: '/checkin' });
+      pages.push({ title: '裁判打分', path: '/competitions' });
+      pages.push({ title: '成绩', path: '/results' });
+      if (activeWorkspace === 'diving') pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
+      if (activeWorkspace === 'trampoline') {
+        pages.push({ title: '补录蹦床动作表', path: '/trampoline-action-plans' });
+        pages.push({ title: '蹦床难度系数表', path: '/trampoline-difficulties' });
+      }
+      return pages;
+    }
 
     const canViewScheduleResults = user?.roles && user.roles.some(role => ['organization', 'admin', 'referee', 'chief_referee', 'checkin_clerk'].includes(role));
 
@@ -132,54 +164,40 @@ const MainLayout = () => {
 
     if (isAuthenticated && user?.roles) {
       // 4. 参赛者管理 (管理员)
-      if (user.roles.includes('admin')) {
-        pages.push({ title: '参赛者管理', path: '/admin/participants' });
-      }
-
-      if (user.roles.includes('admin') || user.roles.includes('chief_referee') || user.roles.includes('checkin_clerk')) {
+      if (user.roles.includes('chief_referee') || user.roles.includes('checkin_clerk')) {
         pages.push({ title: '检录', path: '/checkin' });
       }
       
       // 裁判专用入口 (主裁判、裁判)
-      if (user.roles.includes('admin') || user.roles.includes('chief_referee') || user.roles.includes('referee')) {
+      if (user.roles.includes('chief_referee') || user.roles.includes('referee')) {
         pages.push({ title: '裁判打分', path: '/competitions' }); // 临时入口，后续可改成单独的赛程列表
       }
     }
 
     // 5. 成绩 (管理员和观赛者可见)
-    if (isAuthenticated && user?.roles && (user.roles.includes('admin') || user.roles.includes('spectator'))) {
+    if (isAuthenticated && user?.roles && user.roles.includes('spectator')) {
       pages.push({ title: '成绩', path: '/results' });
     }
 
     if (isAuthenticated && user?.roles) {
       // 6. 我的报名 (参赛单位)
-      if (user.roles.includes('organization') || user.roles.includes('admin')) {
+      if (user.roles.includes('organization')) {
         pages.push({ title: '我的报名', path: '/my-registrations' });
       }
 
-      if (isAdmin || (user.roles.includes('organization') && hasDivingAccess)) {
+      if (user.roles.includes('organization') && hasDivingAccess) {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
       }
 
-      if (user.roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
+      if (user.roles.some((role) => ['chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
         pages.push({ title: '补录蹦床动作表', path: '/trampoline-action-plans' });
       }
 
-      if (user.roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
+      if (user.roles.some((role) => ['chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
         pages.push({ title: '蹦床难度系数表', path: '/trampoline-difficulties' });
       }
 
-      // 7. 创建比赛 (管理员)
-      if (user.roles.includes('admin')) {
-        pages.push({ title: '创建比赛', path: '/admin/competitions/create' });
-      }
-
-      // 7. 后台管理 (管理员)
-      if (user.roles.includes('admin')) {
-        pages.push({ title: '后台管理', path: '/admin' });
-      }
-
-      // 8. 控制面板
+      // 控制面板
       pages.push({ title: '控制面板', path: '/dashboard' });
     }
 
@@ -300,7 +318,7 @@ const MainLayout = () => {
               </Typography>
             </Box>
             {/* Desktop menu */}
-            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' } }}>
+            <Box sx={{ flexGrow: 1, display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
               {pages.map((page) => (
                 <Button
                   key={page.title}

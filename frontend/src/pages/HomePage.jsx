@@ -91,7 +91,7 @@ export default function HomePage() {
       </Box>
     </Paper>
     <Box sx={{ mb: 2 }}><Typography variant="h4" component="h2" fontWeight={900}>{isOrganizationPortal ? '我的赛事服务' : '选择赛事工作区'}</Typography><Typography color="text.secondary" sx={{ mt: .75 }}>{isOrganizationPortal ? '只显示本单位可参与的赛事类型。' : '每个入口只展示该赛事类型适用的管理功能。'}</Typography></Box>
-    <Grid container spacing={3}>{visibleWorkspaces.map((workspace) => <Grid item xs={12} md={visibleWorkspaces.length === 1 ? 12 : 6} key={workspace.key}><WorkspaceCard workspace={workspace} onOpen={() => navigate(`/competitions?sportType=${workspace.key}`)} /></Grid>)}</Grid>
+    <Grid container spacing={3}>{visibleWorkspaces.map((workspace) => <Grid item xs={12} md={visibleWorkspaces.length === 1 ? 12 : 6} key={workspace.key}><WorkspaceCard workspace={workspace} onOpen={() => navigate(`/competitions?sportType=${workspace.key}&workspace=${workspace.key}`)} /></Grid>)}</Grid>
     <Paper variant="outlined" sx={{ mt: 4, p: { xs: 2.5, sm: 3 }, borderRadius: 3, display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
       <Box><Typography fontWeight={800}>还没有对应类型的赛事？</Typography><Typography variant="body2" color="text.secondary" sx={{ mt: .5 }}>{isAdmin ? '创建赛事时先确定类型，系统会自动启用对应工作流程。' : '可先进入赛事大厅浏览已发布的武术或跳水赛事。'}</Typography></Box>
       <Button variant="contained" onClick={() => navigate(isAdmin ? '/admin/competitions/create' : '/competitions')}>{isAdmin ? '创建赛事' : '浏览赛事'}</Button>
