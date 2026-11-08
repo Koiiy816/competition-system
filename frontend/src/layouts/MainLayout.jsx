@@ -160,6 +160,10 @@ const MainLayout = () => {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
       }
 
+      if (user.roles.some((role) => ['admin', 'chief_referee', 'referee'].includes(role))) {
+        pages.push({ title: '蹦床难度系数表', path: '/trampoline-difficulties' });
+      }
+
       // 7. 创建比赛 (管理员)
       if (user.roles.includes('admin')) {
         pages.push({ title: '创建比赛', path: '/admin/competitions/create' });
