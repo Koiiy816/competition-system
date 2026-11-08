@@ -44,6 +44,7 @@ import TestPage from './pages/TestPage';
 import DivingActionPlanPage from './pages/DivingActionPlanPage';
 import TrampolineDifficultyTablePage from './pages/TrampolineDifficultyTablePage';
 import TrampolineActionPlanPage from './pages/TrampolineActionPlanPage';
+import DivingDifficultyTablePage from './pages/DivingDifficultyTablePage';
 
 const theme = createTheme({
   palette: {
@@ -118,6 +119,7 @@ function App() {
             <Route path="unauthorized" element={<UnauthorizedPage />} />
             <Route path="test" element={<TestPage />} />
             <Route path="trampoline-difficulties" element={<TrampolineDifficultyTablePage />} />
+            <Route path="diving-difficulties" element={<DivingDifficultyTablePage />} />
           </Route>
 
           {/* 赛事资料仅在登录后按单位权限展示 */}

@@ -147,7 +147,10 @@ const MainLayout = () => {
       pages.push({ title: '检录', path: '/checkin' });
       pages.push({ title: '裁判打分', path: '/competitions' });
       pages.push({ title: '成绩', path: '/results' });
-      if (activeWorkspace === 'diving') pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
+      if (activeWorkspace === 'diving') {
+        pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
+        pages.push({ title: '跳水难度系数表', path: '/diving-difficulties' });
+      }
       if (activeWorkspace === 'trampoline') {
         pages.push({ title: '补录蹦床动作表', path: '/trampoline-action-plans' });
         pages.push({ title: '蹦床难度系数表', path: '/trampoline-difficulties' });
@@ -185,8 +188,9 @@ const MainLayout = () => {
         pages.push({ title: '我的报名', path: '/my-registrations' });
       }
 
-      if (user.roles.includes('organization') && hasDivingAccess) {
+      if (user.roles.some((role) => ['chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasDivingAccess)) {
         pages.push({ title: '补录跳水动作表', path: '/diving-action-plans' });
+        pages.push({ title: '跳水难度系数表', path: '/diving-difficulties' });
       }
 
       if (user.roles.some((role) => ['chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
