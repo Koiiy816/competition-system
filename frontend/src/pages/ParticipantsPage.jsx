@@ -193,6 +193,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     { key: 'paperRegistrationForm', label: '纸质版报名表' }
   ];
   const documentParticipantOptions = [...new Map(participants.map(participant => [participant.name || participant.teamName || participant._id, participant])).values()];
+  const participantDocumentGroups = [...participants.reduce((groups, participant) => {
+    const key = participant.name || participant.teamName || participant._id;
+    const group = groups.get(key) || { key, name: participant.name || participant.teamName || '未命名选手', ids: [] };
+    group.ids.push(String(participant._id));
+    groups.set(key, group);
+    return groups;
+  }, new Map()).values()];
 
   const uploadRegistrationDocument = async (key, file) => {
     if (!file || !filters.competitionId) return;
@@ -2327,6 +2334,20 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                   );
                 })}
                 <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>支持 PDF、JPG、PNG，单份不超过 10MB。</Typography>
+                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Typography variant="subtitle2" gutterBottom>选手材料提交状态</Typography>
+                  {participantDocumentGroups.map(group => (
+                    <Box key={group.key} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Typography variant="body2" fontWeight="medium">{group.name}</Typography>
+                      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                        {registrationDocumentSlots.map(({ key, label }) => {
+                          const count = (registrationDocuments?.attachments || []).filter(document => document.type === key && group.ids.includes(String(document.participant))).length;
+                          return <Typography key={key} variant="caption" color={count ? 'success.main' : 'warning.main'}>{label}：{count ? `已提交 ${count} 份` : '待补交'}</Typography>;
+                        })}
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
               </Paper>
             )}
           </Box>
