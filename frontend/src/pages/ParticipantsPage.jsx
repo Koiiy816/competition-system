@@ -192,6 +192,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     { key: 'insurance', label: '比赛当天保险' },
     { key: 'paperRegistrationForm', label: '纸质版报名表' }
   ];
+  const documentParticipantOptions = [...new Map(participants.map(participant => [participant.name || participant.teamName || participant._id, participant])).values()];
 
   const uploadRegistrationDocument = async (key, file) => {
     if (!file || !filters.competitionId) return;
@@ -2294,7 +2295,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                   <InputLabel id="document-participant-label">关联参赛者（选填）</InputLabel>
                   <Select labelId="document-participant-label" value={registrationDocumentParticipantId} label="关联参赛者（选填）" onChange={event => setRegistrationDocumentParticipantId(event.target.value)}>
                     <MenuItem value="">不关联具体参赛者</MenuItem>
-                    {participants.map(participant => <MenuItem key={participant._id} value={participant._id}>{participant.name || participant.teamName} · {participant.event}</MenuItem>)}
+                    {documentParticipantOptions.map(participant => <MenuItem key={participant._id} value={participant._id}>{participant.name || participant.teamName}</MenuItem>)}
                   </Select>
                 </FormControl>
                 {registrationDocumentsLoading ? <CircularProgress size={24} /> : registrationDocumentSlots.map(({ key, label }) => {

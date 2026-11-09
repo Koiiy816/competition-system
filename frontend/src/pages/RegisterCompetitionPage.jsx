@@ -1284,6 +1284,8 @@ const RegisterCompetitionPage = () => {
                   <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
                     <Typography>
                       {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {getAgeGroupDisplayName(competition, item.data.grade) || '-'} · {getEventLabel(item.data.event) || '-'}{photoSummary(item.photo)}
+                      {item.documents?.riskNotice ? ' · 已选告知书' : ''}
+                      {item.documents?.insurance ? ' · 已选保险' : ''}
                       {item.data.additionalInfo?.divingPlan ? ' · ' + divingPlanSummary(item.data.additionalInfo.divingPlan, item.data.additionalInfo?.divingPair) : ''}
                     </Typography>
                     <Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>删除</Button>
