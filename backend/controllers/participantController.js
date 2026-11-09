@@ -149,6 +149,9 @@ const validateDivingPairPayload = (body) => {
  */
 exports.getParticipants = async (req, res, next) => {
   try {
+    const ownSchoolRegistrations = req.query.groupBy === 'school' && req.user?.roles?.includes('organization')
+      && !req.user.roles.some(role => ['admin', 'chief_referee', 'referee', 'checkin_clerk'].includes(role));
+    const exportSchoolRegistrations = req.query.groupBy === 'school' && req.query.exportPdf === 'true';
     // 独立的只读汇总分支。每次请求读取开关，关闭后完整沿用原列表逻辑。
     if (req.query.groupBy === 'school' && req.params.competitionId) {
       const setting = await require('../models/SystemSetting').findOne({ key: 'wushu_fee_summary_enabled' });
@@ -165,7 +168,7 @@ exports.getParticipants = async (req, res, next) => {
             .sort({ registrationDate: -1 }).lean())
             // type 是报名载体，项目“个人／集体”必须取自赛事项目配置。
             .map((row) => ({ ...row, isGroupEvent: groupEventNames.has(row.event) }));
-          const displayRows = req.query.myRegistrations === 'true' && req.user
+          const displayRows = (req.query.myRegistrations === 'true' || ownSchoolRegistrations) && req.user
             ? rows.filter(row => String(row.user?._id || row.user) === req.user.id) : rows;
           const groups = require('../utils/wushuFees').buildWushuFeeGroups(displayRows, req.query, rows);
           const count = groups.reduce((sum, group) => sum + group.participants.length, 0);
@@ -212,7 +215,7 @@ exports.getParticipants = async (req, res, next) => {
     }
 
     // 只查看自己的报名 (参赛单位功能)
-    if (req.query.myRegistrations === 'true' && req.user) {
+    if ((req.query.myRegistrations === 'true' || ownSchoolRegistrations) && req.user) {
       query.user = req.user.id;
     }
 
@@ -231,21 +234,21 @@ exports.getParticipants = async (req, res, next) => {
       .populate('user', 'name email')
       .populate('checkedInBy', 'name email')
       .populate('competition', 'name type sportType startDate endDate')
-      .skip(startIndex)
-      .limit(limit)
+      .skip(exportSchoolRegistrations ? 0 : startIndex)
+      .limit(exportSchoolRegistrations ? 0 : limit)
       .sort({ registrationDate: -1 });
 
     // 分页结果
     const pagination = {};
 
-    if (endIndex < total) {
+    if (!exportSchoolRegistrations && endIndex < total) {
       pagination.next = {
         page: page + 1,
         limit
       };
     }
 
-    if (startIndex > 0) {
+    if (!exportSchoolRegistrations && startIndex > 0) {
       pagination.prev = {
         page: page - 1,
         limit

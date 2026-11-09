@@ -62,7 +62,7 @@ router.put(
 router.put(
   '/:id/trampoline-plan',
   auth,
-  authorize('admin', 'chief_referee', 'referee', 'organization'),
+  authorize('admin'),
   participantController.saveTrampolinePlan
 );
 

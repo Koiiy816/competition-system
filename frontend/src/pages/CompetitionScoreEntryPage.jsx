@@ -141,7 +141,7 @@ const formatScheduleTime = (schedule) => {
   return schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : '';
 };
 
-export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus, hideParticipantName, scoringType, routineLabel, plannedDifficulty, showIdentity = true, identityRowSpan = 1, combinedScore }) => {
+export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus, hideParticipantName, scoringType, routineLabel, showIdentity = true, identityRowSpan = 1, combinedScore }) => {
   const [scores, setScores] = useState(Array(Math.max(5, judgeCount)).fill(''));
   const [deduction, setDeduction] = useState('');
   const [finalScore, setFinalScore] = useState(0);
@@ -276,8 +276,7 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
           </Box>
         )}
       </TableCell></>}
-      {routineLabel && <><TableCell align="center" sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{routineLabel}</TableCell>
-        <TableCell align="center">{plannedDifficulty == null ? '待补录' : Number(plannedDifficulty).toFixed(2)}</TableCell></>}
+      {routineLabel && <TableCell align="center" sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{routineLabel}</TableCell>}
       
       {renderIndices.map(idx => {
         // isMyField 决定了这个格子是否属于当前登录的裁判
@@ -409,7 +408,7 @@ export const LargeTrampolineScoreRows = (props) => {
   const combinedScore = initialResult?.details?.routines
     ? `${Number(initialResult.score || 0).toFixed(2)}${initialResult.status === 'verified' ? '' : '（待确认）'}` : '待两套评分';
   return <>{[0, 1].map(index => <ScoreRow {...props} key={index} initialResult={rowResults[index]}
-    routineLabel={`蹦床${index + 1}`} plannedDifficulty={getTrampolineRoutineD(routines?.[index])}
+    routineLabel={`蹦床${index + 1}`}
     showIdentity={index === 0} identityRowSpan={2} combinedScore={combinedScore}
     onSave={(participantId, data) => onSave(participantId, { ...data, routineIndex: index })} />)}</>;
 };
@@ -1175,7 +1174,7 @@ const CompetitionScoreEntryPage = () => {
             {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : <Box sx={{ p: 2 }}>
             {scoringType && <Alert severity="info" sx={{ mb: 2 }}>{scoringType === 'large'
-              ? '大网：蹦床1、蹦床2分别评分，两套得分相加。动作表难度自动带入各套D分，难度裁判可修改。沿用现有单套公式：E1–E4去掉一个最高分和一个最低分，剩余两项相加再减扣分；D、T、H单独记录。'
+              ? '大网：蹦床1、蹦床2分别评分，两套得分相加。各套D分由难度裁判录入或修改。沿用现有单套公式：E1–E4去掉一个最高分和一个最低分，剩余两项相加再减扣分；D、T、H单独记录。'
               : '小网：E1＋E2－裁判长扣分。'}扣分请输入非负数。</Alert>}
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
@@ -1192,7 +1191,7 @@ const CompetitionScoreEntryPage = () => {
                   {!hideParticipantName && <TableCell width="23%">姓名</TableCell>}
                   <TableCell width="14%">代表队/学校</TableCell>
                   <TableCell width="9%" align="center">检录状态</TableCell>
-                  {scoringType === 'large' && <><TableCell align="center">套次</TableCell><TableCell align="center" sx={{ minWidth: 80 }}>动作表难度</TableCell></>}
+                  {scoringType === 'large' && <TableCell align="center">套次</TableCell>}
                   {Array.from({ length: judgeCount }, (_, index) => (
                     <TableCell key={index} width="7%" align="center" sx={scoringType ? { minWidth: 64, fontWeight: 'bold' } : undefined}>
                       {judgeLabels?.[index] ? judgeLabels[index].split('\n').map((line, lineIndex) => (

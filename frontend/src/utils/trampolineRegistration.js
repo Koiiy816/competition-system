@@ -1,5 +1,10 @@
 import { isTrampolineCompetition } from './competitionType.js';
 
+export const getParticipantGroupTitle = (competition, group, bySchool = false) =>
+  bySchool ? group.schoolName || group.displayName || '未知单位'
+    : isTrampolineCompetition(competition) ? getEventDisplayName(competition, { name: group.event })
+    : group.displayName || group.event || '未分类项目';
+
 export const getAgeGroupDisplayName = (competition, group) => {
   const name = typeof group === 'string' ? group : group?.name || '';
   return isTrampolineCompetition(competition) ? name.replace(/^(?:混合集体\s*)?(?:男子|女子)?(?:大网|小网)/, '') : name;
