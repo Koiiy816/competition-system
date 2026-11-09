@@ -11,6 +11,7 @@ const transformed = await transformWithEsbuild(fs.readFileSync(filename, 'utf8')
 const effects = [];
 let states = [];
 let hookIndex = 0;
+const updates = [];
 const compiled = new Module(filename);
 compiled.filename = filename;
 compiled.paths = createRequire(import.meta.url).resolve.paths('react');
@@ -24,7 +25,7 @@ compiled.require = spec => {
   if (spec === 'react-router-dom') return { useNavigate: () => () => {} };
   if (spec.includes('AuthContext')) return { useAuth: () => ({ user: { roles: ['admin'] } }) };
   if (spec.includes('competitionService')) return { getCompetition: async () => ({ data: { sportType: 'wushu', events: [{ name: '集体武术操', isGroupEvent: true, ageGroups: [] }] } }) };
-  if (spec.includes('participantService')) return {};
+  if (spec.includes('participantService')) return { updateParticipant: async (...args) => updates.push(args) };
   if (spec.includes('AthleteIdentitySelect')) return () => null;
   return originalRequire(spec);
 };
@@ -76,4 +77,37 @@ test('editing a collective registration restores its project and team number', a
   const source = fs.readFileSync(filename, 'utf8');
   assert.match(source, /if \(editData && event\.name === formData\.event\) return true/);
   assert.match(source, /label="队伍编号"/);
+});
+
+const elements = node => Array.isArray(node) ? node.flatMap(elements) : React.isValidElement(node)
+  ? [node, ...elements(node.props.children)] : [];
+
+test('administrator can save a collective registration with an empty team number', async () => {
+  states = []; updates.length = 0;
+  let saved = false;
+  const props = { open: true, competitionId: 'competition', onSuccess: () => { saved = true; },
+    editData: { _id: 'entry', name: '选手', schoolName: '测试单位', event: '集体武术操',
+      groupTeam: '', grade: 'C组', ageGroup: 'C组', gender: 'female', athleteNumber: 'AT-existing' } };
+  render(props);
+  await effects[0]();
+  let form = render(props);
+  const team = elements(form).find(element => element.props.name === 'groupTeam');
+  assert.equal(team.props.required, false);
+  elements(form).find(element => element.props.onReady).props.onReady(true);
+  form = render(props);
+  await elements(form).find(element => element.props.children === '保存修改').props.onClick();
+  assert.equal(saved, true);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0][2].groupTeam, '');
+  assert.equal(updates[0][2].athleteNumber, 'AT-existing');
+});
+
+test('new collective registrations still require a team number', async () => {
+  states = [];
+  render({ open: true, competitionId: 'competition' });
+  await effects[0]();
+  states = states.map(value => value && typeof value === 'object' && Object.hasOwn(value, 'groupTeam')
+    ? { ...value, event: '集体武术操', grade: 'C组', gender: 'female' } : value);
+  const form = render({ open: true, competitionId: 'competition' });
+  assert.equal(elements(form).find(element => element.props.name === 'groupTeam').props.required, true);
 });

@@ -37,6 +37,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const navigate = useNavigate();
   const { user } = useAuth();
   const canManageTestStatus = user?.roles?.includes('admin') || user?.roles?.includes('chief_referee');
+  const groupTeamRequired = !(editData && user?.roles?.includes('admin'));
   const [competition, setCompetition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -315,7 +316,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.grade) newErrors.grade = '请选择年龄组别';
     if (!formData.event) newErrors.event = '请选择比赛项目';
     const eventConfig = competition?.events?.find((event) => event.name === formData.event);
-    if (eventConfig?.isGroupEvent && !formData.groupTeam.trim()) newErrors.groupTeam = '请填写队伍编号';
+    if (groupTeamRequired && eventConfig?.isGroupEvent && !formData.groupTeam.trim()) newErrors.groupTeam = '请填写队伍编号';
     // 仅赛事明确要求照片时，管理员才可在此上传。
     
     setErrors(newErrors);
@@ -403,7 +404,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </Grid>
             )}
 
-            {canManageTestStatus && getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} schoolName={formData.schoolName} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
+            {canManageTestStatus && getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
             {showDivingPlan && (
               <Grid item xs={12}>
                 <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}>
@@ -548,13 +549,13 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
-                  required
+                  required={groupTeamRequired}
                   label="队伍编号"
                   name="groupTeam"
                   value={formData.groupTeam}
                   onChange={handleChange}
                   error={!!errors.groupTeam}
-                  helperText={errors.groupTeam || '集体项目同一队伍使用相同编号'}
+                  helperText={errors.groupTeam || (groupTeamRequired ? '集体项目同一队伍使用相同编号' : '选填；集体项目同一队伍使用相同编号')}
                   inputProps={{ maxLength: 30 }}
                 />
               </Grid>
