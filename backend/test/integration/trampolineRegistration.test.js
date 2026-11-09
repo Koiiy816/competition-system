@@ -61,7 +61,7 @@ test('真实HTTP与MongoDB：蹦床跨项目报名、权限、年龄、团体编
       const participantId = String(schedule.participants[0]);
       await f.Participant.updateOne({ _id: participantId }, { checkInStatus: 'checked', isCheckedIn: true });
       const scorePath = `/competitions/${competition.id}/results/submit`;
-      const send = (scores, deduction, role = 'other') => f.request(scorePath, { role, method: 'POST', body: { scheduleId: schedule.id, participantId, scores, deduction } });
+      const send = (scores, deduction, role = 'other', routineIndex = 0) => f.request(scorePath, { role, method: 'POST', body: { scheduleId: schedule.id, participantId, scores, deduction, ...(kind === 'large' ? { routineIndex } : {}) } });
       const names = kind === 'large' ? ['E1','E2','E3','E4','D1','T1','H1'] : ['E1','E2'];
       for (let index = 0; index < names.length; index++) {
         f.users.other.name = names[index];
@@ -70,14 +70,21 @@ test('真实HTTP与MongoDB：蹦床跨项目报名、权限、年龄、团体编
         malicious[index] = values[index];
         const response = await send(malicious, -100);
         assert.equal(response.status, 200, JSON.stringify(response.body));
-        assert.equal(response.body.data.details.deduction, 0);
-        assert.deepEqual(response.body.data.details.scores, values.map((value, i) => i <= index ? value : null));
+        const detail = kind === 'large' ? response.body.data.details.routines[0] : response.body.data.details;
+        assert.equal(detail.deduction, 0);
+        assert.deepEqual(detail.scores, values.map((value, i) => i <= index ? value : null));
         assert.equal(response.body.data.status, 'pending');
       }
       const confirmed = await send(values, 0.5, 'admin');
       assert.equal(confirmed.status, 200, JSON.stringify(confirmed.body));
       assert.equal(confirmed.body.data.score, expected);
-      assert.equal(confirmed.body.data.status, 'verified');
+      assert.equal(confirmed.body.data.status, kind === 'large' ? 'pending' : 'verified');
+      if (kind === 'large') {
+        const second = await send(values, 0.5, 'admin', 1);
+        assert.equal(second.body.data.status, 'verified');
+        assert.equal(second.body.data.score, expected * 2);
+        assert.deepEqual(second.body.data.details.routines.map(r => r.score), [expected, expected]);
+      }
       assert.equal(confirmed.body.data.details.scoringType, kind);
       assert.equal((await send(values, -1, 'admin')).status, 400);
       const invalid = [...values]; invalid[0] = -1;
