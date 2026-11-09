@@ -16,9 +16,14 @@ test('真实接口：仅大网保存两套动作，各套D自动带入且可修�
       gender: 'male', schoolName: '测试单位', checkInStatus: 'checked', isCheckedIn: true });
     const path = `/competitions/${c.id}/participants/${p.id}/trampoline-plan`;
     const routines = [0.3, 0.5].map(difficulty => ({ actions: Array.from({ length: 10 }, () => ({ actionCode: '30', posture: 'o', difficulty })) }));
-    assert.equal((await f.request(path, { method: 'PUT', body: { actions: routines[0].actions } })).status, 400);
+    assert.equal((await f.request(path, { role: 'admin', method: 'PUT', body: { actions: routines[0].actions } })).status, 400);
+    assert.equal((await f.request(path, { method: 'PUT', body: { routines } })).status, 403);
     assert.equal((await f.request(path, { role: 'other', method: 'PUT', body: { routines } })).status, 403);
-    const saved = await f.request(path, { method: 'PUT', body: { routines } });
+    for (const role of ['referee', 'chief_referee']) {
+      f.users.other.roles = [role]; await f.users.other.save();
+      assert.equal((await f.request(path, { role: 'other', method: 'PUT', body: { routines } })).status, 403);
+    }
+    const saved = await f.request(path, { role: 'admin', method: 'PUT', body: { routines } });
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
     assert.deepEqual(saved.body.data.additionalInfo.trampolinePlan.routines.map(r => [r.name, r.totalDifficulty]), [['蹦床1', 3], ['蹦床2', 5]]);
     for (const event of ['小网U7组男子蹦床个人', '小网小学组蹦床操']) {

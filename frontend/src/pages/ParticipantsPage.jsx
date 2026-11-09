@@ -67,7 +67,8 @@ import EditRegistrationModal from '../components/participants/EditRegistrationMo
 import systemService from '../services/systemService';
 import { getSportType } from '../utils/competitionType';
 import BrandWatermark from '../components/BrandWatermark';
-import { getAgeGroupDisplayName, getEventDisplayName } from '../utils/trampolineRegistration';
+import { getAgeGroupDisplayName, getEventDisplayName, getParticipantGroupTitle } from '../utils/trampolineRegistration';
+import TrampolineRegistrationExport from '../components/participants/TrampolineRegistrationExport';
 import { createWushuRegistrationPdf, createWushuGroupedRegistrationPdf } from '../utils/wushuRegistrationPdf';
 
 // 标签面板组件
@@ -180,6 +181,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   // 决定是否能查看标签页和列表（管理员/主裁/裁判 或 开启了"我的报名"功能）
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
+  const canViewSchoolGroups = canViewParticipants && (!myRegistrations || getSportType(selectedCompetition) === 'trampoline');
 
   const handleExportWushuPdf = async () => {
     if (!selectedCompetition || getSportType(selectedCompetition) !== 'wushu') return;
@@ -930,7 +932,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
 
       // 如果按项目分组或按单位分组页签打开，刷新分组列表
       const isEventGroupTab = canViewParticipants && tabValue === 1;
-      const isSchoolGroupTab = canViewParticipants && !myRegistrations && tabValue === 2;
+      const isSchoolGroupTab = canViewSchoolGroups && tabValue === 2;
       
       if (isEventGroupTab || isSchoolGroupTab) {
         const groupParams = {
@@ -1052,7 +1054,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       
       // 判断当前是不是在“按项目分组(index 1)”或“按单位分组(index 2)”
       const isEventGroupTab = canViewParticipants && tabValue === 1;
-      const isSchoolGroupTab = canViewParticipants && !myRegistrations && tabValue === 2;
+      const isSchoolGroupTab = canViewSchoolGroups && tabValue === 2;
       
       if (!isEventGroupTab && !isSchoolGroupTab) return;
 
@@ -1094,7 +1096,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     window.addEventListener('focus', refresh);
     const timer = window.setInterval(refresh, 30000);
     return () => { active = false; window.removeEventListener('focus', refresh); window.clearInterval(timer); };
-  }, [tabValue, filters.competitionId, filters.status, filters.type, filters.search, competitions, canViewParticipants]);
+  }, [tabValue, filters.competitionId, filters.status, filters.type, filters.search, competitions, canViewParticipants, canViewSchoolGroups, myRegistrations]);
   
   // 处理标签切换
   const handleTabChange = (event, newValue) => {
@@ -1756,7 +1758,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0, gap: 2, pr: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1, flexWrap: 'wrap' }}>
-                  <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{getSportType(selectedCompetition) === 'trampoline' ? getEventDisplayName(selectedCompetition, { name: group.event }) : group.displayName || group.event || '未分类项目'}</Typography>
+                  <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{getParticipantGroupTitle(selectedCompetition, group, tabValue === 2)}</Typography>
                   {(group.ageGroup || (getSportType(selectedCompetition) === 'trampoline' && /小学组|幼儿组/.test(group.event))) && (
                     <Chip 
                       label={getAgeGroupDisplayName(selectedCompetition, group.ageGroup || group.event.match(/小学组|幼儿组/)?.[0])}
@@ -1778,6 +1780,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
               </Box>
             </AccordionSummary>
             <AccordionDetails>
+              {tabValue === 2 && getSportType(selectedCompetition) === 'trampoline' && (isAdminOrChiefReferee || myRegistrations) && (
+                <TrampolineRegistrationExport group={group} competition={selectedCompetition} myRegistrations={myRegistrations} onError={setError} />
+              )}
               {tabValue === 2 && group.roster ? (
                 <WushuFeeTable roster={group.roster} renderActions={renderGroupedActions} getStatusInfo={getStatusInfo} getGenderLabel={getGenderLabel} />
               ) : (group.participants || []).length === 0 ? (
@@ -1978,7 +1983,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           {canViewParticipants && (
             <Tab label="按项目分组" />
           )}
-          {canViewParticipants && !myRegistrations && (
+          {canViewSchoolGroups && (
             <Tab label="按单位分组" />
           )}
         </Tabs>
@@ -2265,7 +2270,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       )}
 
       {/* 按参赛单位分组标签 */}
-      {canViewParticipants && !myRegistrations && (
+      {canViewSchoolGroups && (
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
             {isAdminOrChiefReferee && (

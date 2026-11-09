@@ -50,7 +50,11 @@ test('小网评分整页显示三个输入，未检录时禁用、已检录时�
 
 test('大网整页显示两套共16个评分输入，蹦床操显示三个评分输入', () => {
   const participant = { _id: 'athlete', schoolName: '单位', checkInStatus: 'checked' };
-  assert.equal((renderPage('大网U10组 男子 大网U10组蹦床个人', [participant]).match(/<input\b/g) || []).length, 16);
+  const html = renderPage('大网U10组 男子 大网U10组蹦床个人', [participant]);
+  assert.equal((html.match(/<input\b/g) || []).length, 16);
+  assert.ok(!html.includes('动作表难度'));
+  assert.ok(!html.includes('待补录'));
+  assert.ok(html.includes('D分') && html.includes('难度'));
   assert.equal((renderPage('混合集体 小网小学组 小网小学组蹦床操', [participant]).match(/<input\b/g) || []).length, 3);
 });
 

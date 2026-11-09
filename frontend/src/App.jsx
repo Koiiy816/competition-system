@@ -260,7 +260,7 @@ function App() {
           </Route>
 
           <Route path="/trampoline-action-plans" element={
-            <ProtectedRoute allowedRoles={['organization', 'admin', 'chief_referee', 'referee']}>
+            <ProtectedRoute allowedRoles={['admin']}>
               <MainLayout />
             </ProtectedRoute>
           }>

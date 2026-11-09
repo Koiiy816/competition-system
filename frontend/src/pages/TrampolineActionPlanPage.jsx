@@ -54,8 +54,7 @@ export function TrampolinePlanCard({ item, plan, saving, onChange, onSave }) {
 
 export default function TrampolineActionPlanPage() {
   const { user } = useAuth();
-  const canManageAll = user?.roles?.some((role) => ['admin', 'chief_referee', 'referee'].includes(role));
-  const hasOrganizationAccess = user?.roles?.includes('organization') && user?.sportTypes?.includes(SPORT_TYPES.TRAMPOLINE);
+  const canManageAll = user?.roles?.includes('admin');
   const [items, setItems] = useState([]);
   const [plans, setPlans] = useState({});
   const [loading, setLoading] = useState(true);
@@ -75,9 +74,6 @@ export default function TrampolineActionPlanPage() {
         const competitions = (response.data || []).filter(isTrampolineCompetition);
         const responses = await Promise.all(competitions.map((competition) => participantService.getParticipants(competition._id, { limit: 10000 })));
         rows = responses.flatMap((response, index) => (response.data || []).map((row) => ({ ...row, competition: row.competition || competitions[index] })));
-      } else {
-        const response = await participantService.getMyParticipations();
-        rows = response.data || [];
       }
       rows = rows.filter(isTrampolineParticipant);
       setItems(rows);
@@ -88,7 +84,7 @@ export default function TrampolineActionPlanPage() {
     } finally { setLoading(false); }
   }, [canManageAll]);
 
-  useEffect(() => { if (canManageAll || hasOrganizationAccess) load(); else setLoading(false); }, [canManageAll, hasOrganizationAccess, load]);
+  useEffect(() => { if (canManageAll) load(); else setLoading(false); }, [canManageAll, load]);
   const updatePlan = useCallback((id, updater) => setPlans((current) => ({ ...current, [id]: updater(current[id]) })), []);
   const save = useCallback(async (item, plan) => {
     const routines = plan.routines.map(routine => ({ ...routine, actions: routine.actions.map(action => ({ ...action, difficulty: getDifficulty(action) ?? action.difficulty })) }));
@@ -129,12 +125,12 @@ export default function TrampolineActionPlanPage() {
   const currentPage = Math.min(page, totalPages);
   const pageItems = useMemo(() => visibleItems.slice((currentPage - 1) * pageSize, currentPage * pageSize), [currentPage, pageSize, visibleItems]);
 
-  if (!canManageAll && !hasOrganizationAccess) return <Alert severity="error">仅已选择“蹦床”赛事类型的参赛单位，或管理员、主裁和裁判可以使用蹦床动作表。</Alert>;
+  if (!canManageAll) return <Alert severity="error">仅管理员可以使用蹦床动作表。</Alert>;
   if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
   return <Box sx={{ maxWidth: 1000, mx: 'auto', p: 3 }}>
     <Typography variant="h4" fontWeight={800} gutterBottom>补录蹦床动作表</Typography>
     <Typography color="text.secondary" sx={{ mb: 2 }}>仅大网选手填写“蹦床1”“蹦床2”，每套10个动作。小网和蹦床操按规定动作评分，无需填写。未收录动作可先保存，难度待确认后补填。</Typography>
-    {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>管理员、主裁和裁判可补录所有大网选手的两套动作表。</Alert>}
+    {canManageAll && <Alert severity="info" sx={{ mb: 2 }}>管理员可补录所有大网选手的两套动作表。</Alert>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
     <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
       <TextField size="small" label="搜索选手" placeholder="姓名、赛事、项目、组别或单位" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} sx={{ flex: '1 1 320px' }} />

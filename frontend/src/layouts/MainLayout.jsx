@@ -195,10 +195,6 @@ const MainLayout = () => {
       }
 
       if (user.roles.some((role) => ['chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
-        pages.push({ title: '补录蹦床动作表', path: '/trampoline-action-plans' });
-      }
-
-      if (user.roles.some((role) => ['chief_referee', 'referee'].includes(role)) || (user.roles.includes('organization') && hasTrampolineAccess)) {
         pages.push({ title: '蹦床难度系数表', path: '/trampoline-difficulties' });
       }
 

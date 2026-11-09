@@ -1,11 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { getScheduleDisplayName, getAgeGroupDisplayName, getEventDisplayName, getTrampolineEvents, getTrampolineEventGroup, getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from './trampolineRegistration.js';
+import { getParticipantGroupTitle, getScheduleDisplayName, getAgeGroupDisplayName, getEventDisplayName, getTrampolineEvents, getTrampolineEventGroup, getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from './trampolineRegistration.js';
 import { isTrampolineCompetition, PARTICIPATION_SPORT_TYPES } from './competitionType.js';
 const require = createRequire(import.meta.url);
 const { buildTrampolineCompetition } = require('../../../backend/data/trampoline2026');
 const competition = buildTrampolineCompetition('test');
+
+test('按单位分组优先显示单位名称，蹦床单位没有项目字段也不能空白', () => {
+  assert.equal(getParticipantGroupTitle(competition, { schoolName: '深圳市测试单位', displayName: '深圳市测试单位' }, true), '深圳市测试单位');
+  assert.equal(getParticipantGroupTitle(competition, {}, true), '未知单位');
+  assert.equal(getParticipantGroupTitle(competition, { event: '大网U8组蹦床个人' }), '大网个人');
+  assert.equal(getParticipantGroupTitle({ sportType: 'wushu' }, { displayName: '原项目标题' }), '原项目标题');
+});
 
 test('旧赛程标题去除重复组别，当前场次和导航均可显示简洁名称', () => {
   for (const [name, expected] of [

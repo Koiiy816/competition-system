@@ -42,7 +42,7 @@ test('大网完整显示七个维度和一个裁判长扣分输入', () => {
   assert.equal((render(false, 7).match(/<input\b/g) || []).length, 8);
 });
 
-test('大网选手呈现两套评分行、分套难度和合并姓名单位', () => {
+test('大网保留两套评分和D分输入，隐藏额外的动作表难度单元格', () => {
   const actions = Array.from({ length: 10 }, () => ({ actionCode: '30', posture: 'o', difficulty: 0.3 }));
   const html = renderToStaticMarkup(React.createElement('table', null, React.createElement('tbody', null,
     React.createElement(compiled.exports.LargeTrampolineScoreRows, {
@@ -52,9 +52,11 @@ test('大网选手呈现两套评分行、分套难度和合并姓名单位', ()
       index: 0, isChiefOrAdmin: true, canEdit: true, checkInStatus: 'checked'
     }))));
   assert.ok(html.includes('蹦床1') && html.includes('蹦床2'));
-  assert.ok(html.includes('3.00') && html.includes('5.00'));
+  assert.ok(!html.includes('3.00') && !html.includes('5.00'));
   assert.equal((html.match(/<input\b/g) || []).length, 16);
   assert.equal((html.match(/两套选手/g) || []).length, 1);
   assert.ok(html.includes('rowspan="2"'));
   assert.ok(html.includes('待两套评分'));
+  // 首行 17 格、第二行 11 格，姓名单位等信息合并；不再有两格动作表难度。
+  assert.equal((html.match(/<td\b/g) || []).length, 28);
 });
