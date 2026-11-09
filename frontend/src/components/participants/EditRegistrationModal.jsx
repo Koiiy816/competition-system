@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField, Typography } from '@mui/material';
 import competitionService from '../../services/competitionService';
 import participantService from '../../services/participantService';
+import { getSportType } from '../../utils/competitionType';
 
 export default function EditRegistrationModal({ participant, onClose, onSuccess }) {
   const [competition, setCompetition] = useState(null);
@@ -22,6 +23,7 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
     return () => { active = false; };
   }, [participant]);
   const event = competition?.events?.find(item => item.name === form?.event);
+  const needsAthleteNumber = getSportType(competition) === 'wushu';
   const save = async () => {
     setSaving(true);
     setError('');
@@ -35,7 +37,7 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
     <DialogTitle>编辑报名信息</DialogTitle>
     <DialogContent>
       <Typography sx={{ mb: 2 }}>{participant?.name} · {participant?.schoolName}</Typography>
-      <Typography sx={{ mb: 2 }}>参赛者编号：{participant?.athleteNumber || '待管理员完成补号'}</Typography>
+      {needsAthleteNumber && <Typography sx={{ mb: 2 }}>参赛者编号：{participant?.athleteNumber || '待管理员完成补号'}</Typography>}
       <Alert severity="info" sx={{ mb: 2 }}>仅在报名截止前开放。保存后将重新进入待审核；已关联赛程或成绩的报名请联系管理员。</Alert>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {!competition && !error && <CircularProgress />}
@@ -49,6 +51,6 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
         <TextField fullWidth label={event?.registrationDetail?.label || '项目补充说明'} required={event?.registrationDetail?.required} margin="normal" value={form.eventDetail} disabled={saving} inputProps={{ maxLength: event?.registrationDetail?.maxLength || 100 }} onChange={e => setForm({ ...form, eventDetail: e.target.value })} />
       </>}
     </DialogContent>
-    <DialogActions><Button onClick={onClose} disabled={saving}>取消</Button><Button variant="contained" onClick={save} disabled={saving || !competition || !form?.event || !form?.schoolName?.trim() || !participant?.athleteNumber}>{saving ? '保存中…' : '保存并提交审核'}</Button></DialogActions>
+    <DialogActions><Button onClick={onClose} disabled={saving}>取消</Button><Button variant="contained" onClick={save} disabled={saving || !competition || !form?.event || !form?.schoolName?.trim() || (needsAthleteNumber && !participant?.athleteNumber)}>{saving ? '保存中…' : '保存并提交审核'}</Button></DialogActions>
   </Dialog>;
 }

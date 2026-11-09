@@ -7,9 +7,10 @@ const uploadDir = path.join(__dirname, '../uploads');
 const registrationFormsDir = path.join(uploadDir, 'registration-forms');
 const templatesDir = path.join(uploadDir, 'templates');
 const participantPhotosDir = path.join(uploadDir, 'participant-photos');
+const registrationDocumentsDir = path.join(uploadDir, 'registration-documents');
 
 // 创建目录
-[uploadDir, registrationFormsDir, templatesDir, participantPhotosDir].forEach(dir => {
+[uploadDir, registrationFormsDir, templatesDir, participantPhotosDir, registrationDocumentsDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -21,6 +22,8 @@ const storage = multer.diskStorage({
     // 根据文件类型决定存储位置
     if (file.fieldname === 'photo') {
       cb(null, participantPhotosDir);
+    } else if (['riskNotice', 'insurance', 'paperRegistrationForm'].includes(file.fieldname)) {
+      cb(null, registrationDocumentsDir);
     } else if (req.route.path.includes('template')) {
       cb(null, templatesDir);
     } else {
@@ -76,6 +79,11 @@ module.exports = {
   // 上传报名表文件
   uploadRegistrationForm: upload.single('registrationForm'),
   uploadParticipantPhoto: upload.single('photo'),
+  uploadRegistrationDocuments: upload.fields([
+    { name: 'riskNotice', maxCount: 1 },
+    { name: 'insurance', maxCount: 1 },
+    { name: 'paperRegistrationForm', maxCount: 1 }
+  ]),
   
   // 上传模板文件
   uploadTemplate: upload.single('template'),
@@ -87,6 +95,7 @@ module.exports = {
   getUploadPaths: () => ({
     uploadDir,
     registrationFormsDir,
-    templatesDir
+    templatesDir,
+    registrationDocumentsDir
   })
 };

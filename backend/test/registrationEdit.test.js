@@ -54,6 +54,24 @@ test('organization can standardize its representative unit name when editing a r
   assert.equal(x.state.writes[0].update.$set.status, 'pending');
 }));
 
+test('approved trampoline registration can change event without a wushu athlete number', () => fixture(async x => {
+  x.competition.sportType = 'trampoline';
+  x.competition.name = '蹦床比赛';
+  x.competition.ageGroups = [{ name: 'A', birthDateStart: '2015-01-01', birthDateEnd: '2020-12-31' }];
+  x.competition.events = [
+    { name: '小网男子个人', ageGroups: ['A'], genderRestriction: 'male' },
+    { name: '小网男子蹦床操', ageGroups: ['A'], genderRestriction: 'male' }
+  ];
+  x.row.event = '小网男子个人';
+  x.row.birthDate = new Date('2018-06-01');
+  delete x.row.athleteNumber;
+  Object.assign(x.req.body, { event: '小网男子蹦床操', schoolName: '单位' });
+  delete x.req.body.athleteNumber;
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(x.state.writes[0].update.$set.event, '小网男子蹦床操');
+  assert.equal(x.state.writes[0].update.$set.status, 'pending');
+}));
+
 const cases = [
   ['switch off', x => { x.state.enabled = false; }, 403],
   ['missing switch', x => { x.state.enabled = undefined; }, 403],

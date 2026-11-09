@@ -4,11 +4,13 @@ const { check } = require('express-validator');
 const participantController = require('../controllers/participantController');
 const divingPairController = require('../controllers/divingPairController');
 const { protect: auth, authorize } = require('../middlewares/authMiddleware');
-const { uploadParticipantPhoto } = require('../middlewares/uploadMiddleware');
+const { uploadParticipantPhoto, uploadRegistrationDocuments } = require('../middlewares/uploadMiddleware');
 
 router.get('/athlete-identities', auth, authorize('admin', 'chief_referee', 'organization'), require('../controllers/athleteIdentityController').list);
 router.post('/athlete-identities/merge-preview', auth, authorize('admin'), require('../controllers/athleteIdentityController').previewMerge);
 router.post('/athlete-identities/merge', auth, authorize('admin'), require('../controllers/athleteIdentityController').merge);
+
+router.get('/registration-documents', auth, authorize('organization'), participantController.getRegistrationDocuments);
 
 // @route   GET api/competitions/all/participants/me
 // @desc    获取当前用户的所有参赛记录（不区分比赛）
@@ -50,6 +52,13 @@ router.put(
   '/:id/registration-content',
   auth, authorize('organization'),
   participantController.updateRegistrationContent
+);
+
+// 单位在确认报名时提交的可选材料；不绑定到某一名运动员。
+router.put(
+  '/registration-documents',
+  auth, authorize('organization'), uploadRegistrationDocuments,
+  participantController.uploadRegistrationDocuments
 );
 
 router.put(

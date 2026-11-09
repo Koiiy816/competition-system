@@ -3,11 +3,18 @@ const { resolveAthleteNumber } = require('../utils/athleteIdentity');
 const { validateTrampolineRegistration } = require('../utils/trampolineRegistration');
 const { normalizeTrampolinePlan, isLargeTrampolineEvent } = require('../utils/trampolinePlan');
 const Competition = require('../models/Competition');
+const RegistrationDocument = require('../models/RegistrationDocument');
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES, canUserAccessCompetitionType } = require('../utils/competitionType');
+
+const removeStoredRegistrationDocument = (filename) => {
+  if (!filename) return;
+  const filePath = path.join(__dirname, '..', 'uploads', 'registration-documents', path.basename(filename));
+  fs.unlink(filePath, () => {});
+};
 
 // 本赛事的导入资料存在不同选手共用身份证号码的情况，不能用身份证或照片推断选手身份。
 // 人数统计按报名册中的姓名、单位、性别归并；若三项均缺失则保留为独立记录。
@@ -611,22 +618,23 @@ exports.updateRegistrationContent = async (req, res, next) => {
     if (!req.user.roles?.includes('organization') || String(participant.user) !== req.user.id) return fail(403, '只能编辑本单位账号提交的报名');
     const competition = await Competition.findById(participant.competition);
     if (!competition) return fail(404, '比赛不存在');
-    if (getCompetitionSportType(competition) !== SPORT_TYPES.WUSHU || !canUserAccessCompetitionType(req.user, competition)) return fail(403, '此功能仅适用于获授权的武术赛事');
+    const sportType = getCompetitionSportType(competition);
+    if (![SPORT_TYPES.WUSHU, SPORT_TYPES.TRAMPOLINE].includes(sportType) || !canUserAccessCompetitionType(req.user, competition)) return fail(403, '此功能仅适用于获授权的武术或蹦床赛事');
     const setting = await require('../models/SystemSetting').findOne({ key: 'wushu_registration_edit_enabled' });
     if (setting?.value !== true) return fail(403, '管理员尚未开启报名项目编辑功能');
     const deadline = new Date(competition.registrationDeadline).getTime();
     if (!competition.registrationDeadline || !Number.isFinite(deadline) || Date.now() >= deadline) return fail(400, '报名已截止或未设置有效截止时间');
     if (competition.status !== 'registration') return fail(400, '该比赛当前不在报名阶段');
     if (participant.isVirtualTeam || participant.isCheckedIn || ['checked', 'absent'].includes(participant.checkInStatus)) return fail(409, '该记录已进入比赛流程，请联系管理员');
-    if (!participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员完成补号');
-    if (req.body.athleteNumber !== participant.athleteNumber) return fail(409, '参赛者编号不匹配，请刷新后重试');
-    if (participant.athleteNumber) {
+    if (sportType === SPORT_TYPES.WUSHU && !participant.athleteNumber) return fail(409, '历史报名尚未关联参赛者编号，请联系管理员完成补号');
+    if (sportType === SPORT_TYPES.WUSHU && req.body.athleteNumber !== participant.athleteNumber) return fail(409, '参赛者编号不匹配，请刷新后重试');
+    if (sportType === SPORT_TYPES.WUSHU && participant.athleteNumber) {
       try { await resolveAthleteNumber({ ...participant.toObject(), user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return fail(error.statusCode || 500, error.message); }
     }
     const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'schoolName', 'updatedAt', 'athleteNumber'];
     if (!req.body || Object.keys(req.body).some(key => !allowed.includes(key))) return fail(400, '提交了不允许修改的字段');
-    const required = allowed.filter(key => key !== 'schoolName');
+    const required = allowed.filter(key => key !== 'schoolName' && (sportType === SPORT_TYPES.WUSHU || key !== 'athleteNumber'));
     if (required.some(key => typeof req.body[key] !== 'string') || (req.body.schoolName !== undefined && typeof req.body.schoolName !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
     if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return fail(409, '报名已被修改，请刷新后重试');
     const eventName = req.body.event.trim();
@@ -638,7 +646,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
     const schoolName = String(req.body.schoolName ?? participant.schoolName ?? '').trim();
     if (!schoolName) return fail(400, '请填写代表单位 / 学校');
     if (schoolName.length > 100) return fail(400, '代表单位 / 学校不能超过100个字符');
-    const ruleError = validateRegistrationAgainstCompetition({ competition, body: { ...participant.toObject(), event: eventName, ageGroup, grade: ageGroup } });
+    const ruleError = validateRegistrationAgainstCompetition({ competition, body: { ...participant.toObject(), event: eventName, ageGroup, grade: ageGroup, schoolName } });
     if (ruleError) return fail(400, ruleError);
     const detail = req.body.eventDetail.trim();
     if (event.registrationDetail?.required && !detail) return fail(400, '请填写项目补充说明');
@@ -649,7 +657,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
     const limitError = await validateWushuEventLimits(competition, { ...participant.toObject(), event: eventName }, participant._id);
     if (limitError) return fail(400, limitError);
     // 项目去重只依据已确认的参赛者编号。
-    if (eventName !== participant.event && await Participant.exists({
+    if (sportType === SPORT_TYPES.WUSHU && eventName !== participant.event && await Participant.exists({
       _id: { $ne: participant._id }, competition: participant.competition,
       athleteNumber: participant.athleteNumber,
       event: eventName, status: { $ne: 'rejected' }, isVirtualTeam: { $ne: true }
@@ -678,6 +686,48 @@ exports.updateRegistrationContent = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// 单位级材料与报名名单分开保存，一次提交只保留每个材料类别的最新文件。
+exports.uploadRegistrationDocuments = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (!canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
+    if (competition.status !== 'registration' && !await Participant.exists({ competition: competition._id, user: req.user.id })) {
+      return res.status(400).json({ success: false, message: '该比赛当前不在报名阶段，且未找到本单位已提交的报名' });
+    }
+    const files = req.files || {};
+    const toMetadata = (file) => file && ({ filename: file.filename, originalName: file.originalname, mimetype: file.mimetype, size: file.size });
+    const riskNotice = toMetadata(files.riskNotice?.[0]);
+    const insurance = toMetadata(files.insurance?.[0]);
+    const paperRegistrationForm = toMetadata(files.paperRegistrationForm?.[0]);
+    if (!riskNotice && !insurance && !paperRegistrationForm) return res.status(400).json({ success: false, message: '请选择至少一份材料' });
+    const current = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
+    const update = {};
+    if (riskNotice) update.riskNotice = riskNotice;
+    if (insurance) update.insurance = insurance;
+    if (paperRegistrationForm) update.paperRegistrationForm = paperRegistrationForm;
+    const document = await RegistrationDocument.findOneAndUpdate(
+      { competition: competition._id, user: req.user.id },
+      { $set: update },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+    if (riskNotice) removeStoredRegistrationDocument(current?.riskNotice?.filename);
+    if (insurance) removeStoredRegistrationDocument(current?.insurance?.filename);
+    if (paperRegistrationForm) removeStoredRegistrationDocument(current?.paperRegistrationForm?.filename);
+    return res.status(200).json({ success: true, data: document });
+  } catch (error) { next(error); }
+};
+
+exports.getRegistrationDocuments = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (!canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
+    const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
+    return res.status(200).json({ success: true, data: document || null });
+  } catch (error) { next(error); }
+};
+
 exports.updateParticipant = async (req, res, next) => {
   try {
     let participant = await Participant.findById(req.params.id);
@@ -691,10 +741,10 @@ exports.updateParticipant = async (req, res, next) => {
 
     const isPrivileged = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
     const isOrganization = req.user.roles?.includes('organization');
-    // 武术单位报名统一走可开关的专用接口，避免旧接口绕过限制。
+    // 武术、蹦床单位报名统一走可开关的专用接口，避免旧接口绕过限制。
     if (isOrganization && !isPrivileged) {
       const competition = await Competition.findById(participant.competition);
-      if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
+      if ([SPORT_TYPES.WUSHU, SPORT_TYPES.TRAMPOLINE].includes(getCompetitionSportType(competition))) {
         return res.status(403).json({ success: false, message: '请使用我的报名中的项目编辑功能' });
       }
     }

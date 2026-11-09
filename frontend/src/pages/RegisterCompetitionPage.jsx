@@ -102,6 +102,10 @@ const RegisterCompetitionPage = () => {
   const [templates, setTemplates] = useState([]);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [photoError, setPhotoError] = useState('');
+  const [riskNoticeFile, setRiskNoticeFile] = useState(null);
+  const [insuranceFile, setInsuranceFile] = useState(null);
+  const [paperRegistrationFormFile, setPaperRegistrationFormFile] = useState(null);
+  const [documentError, setDocumentError] = useState('');
   const [registrants, setRegistrants] = useState([]);
   const [selectedEvents, setSelectedEvents] = useState(['']);
   const [selectedEventTypes, setSelectedEventTypes] = useState(['']);
@@ -766,6 +770,35 @@ const RegisterCompetitionPage = () => {
   const handleBack = () => {
     setActiveStep((prevActiveStep) => prevActiveStep - 1);
   };
+
+  const selectRegistrationDocument = (setter) => (event) => {
+    const file = event.target.files?.[0] || null;
+    if (file && file.size > 10 * 1024 * 1024) {
+      setDocumentError('每份单位报名材料不能超过 10MB。');
+      event.target.value = '';
+      return;
+    }
+    setter(file);
+    setDocumentError('');
+  };
+
+  const uploadRegistrationDocuments = async () => {
+    if (!riskNoticeFile && !insuranceFile && !paperRegistrationFormFile) return;
+    const documents = new FormData();
+    if (riskNoticeFile) documents.append('riskNotice', riskNoticeFile);
+    if (insuranceFile) documents.append('insurance', insuranceFile);
+    if (paperRegistrationFormFile) documents.append('paperRegistrationForm', paperRegistrationFormFile);
+    const response = await fetch(`/api/competitions/${id}/participants/registration-documents`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      body: documents
+    });
+    if (!response.ok) {
+      let message = '单位报名材料上传失败，请重试或暂不选择该文件后提交报名。';
+      try { message = (await response.json()).message || message; } catch (_) {}
+      throw new Error(message);
+    }
+  };
   
   // 提交报名
   const handleSubmit = async () => {
@@ -774,6 +807,7 @@ const RegisterCompetitionPage = () => {
     if (!window.confirm(`确定提交 ${registrants.length} 名运动员的报名资料吗？`)) return;
     setSubmitting(true); setError(''); const failed = [];
     try {
+      await uploadRegistrationDocuments();
       for (const registrant of registrants) {
         const submitData = new FormData(); const data = registrant.data;
         Object.keys(data).forEach(key => { if (key === 'additionalInfo') submitData.append(key, JSON.stringify(data[key])); else if (key === 'members') { if (data[key]?.length) submitData.append(key, JSON.stringify(data[key])); } else submitData.append(key, data[key]); });
@@ -1302,6 +1336,27 @@ const RegisterCompetitionPage = () => {
       <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
       <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{getAgeGroupDisplayName(competition, item.data.grade) || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{getEventLabel(item.data.event) || '-'}{item.data.groupTeam ? <> {'\u00b7'} {'\u961f\u4f0d\uff1a'}{item.data.groupTeam}</> : null} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
+      <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
+        <Typography variant="subtitle1" gutterBottom>单位报名附件（选填）</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>所有运动员填写完毕后，可由团队在此提交材料。两项均非必传，不会影响下一步或提交报名；补交入口将另行安排。</Typography>
+        <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id="risk-notice-upload" type="file" onChange={selectRegistrationDocument(setRiskNoticeFile)} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
+          <label htmlFor="risk-notice-upload"><Button variant="outlined" component="span" startIcon={<DescriptionIcon />}>上传盖章版自愿参赛责任及风险告知书</Button></label>
+          <Typography variant="body2" color={riskNoticeFile ? 'success.main' : 'text.secondary'}>{riskNoticeFile ? `已选择：${riskNoticeFile.name}` : '暂未上传'}</Typography>
+        </Box>
+        <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id="insurance-upload" type="file" onChange={selectRegistrationDocument(setInsuranceFile)} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <label htmlFor="insurance-upload"><Button variant="outlined" component="span" startIcon={<DescriptionIcon />}>上传比赛当天保险</Button></label>
+          <Typography variant="body2" color={insuranceFile ? 'success.main' : 'text.secondary'}>{insuranceFile ? `已选择：${insuranceFile.name}` : '暂未上传'}</Typography>
+        </Box>
+        <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id="paper-registration-form-upload" type="file" onChange={selectRegistrationDocument(setPaperRegistrationFormFile)} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
+          <label htmlFor="paper-registration-form-upload"><Button variant="outlined" component="span" startIcon={<DescriptionIcon />}>上传纸质版报名表</Button></label>
+          <Typography variant="body2" color={paperRegistrationFormFile ? 'success.main' : 'text.secondary'}>{paperRegistrationFormFile ? `已选择：${paperRegistrationFormFile.name}` : '暂未上传'}</Typography>
+        </Box>
+        {documentError && <Alert severity="error" sx={{ mt: 2 }}>{documentError}</Alert>}
+        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 2 }}>支持 PDF、JPG、PNG，单份不超过 10MB；点击“提交报名”时一并上传。</Typography>
+      </Paper>
     </Box>
   );
 

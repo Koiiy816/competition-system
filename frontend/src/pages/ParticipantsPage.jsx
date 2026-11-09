@@ -99,6 +99,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   
   const [registrationEditing, setRegistrationEditing] = useState(null);
   const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
+  const [registrationDocuments, setRegistrationDocuments] = useState(null);
+  const [registrationDocumentsLoading, setRegistrationDocumentsLoading] = useState(false);
+  const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
   useEffect(() => {
     let active = true;
@@ -112,11 +115,11 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     return () => { active = false; window.removeEventListener('focus', refresh); };
   }, [myRegistrations]);
   const registrationCompetition = participant => competitions.find(item => item._id === (participant.competition?._id || participant.competition)) || participant.competition;
-  const isWushuRegistration = participant => getSportType(registrationCompetition(participant)) === 'wushu';
+  const supportsControlledRegistrationEdit = participant => ['wushu', 'trampoline'].includes(getSportType(registrationCompetition(participant)));
   const canEditRegistration = participant => {
     const competition = registrationCompetition(participant);
     return myRegistrations && user?.roles?.includes('organization') && registrationEditEnabled
-      && isWushuRegistration(participant) && competition?.status === 'registration'
+      && supportsControlledRegistrationEdit(participant) && competition?.status === 'registration'
       && new Date(competition.registrationDeadline).getTime() > Date.now()
       && !participant.isVirtualTeam && !participant.isCheckedIn
       && !['checked', 'absent'].includes(participant.checkInStatus);
@@ -182,6 +185,36 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   // 决定是否能查看标签页和列表（管理员/主裁/裁判 或 开启了"我的报名"功能）
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
   const canViewSchoolGroups = canViewParticipants && (!myRegistrations || getSportType(selectedCompetition) === 'trampoline');
+
+  const registrationDocumentSlots = [
+    { key: 'riskNotice', label: '盖章版自愿参赛责任及风险告知书' },
+    { key: 'insurance', label: '比赛当天保险' },
+    { key: 'paperRegistrationForm', label: '纸质版报名表' }
+  ];
+
+  const uploadRegistrationDocument = async (key, file) => {
+    if (!file || !filters.competitionId) return;
+    if (file.size > 10 * 1024 * 1024) { setError('每份单位报名材料不能超过 10MB。'); return; }
+    setRegistrationDocumentUploading(key);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append(key, file);
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: formData
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '上传单位报名材料失败');
+      setRegistrationDocuments(result.data || null);
+      setSuccessMessage('单位报名材料已上传。');
+    } catch (uploadError) {
+      setError(uploadError.message || '上传单位报名材料失败');
+    } finally {
+      setRegistrationDocumentUploading('');
+    }
+  };
 
   const handleExportWushuPdf = async () => {
     if (!selectedCompetition || getSportType(selectedCompetition) !== 'wushu') return;
@@ -997,6 +1030,26 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     setPage(0);
   }, [filters.search, filters.status, filters.type, filters.competitionId]);
 
+  useEffect(() => {
+    let active = true;
+    if (!myRegistrations || !user?.roles?.includes('organization') || !filters.competitionId) {
+      setRegistrationDocuments(null);
+      return () => { active = false; };
+    }
+    setRegistrationDocumentsLoading(true);
+    fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(async response => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || '获取单位报名材料失败');
+        if (active) setRegistrationDocuments(result.data || null);
+      })
+      .catch(loadError => { if (active) setError(loadError.message || '获取单位报名材料失败'); })
+      .finally(() => { if (active) setRegistrationDocumentsLoading(false); });
+    return () => { active = false; };
+  }, [myRegistrations, user?.roles, filters.competitionId]);
+
   // 获取参赛者列表
   useEffect(() => {
     const fetchParticipants = async () => {
@@ -1588,7 +1641,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         </Tooltip>
                       )}
 
-                      {(isAdminOrChiefReferee || (myRegistrations && !isWushuRegistration(participant) && participant.status === 'pending')) && (
+                      {(isAdminOrChiefReferee || (myRegistrations && !supportsControlledRegistrationEdit(participant) && participant.status === 'pending')) && (
                         <Tooltip title="编辑">
                           <IconButton
                             color="primary"
@@ -1676,7 +1729,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         </Tooltip>
       )}
 
-      {(isAdminOrChiefReferee || (myRegistrations && !isWushuRegistration(participant) && participant.status === 'pending')) && (
+      {(isAdminOrChiefReferee || (myRegistrations && !supportsControlledRegistrationEdit(participant) && participant.status === 'pending')) && (
         <Tooltip title="编辑">
           <IconButton
             color="primary"
@@ -2208,6 +2261,38 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                   </Button>
                 </Box>
               </Box>
+            )}
+
+            {myRegistrations && user?.roles?.includes('organization') && selectedCompetition && (
+              <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
+                <Typography variant="subtitle1" gutterBottom>单位报名材料</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                  可在此补交或替换材料。三项均为选填，不影响已提交的运动员报名。
+                </Typography>
+                {registrationDocumentsLoading ? <CircularProgress size={24} /> : registrationDocumentSlots.map(({ key, label }) => {
+                  const document = registrationDocuments?.[key];
+                  const inputId = `registration-document-${key}`;
+                  const uploading = registrationDocumentUploading === key;
+                  return (
+                    <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', py: 0.75 }}>
+                      <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id={inputId} type="file" onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        uploadRegistrationDocument(key, file);
+                      }} />
+                      <label htmlFor={inputId}>
+                        <Button variant="outlined" component="span" startIcon={<UploadFileIcon />} disabled={Boolean(registrationDocumentUploading)}>
+                          {uploading ? '上传中…' : `${document ? '替换' : '上传'}${label}`}
+                        </Button>
+                      </label>
+                      <Typography variant="body2" color={document ? 'success.main' : 'text.secondary'}>
+                        {document ? `已上传：${document.originalName}` : '暂未上传'}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>支持 PDF、JPG、PNG，单份不超过 10MB。</Typography>
+              </Paper>
             )}
           </Box>
           

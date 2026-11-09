@@ -629,7 +629,7 @@ const AdminPage = () => {
                     <FormControlLabel control={<Switch checked={feeSummaryEnabled} disabled={!registrationSettingLoaded || feeSettingBusy} onChange={handleToggleFeeSummary} />} label={feeSummaryEnabled ? '已开启' : '已关闭'} />
                   </Box>
                   <Box>
-                    <Typography variant="subtitle1" fontWeight="bold">允许参赛单位编辑武术报名项目</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold">允许参赛单位编辑武术、蹦床报名项目</Typography>
                     <Typography variant="body2" color="text.secondary">默认关闭。开启后，本单位可在截止前修改项目资料，修改后重新审核。关闭不影响报名、删除、审核及管理员编辑。</Typography>
                     <FormControlLabel control={<Switch checked={registrationEditEnabled} disabled={!registrationSettingLoaded || registrationSettingBusy} onChange={handleToggleRegistrationEdit} />} label={registrationEditEnabled ? '已开启' : '已关闭'} />
                   </Box>
