@@ -1,5 +1,21 @@
 import { isTrampolineCompetition } from './competitionType.js';
 
+export const getAgeGroupDisplayName = (competition, group) => {
+  const name = typeof group === 'string' ? group : group?.name || '';
+  return isTrampolineCompetition(competition) ? name.replace(/^(大网|小网)/, '') : name;
+};
+
+// 保留旧项目名作为报名关联键，显示时将组别放在独立控件中。
+export const getEventDisplayName = (competition, event) => {
+  let name = event.displayName || event.name || '';
+  if (!isTrampolineCompetition(competition)) return name;
+  const groups = (event.ageGroups || []).map(group => typeof group === 'string' ? group : group.name);
+  for (const group of groups.sort((a, b) => b.length - a.length)) {
+    name = name.replace(group, event.category && group.startsWith(event.category) ? event.category : '');
+  }
+  return name.replace(/^小网(?=蹦床操)/, '').replace(/蹦床个人/g, '个人').trim();
+};
+
 export const getTrampolineScoringOptions = (competition, schedule) => {
   const trampoline = isTrampolineCompetition(competition);
   const name = String(schedule?.name || '');
@@ -50,4 +66,8 @@ export const getTrampolineEvents = (competition, birthDate, gender) => (competit
   getTrampolineEventGroup(competition, event, birthDate)
   && ['male', 'female'].includes(gender)
   && (!event.genderRestriction || event.genderRestriction === 'both' || event.genderRestriction === gender)
-);
+).map(event => ({
+  ...event,
+  displayName: getEventDisplayName(competition, event),
+  matchedGroup: getTrampolineEventGroup(competition, event, birthDate)
+}));
