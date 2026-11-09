@@ -200,10 +200,17 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     groups.set(key, group);
     return groups;
   }, new Map()).values()];
+  const participantDocumentSummary = participantDocumentGroups.reduce((summary, group) => {
+    const hasMissingDocument = registrationDocumentSlots.some(({ key }) => !(registrationDocuments?.attachments || []).some(document =>
+      document.type === key && group.ids.includes(String(document.participant))));
+    if (hasMissingDocument) summary.needSupplement += 1;
+    else summary.complete += 1;
+    return summary;
+  }, { complete: 0, needSupplement: 0 });
 
   const uploadRegistrationDocument = async (key, file) => {
     if (!file || !filters.competitionId) return;
-    if (file.size > 10 * 1024 * 1024) { setError('每份单位报名材料不能超过 10MB。'); return; }
+    if (file.size > 50 * 1024 * 1024) { setError('每份单位报名材料不能超过 50MB。'); return; }
     setRegistrationDocumentUploading(key);
     setError('');
     try {
@@ -2322,32 +2329,43 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         </Button>
                       </label>
                       {documents.length === 0 && <Typography variant="body2" component="span" color="text.secondary" sx={{ ml: 1 }}>暂未上传</Typography>}
-                      {documents.map(document => {
-                        const participant = participants.find(item => String(item._id) === String(document.participant));
-                        const deleting = registrationDocumentUploading === String(document._id);
-                        return <Box key={String(document._id)} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.75 }}>
-                          <Typography variant="body2" color="success.main">已上传：{document.originalName}{participant ? `（${participant.name || participant.teamName}）` : ''}</Typography>
-                          <Tooltip title="删除这份文件"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentUploading)} onClick={() => deleteRegistrationDocument(String(document._id))}>{deleting ? <CircularProgress size={18} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
-                        </Box>;
-                      })}
+                      {documents.length > 0 && <Box sx={{ maxHeight: 144, overflowY: 'auto', pr: 0.5 }}>
+                        {documents.map(document => {
+                          const participant = participants.find(item => String(item._id) === String(document.participant));
+                          const deleting = registrationDocumentUploading === String(document._id);
+                          return <Box key={String(document._id)} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.75 }}>
+                            <Typography variant="body2" color="success.main">已上传：{document.originalName}{participant ? `（${participant.name || participant.teamName}）` : ''}</Typography>
+                            <Tooltip title="删除这份文件"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentUploading)} onClick={() => deleteRegistrationDocument(String(document._id))}>{deleting ? <CircularProgress size={18} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
+                          </Box>;
+                        })}
+                      </Box>}
                     </Box>
                   );
                 })}
-                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>支持 PDF、JPG、PNG，单份不超过 10MB。</Typography>
-                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                  <Typography variant="subtitle2" gutterBottom>选手材料提交状态</Typography>
-                  {participantDocumentGroups.map(group => (
-                    <Box key={group.key} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Typography variant="body2" fontWeight="medium">{group.name}</Typography>
-                      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
-                        {registrationDocumentSlots.map(({ key, label }) => {
-                          const count = (registrationDocuments?.attachments || []).filter(document => document.type === key && group.ids.includes(String(document.participant))).length;
-                          return <Typography key={key} variant="caption" color={count ? 'success.main' : 'warning.main'}>{label}：{count ? `已提交 ${count} 份` : '待补交'}</Typography>;
-                        })}
-                      </Box>
+                <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>支持 PDF、JPG、PNG，单份不超过 50MB。</Typography>
+                <Accordion disableGutters elevation={0} sx={{ mt: 2, border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Box>
+                      <Typography variant="subtitle2">选手材料提交状态</Typography>
+                      <Typography variant="caption" color={participantDocumentSummary.needSupplement ? 'warning.main' : 'success.main'}>
+                        共 {participantDocumentGroups.length} 名选手 · {participantDocumentSummary.needSupplement ? `${participantDocumentSummary.needSupplement} 名待补交` : '全部材料已提交'}
+                      </Typography>
                     </Box>
-                  ))}
-                </Box>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0 }}>
+                    {participantDocumentGroups.map(group => (
+                      <Box key={group.key} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                        <Typography variant="body2" fontWeight="medium">{group.name}</Typography>
+                        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                          {registrationDocumentSlots.map(({ key, label }) => {
+                            const count = (registrationDocuments?.attachments || []).filter(document => document.type === key && group.ids.includes(String(document.participant))).length;
+                            return <Typography key={key} variant="caption" color={count ? 'success.main' : 'warning.main'}>{label}：{count ? `已提交 ${count} 份` : '待补交'}</Typography>;
+                          })}
+                        </Box>
+                      </Box>
+                    ))}
+                  </AccordionDetails>
+                </Accordion>
               </Paper>
             )}
           </Box>

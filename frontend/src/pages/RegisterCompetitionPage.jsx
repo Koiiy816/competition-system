@@ -773,8 +773,8 @@ const RegisterCompetitionPage = () => {
 
   const selectRegistrationDocument = (setter) => (event) => {
     const file = event.target.files?.[0] || null;
-    if (file && file.size > 10 * 1024 * 1024) {
-      setDocumentError('每份单位报名材料不能超过 10MB。');
+    if (file && file.size > 50 * 1024 * 1024) {
+      setDocumentError('每份单位报名材料不能超过 50MB。');
       event.target.value = '';
       return;
     }
