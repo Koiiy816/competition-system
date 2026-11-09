@@ -2,6 +2,12 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { formatScheduleName, getScheduleGender, parseScheduleIdentity } = require('../utils/scheduleNaming');
 
+test('蹦床新赛程标题独立显示组别且不重复项目性别', () => {
+  assert.equal(formatScheduleName({ ageGroup: '小网U9组', eventName: '小网U9组男子蹦床个人', eventConfig: { category: '小网', genderRestriction: 'male' } }), 'U9组 小网男子个人');
+  assert.equal(formatScheduleName({ ageGroup: '大网U10组', eventName: '大网U10组蹦床个人', eventConfig: { category: '大网' }, participantGender: 'male' }), 'U10组 男子 大网个人');
+  assert.equal(formatScheduleName({ ageGroup: '混合集体 小网小学组', eventName: '小网小学组蹦床操', eventConfig: { category: '小网', isGroupEvent: true } }), '小学组 蹦床操');
+});
+
 test('mixed synchronized diving keeps its mixed project name regardless of the first entrant gender', () => {
   const eventName = '男女混合跳台双人';
   const gender = getScheduleGender({ eventName, participantGender: 'female' });

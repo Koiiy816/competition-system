@@ -2,16 +2,30 @@ import { isTrampolineCompetition } from './competitionType.js';
 
 export const getAgeGroupDisplayName = (competition, group) => {
   const name = typeof group === 'string' ? group : group?.name || '';
-  return isTrampolineCompetition(competition) ? name.replace(/^(大网|小网)/, '') : name;
+  return isTrampolineCompetition(competition) ? name.replace(/^(?:混合集体\s*)?(?:男子|女子)?(?:大网|小网)/, '') : name;
+};
+
+export const getScheduleDisplayName = (competition, schedule) => {
+  const name = schedule?.name || '';
+  if (!isTrampolineCompetition(competition)) return name;
+  const group = name.match(/(?:大网|小网)?(U\d+组|小学组|幼儿组)/)?.[1];
+  if (!group) return name;
+  if (name.includes('蹦床操')) return `${group} 蹦床操`;
+  const category = name.includes('小网') ? '小网' : name.includes('大网') ? '大网' : '';
+  if (!category) return name;
+  const gender = name.match(/男子|女子/)?.[0] || '';
+  return category === '小网' ? `${group} 小网${gender}个人` : [group, gender, '大网个人'].filter(Boolean).join(' ');
 };
 
 // 保留旧项目名作为报名关联键，显示时将组别放在独立控件中。
 export const getEventDisplayName = (competition, event) => {
   let name = event.displayName || event.name || '';
   if (!isTrampolineCompetition(competition)) return name;
-  const groups = (event.ageGroups || []).map(group => typeof group === 'string' ? group : group.name);
+  const category = event.category || name.match(/^(大网|小网)/)?.[0] || '';
+  const groups = (event.ageGroups?.length ? event.ageGroups : name.match(/(?:大网|小网)?(?:U\d+组|小学组|幼儿组)/g) || [])
+    .map(group => typeof group === 'string' ? group : group.name);
   for (const group of groups.sort((a, b) => b.length - a.length)) {
-    name = name.replace(group, event.category && group.startsWith(event.category) ? event.category : '');
+    name = name.replace(group, category && group.startsWith(category) ? category : '');
   }
   return name.replace(/^小网(?=蹦床操)/, '').replace(/蹦床个人/g, '个人').trim();
 };

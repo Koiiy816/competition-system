@@ -23,11 +23,12 @@ import {
   Switch
 } from '@mui/material';
 import competitionService from '../../services/competitionService';
-import { getSportType, isDivingCompetition } from '../../utils/competitionType';
+import { getSportType, isDivingCompetition, isTrampolineCompetition } from '../../utils/competitionType';
 import participantService from '../../services/participantService';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseChineseResidentIdentityNumber } from '../../utils/certificateInfo';
 import { createRequestKey } from '../../utils/requestKey';
+import { getAgeGroupDisplayName, getEventDisplayName } from '../../utils/trampolineRegistration';
 
 const isDivingEntry = (competition) => isDivingCompetition(competition);
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
@@ -37,8 +38,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const navigate = useNavigate();
   const { user } = useAuth();
   const canManageTestStatus = user?.roles?.includes('admin') || user?.roles?.includes('chief_referee');
-  const groupTeamRequired = !(editData && user?.roles?.includes('admin'));
   const [competition, setCompetition] = useState(null);
+  const groupTeamRequired = !isTrampolineCompetition(competition) && !(editData && user?.roles?.includes('admin'));
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [identityReady, setIdentityReady] = useState(false);
@@ -499,7 +500,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                     !competition?.events?.some(e => e.ageGroups?.includes(formData.grade)) &&
                     !gradeOptions.some(o => o.value === formData.grade) && (
                       <MenuItem key={formData.grade} value={formData.grade}>
-                        {formData.grade}
+                        {getAgeGroupDisplayName(competition, formData.grade)}
                       </MenuItem>
                   )}
                   {competition?.events?.reduce((acc, current) => {
@@ -510,7 +511,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                      }
                      return acc;
                   }, []).map(group => (
-                    <MenuItem key={group} value={group}>{group}</MenuItem>
+                    <MenuItem key={group} value={group}>{getAgeGroupDisplayName(competition, group)}</MenuItem>
                   ))}
                   {/* 如果比赛没有配置组别，退回默认 */}
                   {(!competition?.events || competition.events.length === 0) && gradeOptions.map(option => (
@@ -536,7 +537,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                   ) : (
                     availableEvents.map(event => (
                       <MenuItem key={event.name} value={event.name}>
-                        {event.name}{event.legacy ? '（历史项目）' : ''}
+                        {getEventDisplayName(competition, event)}{event.legacy ? '（历史项目）' : ''}
                       </MenuItem>
                     ))
                   )}
@@ -545,7 +546,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </FormControl>
             </Grid>
 
-            {selectedEventIsGroup && (
+            {selectedEventIsGroup && !isTrampolineCompetition(competition) && (
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth

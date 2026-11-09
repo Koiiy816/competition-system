@@ -6,12 +6,15 @@ import {
   Pagination
 } from '@mui/material';
 import scheduleService from '../services/scheduleService';
+import competitionService from '../services/competitionService';
+import { getScheduleDisplayName } from '../utils/trampolineRegistration';
 
 const CompetitionScorePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
+  const [competition, setCompetition] = useState(null);
   const [error, setError] = useState('');
   
   // 从 sessionStorage 初始化页码，实现返回时记住页码
@@ -32,7 +35,11 @@ const CompetitionScorePage = () => {
   const fetchSchedules = async () => {
     try {
       // Get all schedules (large limit)
-      const res = await scheduleService.getSchedules(id, { limit: 1000 });
+      const [res, context] = await Promise.all([
+        scheduleService.getSchedules(id, { limit: 1000 }),
+        competitionService.getScoreContext(id)
+      ]);
+      setCompetition(context.data);
       const data = res.data || [];
       setSchedules(data);
     } catch (err) {
@@ -127,7 +134,7 @@ const CompetitionScorePage = () => {
                                           }}>
                                             {index + 1}
                                           </span>
-                                          {s.name}
+                                          {getScheduleDisplayName(competition, s)}
                                         </Typography>
                                         {s.status === 'completed' && (
                                           <Typography variant="caption" sx={{ color: '#2e7d32', fontWeight: 'bold', bgcolor: '#c8e6c9', px: 0.5, borderRadius: 1 }}>

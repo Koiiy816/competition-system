@@ -12,6 +12,7 @@ const effects = [];
 let states = [];
 let hookIndex = 0;
 const updates = [];
+let testCompetition = { sportType: 'wushu', events: [{ name: '集体武术操', isGroupEvent: true, ageGroups: [] }] };
 const compiled = new Module(filename);
 compiled.filename = filename;
 compiled.paths = createRequire(import.meta.url).resolve.paths('react');
@@ -24,7 +25,7 @@ compiled.require = spec => {
   }, useEffect: effect => effects.push(effect) };
   if (spec === 'react-router-dom') return { useNavigate: () => () => {} };
   if (spec.includes('AuthContext')) return { useAuth: () => ({ user: { roles: ['admin'] } }) };
-  if (spec.includes('competitionService')) return { getCompetition: async () => ({ data: { sportType: 'wushu', events: [{ name: '集体武术操', isGroupEvent: true, ageGroups: [] }] } }) };
+  if (spec.includes('competitionService')) return { getCompetition: async () => ({ data: testCompetition }) };
   if (spec.includes('participantService')) return { updateParticipant: async (...args) => updates.push(args) };
   if (spec.includes('AthleteIdentitySelect')) return () => null;
   return originalRequire(spec);
@@ -110,4 +111,21 @@ test('new collective registrations still require a team number', async () => {
     ? { ...value, event: '集体武术操', grade: 'C组', gender: 'female' } : value);
   const form = render({ open: true, competitionId: 'competition' });
   assert.equal(elements(form).find(element => element.props.name === 'groupTeam').props.required, true);
+});
+
+test('管理员编辑蹦床报名使用简洁组别与项目名称，并隐藏队伍编号', async () => {
+  const previous = testCompetition;
+  try {
+    testCompetition = { sportType: 'trampoline', events: [{ name: '小网幼儿组蹦床操', category: '小网', ageGroups: ['小网幼儿组'], isGroupEvent: true }] };
+    states = [];
+    const props = { open: true, competitionId: 'competition', editData: {
+      _id: 'entry', event: '小网幼儿组蹦床操', grade: '小网幼儿组', gender: 'male', name: '选手'
+    } };
+    render(props); await effects[0]();
+    const nodes = elements(render(props));
+    assert.equal(nodes.find(e => e.props.value === '小网幼儿组' && e.props.children === '幼儿组')?.props.children, '幼儿组');
+    const option = nodes.find(e => e.props.value === '小网幼儿组蹦床操' && e.props.children?.[0] === '蹦床操');
+    assert.equal(option?.props.children[0], '蹦床操');
+    assert.ok(!nodes.some(e => e.props.name === 'groupTeam'));
+  } finally { testCompetition = previous; }
 });

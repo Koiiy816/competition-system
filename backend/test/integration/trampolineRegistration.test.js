@@ -48,6 +48,14 @@ test('真实HTTP与MongoDB：蹦床跨项目报名、权限、年龄、团体编
     assert.equal(teams.find(t => t.groupTeam === '2队').teamMembers.length, 1);
     assert.equal((await Schedule.find({ competition: competition.id, participants: { $all: teams.map(t => t._id) } })).length, 1);
     const schedules = await Schedule.find({ competition: competition.id });
+    assert.ok(schedules.some(s => s.name === 'U7组 小网男子个人'));
+    assert.ok(schedules.some(s => s.name === '小学组 蹦床操'));
+    for (const schedule of schedules) {
+      const detail = await f.request(`/competitions/${competition.id}/schedules/${schedule.id}`, { role: 'admin' });
+      assert.equal(detail.status, 200);
+      assert.equal(detail.body.data.participants.length, schedule.participants.length);
+      assert.ok(detail.body.data.participants.every(p => p._id && p.schoolName));
+    }
     assert.ok(schedules.filter(s => s.name.includes('小网')).every(s => s.judgeCount === 2));
     assert.ok(schedules.filter(s => s.name.includes('大网')).every(s => s.judgeCount === 7));
     // 通过真实提交接口验证新计分和评分栏位，覆盖首次提交与后续合并保存。
@@ -55,7 +63,7 @@ test('真实HTTP与MongoDB：蹦床跨项目报名、权限、年龄、团体编
     f.users.other.sportTypes = ['trampoline'];
     for (const [kind, label, values, expected] of [
       ['large', '大网', [6, 9, 8, 7, 2.5, 10, 0], 14.5],
-      ['small', '小网U7', [0, 8], 7.5]
+      ['small', 'U7组 小网', [0, 8], 7.5]
     ]) {
       const schedule = schedules.find(item => item.name.includes(label));
       const participantId = String(schedule.participants[0]);

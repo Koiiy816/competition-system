@@ -1,11 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { getAgeGroupDisplayName, getEventDisplayName, getTrampolineEvents, getTrampolineEventGroup, getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from './trampolineRegistration.js';
+import { getScheduleDisplayName, getAgeGroupDisplayName, getEventDisplayName, getTrampolineEvents, getTrampolineEventGroup, getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from './trampolineRegistration.js';
 import { isTrampolineCompetition, PARTICIPATION_SPORT_TYPES } from './competitionType.js';
 const require = createRequire(import.meta.url);
 const { buildTrampolineCompetition } = require('../../../backend/data/trampoline2026');
 const competition = buildTrampolineCompetition('test');
+
+test('旧赛程标题去除重复组别，当前场次和导航均可显示简洁名称', () => {
+  for (const [name, expected] of [
+    ['小网U9组 小网U9组男子蹦床个人', 'U9组 小网男子个人'],
+    ['大网U10组 男子 大网U10组蹦床个人', 'U10组 男子 大网个人'],
+    ['混合集体 小网小学组 小网小学组蹦床操', '小学组 蹦床操']
+  ]) assert.equal(getScheduleDisplayName(competition, { name }), expected);
+  assert.equal(getScheduleDisplayName({ sportType: 'wushu' }, { name: 'U9组 男子长拳' }), 'U9组 男子长拳');
+});
 
 test('报名选项独立提供匹配组别，显示名不含组别，保留原关联键', () => {
   const events = getTrampolineEvents(competition, '2019-06-01', 'male');
