@@ -5,6 +5,28 @@ const { promisify } = require('node:util');
 const execFile = promisify(require('node:child_process').execFile);
 const path = require('node:path');
 
+test('real database: administrator can clear a collective team number without changing identity or unit', async () => {
+  const f = await createFixture();
+  try {
+    f.competition.events.push({ name: '集体拳术', category: '武术', isGroupEvent: true });
+    await f.competition.save();
+    const person = { name: '选填编号测试', gender: 'female', birthDate: '2000-01-02', idCard: 'OPTIONAL-TEAM',
+      competition: f.competition.id, user: f.users.organization.id, schoolName: '测试单位' };
+    const identity = await f.AthleteIdentity.create({ ...person, requestKey: 'optional-team' });
+    const row = await f.Participant.create({ ...person, athleteNumber: identity.number, event: '集体拳术',
+      type: 'individual', ageGroup: 'A组', grade: 'A组', status: 'approved', groupTeam: '旧队号' });
+    const result = await f.request(`/competitions/${f.competition.id}/participants/${row.id}`, { role: 'admin', method: 'PUT',
+      body: { groupTeam: '', athleteNumber: identity.number, updatedAt: row.updatedAt } });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    const saved = await f.Participant.findById(row.id);
+    assert.equal(saved.groupTeam, '');
+    assert.equal(saved.athleteNumber, identity.number);
+    assert.equal(saved.schoolName, person.schoolName);
+    assert.equal(saved.status, 'approved');
+    assert.equal(String(saved.user), f.users.organization.id);
+  } finally { await f.close(); }
+});
+
 test('real database: cross-account/unit registrations share identity and one fee, while edit ownership remains separate', async () => {
   const f = await createFixture();
   try {
@@ -37,6 +59,18 @@ test('real database: cross-account/unit registrations share identity and one fee
     const list = await f.request(`${endpoint}/athlete-identities?schoolName=乙单位`, { role: 'other' });
     assert.equal(list.body.data[0].number, number);
     assert.ok(!JSON.stringify(list.body).includes(person.idCard));
+    const move = await f.request(`${endpoint}/${third.body.data._id}`, { role: 'admin', method: 'PUT',
+      body: { schoolName: '新代表单位', athleteNumber: number, updatedAt: third.body.data.updatedAt } });
+    assert.equal(move.status, 200, JSON.stringify(move.body));
+    assert.equal(move.body.data.schoolName, '新代表单位');
+    assert.equal(move.body.data.athleteNumber, number);
+    assert.equal(move.body.data.user, f.users.organization.id);
+    const allIdentities = await f.request(`${endpoint}/athlete-identities`, { role: 'admin' });
+    assert.equal(allIdentities.body.data.find(item => item.number === number)?.number, number);
+    assert.equal(await f.AthleteIdentity.countDocuments({ name: person.name }), 1);
+    const movedFees = await f.request(`${endpoint}?groupBy=school`, { role: 'admin' });
+    assert.equal(movedFees.body.uniqueParticipantTotal, 1);
+    assert.equal(movedFees.body.data.flatMap(group => group.roster).reduce((sum, item) => sum + item.fee, 0), 400);
     const change = { athleteNumber: number, event: '刀术', ageGroup: 'A组', groupTeam: '', eventDetail: '', updatedAt: first.body.data.updatedAt };
     assert.equal((await f.request(`${endpoint}/${first.body.data._id}/registration-content`, { role: 'other', method: 'PUT', body: change })).status, 403);
     const ownChange = await f.request(`${endpoint}/${second.body.data._id}/registration-content`, { role: 'other', method: 'PUT', body: { ...change, updatedAt: second.body.data.updatedAt } });
