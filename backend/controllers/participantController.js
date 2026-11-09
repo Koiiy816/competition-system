@@ -16,6 +16,16 @@ const removeStoredRegistrationDocument = (filename) => {
   fs.unlink(filePath, () => {});
 };
 
+const REGISTRATION_DOCUMENT_TYPES = ['riskNotice', 'insurance', 'paperRegistrationForm'];
+const serializeRegistrationDocuments = (document) => {
+  if (!document) return { attachments: [] };
+  const value = document.toObject ? document.toObject() : document;
+  const legacyAttachments = REGISTRATION_DOCUMENT_TYPES
+    .filter(type => value[type]?.filename)
+    .map(type => ({ ...value[type], _id: `legacy-${type}`, type, legacy: true }));
+  return { ...value, attachments: [...legacyAttachments, ...(value.attachments || [])] };
+};
+
 // 本赛事的导入资料存在不同选手共用身份证号码的情况，不能用身份证或照片推断选手身份。
 // 人数统计按报名册中的姓名、单位、性别归并；若三项均缺失则保留为独立记录。
 const participantRosterKey = (participant) => {
@@ -686,7 +696,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-// 单位级材料与报名名单分开保存，一次提交只保留每个材料类别的最新文件。
+// 每次上传均作为独立材料保留，不覆盖已有文件；可选关联至某位运动员。
 exports.uploadRegistrationDocuments = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);
@@ -695,26 +705,22 @@ exports.uploadRegistrationDocuments = async (req, res, next) => {
     if (competition.status !== 'registration' && !await Participant.exists({ competition: competition._id, user: req.user.id })) {
       return res.status(400).json({ success: false, message: '该比赛当前不在报名阶段，且未找到本单位已提交的报名' });
     }
-    const files = req.files || {};
-    const toMetadata = (file) => file && ({ filename: file.filename, originalName: file.originalname, mimetype: file.mimetype, size: file.size });
-    const riskNotice = toMetadata(files.riskNotice?.[0]);
-    const insurance = toMetadata(files.insurance?.[0]);
-    const paperRegistrationForm = toMetadata(files.paperRegistrationForm?.[0]);
-    if (!riskNotice && !insurance && !paperRegistrationForm) return res.status(400).json({ success: false, message: '请选择至少一份材料' });
-    const current = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
-    const update = {};
-    if (riskNotice) update.riskNotice = riskNotice;
-    if (insurance) update.insurance = insurance;
-    if (paperRegistrationForm) update.paperRegistrationForm = paperRegistrationForm;
+    const type = String(req.body.type || '').trim();
+    if (!REGISTRATION_DOCUMENT_TYPES.includes(type)) return res.status(400).json({ success: false, message: '请选择正确的材料类别' });
+    const files = req.files?.files || [];
+    if (!files.length) return res.status(400).json({ success: false, message: '请选择至少一份材料' });
+    let participant = null;
+    if (req.body.participantId) {
+      participant = await Participant.findOne({ _id: req.body.participantId, competition: competition._id, user: req.user.id });
+      if (!participant) return res.status(400).json({ success: false, message: '所关联的报名记录不存在或不属于本单位' });
+    }
+    const attachments = files.map(file => ({ type, participant: participant?._id, filename: file.filename, originalName: file.originalname, mimetype: file.mimetype, size: file.size }));
     const document = await RegistrationDocument.findOneAndUpdate(
       { competition: competition._id, user: req.user.id },
-      { $set: update },
+      { $push: { attachments: { $each: attachments } } },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
-    if (riskNotice) removeStoredRegistrationDocument(current?.riskNotice?.filename);
-    if (insurance) removeStoredRegistrationDocument(current?.insurance?.filename);
-    if (paperRegistrationForm) removeStoredRegistrationDocument(current?.paperRegistrationForm?.filename);
-    return res.status(200).json({ success: true, data: document });
+    return res.status(200).json({ success: true, data: serializeRegistrationDocuments(document) });
   } catch (error) { next(error); }
 };
 
@@ -724,7 +730,31 @@ exports.getRegistrationDocuments = async (req, res, next) => {
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
     if (!canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
     const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
-    return res.status(200).json({ success: true, data: document || null });
+    return res.status(200).json({ success: true, data: serializeRegistrationDocuments(document) });
+  } catch (error) { next(error); }
+};
+
+exports.deleteRegistrationDocument = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
+    if (!document) return res.status(404).json({ success: false, message: '未找到单位报名材料' });
+    const legacyType = String(req.params.attachmentId || '').replace(/^legacy-/, '');
+    if (String(req.params.attachmentId).startsWith('legacy-') && REGISTRATION_DOCUMENT_TYPES.includes(legacyType) && document[legacyType]?.filename) {
+      const filename = document[legacyType].filename;
+      document.set(legacyType, undefined);
+      await document.save();
+      removeStoredRegistrationDocument(filename);
+      return res.status(200).json({ success: true, data: serializeRegistrationDocuments(document) });
+    }
+    const attachment = document.attachments.id(req.params.attachmentId);
+    if (!attachment) return res.status(404).json({ success: false, message: '未找到该材料' });
+    const filename = attachment.filename;
+    attachment.deleteOne();
+    await document.save();
+    removeStoredRegistrationDocument(filename);
+    return res.status(200).json({ success: true, data: serializeRegistrationDocuments(document) });
   } catch (error) { next(error); }
 };
 

@@ -102,6 +102,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationDocuments, setRegistrationDocuments] = useState(null);
   const [registrationDocumentsLoading, setRegistrationDocumentsLoading] = useState(false);
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
+  const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
   useEffect(() => {
     let active = true;
@@ -199,7 +200,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     setError('');
     try {
       const formData = new FormData();
-      formData.append(key, file);
+      formData.append('type', key);
+      if (registrationDocumentParticipantId) formData.append('participantId', registrationDocumentParticipantId);
+      formData.append('files', file);
       const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
@@ -211,6 +214,24 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       setSuccessMessage('单位报名材料已上传。');
     } catch (uploadError) {
       setError(uploadError.message || '上传单位报名材料失败');
+    } finally {
+      setRegistrationDocumentUploading('');
+    }
+  };
+
+  const deleteRegistrationDocument = async (attachmentId) => {
+    if (!filters.competitionId || !window.confirm('确定删除这份上传材料吗？')) return;
+    setRegistrationDocumentUploading(attachmentId);
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/${attachmentId}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '删除材料失败');
+      setRegistrationDocuments(result.data || null);
+      setSuccessMessage('上传材料已删除。');
+    } catch (deleteError) {
+      setError(deleteError.message || '删除材料失败');
     } finally {
       setRegistrationDocumentUploading('');
     }
@@ -2267,14 +2288,21 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
               <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
                 <Typography variant="subtitle1" gutterBottom>单位报名材料</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                  可在此补交或替换材料。三项均为选填，不影响已提交的运动员报名。
+                  可为每位运动员补交多份材料；新文件会追加保存，不覆盖原文件。三项均为选填，不影响已提交的报名。
                 </Typography>
+                <FormControl size="small" sx={{ minWidth: 260, mb: 1.5 }}>
+                  <InputLabel id="document-participant-label">关联参赛者（选填）</InputLabel>
+                  <Select labelId="document-participant-label" value={registrationDocumentParticipantId} label="关联参赛者（选填）" onChange={event => setRegistrationDocumentParticipantId(event.target.value)}>
+                    <MenuItem value="">不关联具体参赛者</MenuItem>
+                    {participants.map(participant => <MenuItem key={participant._id} value={participant._id}>{participant.name || participant.teamName} · {participant.event}</MenuItem>)}
+                  </Select>
+                </FormControl>
                 {registrationDocumentsLoading ? <CircularProgress size={24} /> : registrationDocumentSlots.map(({ key, label }) => {
-                  const document = registrationDocuments?.[key];
+                  const documents = (registrationDocuments?.attachments || []).filter(document => document.type === key);
                   const inputId = `registration-document-${key}`;
                   const uploading = registrationDocumentUploading === key;
                   return (
-                    <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', py: 0.75 }}>
+                    <Box key={key} sx={{ py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
                       <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id={inputId} type="file" onChange={(event) => {
                         const file = event.target.files?.[0];
                         event.target.value = '';
@@ -2282,12 +2310,18 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                       }} />
                       <label htmlFor={inputId}>
                         <Button variant="outlined" component="span" startIcon={<UploadFileIcon />} disabled={Boolean(registrationDocumentUploading)}>
-                          {uploading ? '上传中…' : `${document ? '替换' : '上传'}${label}`}
+                          {uploading ? '上传中…' : `上传${label}`}
                         </Button>
                       </label>
-                      <Typography variant="body2" color={document ? 'success.main' : 'text.secondary'}>
-                        {document ? `已上传：${document.originalName}` : '暂未上传'}
-                      </Typography>
+                      {documents.length === 0 && <Typography variant="body2" component="span" color="text.secondary" sx={{ ml: 1 }}>暂未上传</Typography>}
+                      {documents.map(document => {
+                        const participant = participants.find(item => String(item._id) === String(document.participant));
+                        const deleting = registrationDocumentUploading === String(document._id);
+                        return <Box key={String(document._id)} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.75 }}>
+                          <Typography variant="body2" color="success.main">已上传：{document.originalName}{participant ? `（${participant.name || participant.teamName}）` : ''}</Typography>
+                          <Tooltip title="删除这份文件"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentUploading)} onClick={() => deleteRegistrationDocument(String(document._id))}>{deleting ? <CircularProgress size={18} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
+                        </Box>;
+                      })}
                     </Box>
                   );
                 })}

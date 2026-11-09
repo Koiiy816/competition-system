@@ -61,6 +61,12 @@ router.put(
   participantController.uploadRegistrationDocuments
 );
 
+router.delete(
+  '/registration-documents/:attachmentId',
+  auth, authorize('organization'),
+  participantController.deleteRegistrationDocument
+);
+
 router.put(
   '/:id/diving-plan',
   auth,

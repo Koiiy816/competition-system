@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
     // 根据文件类型决定存储位置
     if (file.fieldname === 'photo') {
       cb(null, participantPhotosDir);
-    } else if (['riskNotice', 'insurance', 'paperRegistrationForm'].includes(file.fieldname)) {
+    } else if (['riskNotice', 'insurance', 'paperRegistrationForm', 'files'].includes(file.fieldname)) {
       cb(null, registrationDocumentsDir);
     } else if (req.route.path.includes('template')) {
       cb(null, templatesDir);
@@ -80,9 +80,7 @@ module.exports = {
   uploadRegistrationForm: upload.single('registrationForm'),
   uploadParticipantPhoto: upload.single('photo'),
   uploadRegistrationDocuments: upload.fields([
-    { name: 'riskNotice', maxCount: 1 },
-    { name: 'insurance', maxCount: 1 },
-    { name: 'paperRegistrationForm', maxCount: 1 }
+    { name: 'files', maxCount: 10 }
   ]),
   
   // 上传模板文件
