@@ -39,7 +39,7 @@ import participantService from '../services/participantService';
 import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
 import { isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
-import { getTrampolineEventGroup, getTrampolineEvents } from '../utils/trampolineRegistration';
+import { getAgeGroupDisplayName, getEventDisplayName, getTrampolineEventGroup, getTrampolineEvents } from '../utils/trampolineRegistration';
 const isDivingEvent = (competition) => isDivingCompetition(competition);
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -551,7 +551,7 @@ const RegisterCompetitionPage = () => {
   const getEventConfigByName = (eventName) => (competition?.events || []).find(event => event.name === eventName) || getAvailableEvents().find(event => event.name === eventName);
   const getEventLabel = (eventName) => {
     const event = getEventConfigByName(eventName);
-    return event ? `${event.isGroupEvent ? '集体项目' : '个人项目'} · ${event.displayName || event.name}` : eventName;
+    return event ? `${event.isGroupEvent ? '集体项目' : '个人项目'} · ${getEventDisplayName(competition, event)}` : eventName;
   };
   const getRegistrantUnit = (entry) => String(entry?.data?.schoolName || entry?.data?.teamName || '').trim();
   const isDivingPairRegistrant = (entry) => {
@@ -726,7 +726,7 @@ const RegisterCompetitionPage = () => {
         } : {}),
         athleteRequestKey: baseId,
         event,
-        groupTeam: getAvailableEvents().find(item => item.name === event)?.isGroupEvent
+        groupTeam: !isTrampolineCompetition(competition) && getAvailableEvents().find(item => item.name === event)?.isGroupEvent
           ? String(selectedTeamAssignments[event] || '').trim()
           : '',
         additionalInfo: (() => {
@@ -1065,7 +1065,7 @@ const RegisterCompetitionPage = () => {
             )}
           </FormControl>
         </Grid>}
-        {isTrampolineCompetition(competition) && <Grid item xs={12}><Alert severity="info">按出生日期和性别列出符合规程的项目，每项自动匹配组别。蹦床操请逐名添加队员，同单位、同项目、同队伍编号合为一队；只有一队可不填队伍编号。本阶段无需填写动作代码。</Alert></Grid>}
+        {isTrampolineCompetition(competition) && <Grid item xs={12}><Alert severity="info">按出生日期和性别列出符合规程的项目，每项自动匹配组别。蹦床操为集体项目，请逐名添加队员，同单位、同组别的蹦床操队员自动合为一队。本阶段无需填写动作代码。</Alert></Grid>}
         {/* 比赛项目：同一名运动员可连续选择多个项目 */}
         <Grid item xs={12}>
           <Paper variant="outlined" sx={{ p: 2 }}>
@@ -1075,6 +1075,11 @@ const RegisterCompetitionPage = () => {
               const selectedEventConfig = getAvailableEvents().find(event => event.name === selectedEvent);
               const selectedEventType = selectedEventTypes[index];
               const eventsInType = getAvailableEvents().filter(event => (event.isGroupEvent ? 'group' : 'individual') === selectedEventType);
+              const trampoline = isTrampolineCompetition(competition);
+              const groupLabel = event => getAgeGroupDisplayName(competition, event?.matchedGroup);
+              const matchedGroups = [...new Set(eventsInType.map(groupLabel))];
+              const matchedGroup = groupLabel(selectedEventConfig) || matchedGroups[0] || '';
+              const visibleEvents = trampoline ? eventsInType.filter(event => groupLabel(event) === matchedGroup) : eventsInType;
               const detailConfig = selectedEventConfig?.registrationDetail;
               return (
               <Box key={index} sx={{ mb: 1.5 }}>
@@ -1092,6 +1097,18 @@ const RegisterCompetitionPage = () => {
                       <MenuItem value="group">集体项目</MenuItem>
                     </Select>
                   </FormControl>
+                  {trampoline && selectedEventType && <FormControl required sx={{ minWidth: 180, flex: '1 1 180px' }}>
+                    <InputLabel id={'event-group-label-' + index}>匹配组别</InputLabel>
+                    <Select
+                      labelId={'event-group-label-' + index}
+                      value={matchedGroup}
+                      label="匹配组别"
+                      disabled={!matchedGroup}
+                      onChange={(event) => handleEventSelectionChange(index, eventsInType.find(item => groupLabel(item) === event.target.value)?.name || '')}
+                    >
+                      {matchedGroups.map(group => <MenuItem key={group} value={group}>{group}</MenuItem>)}
+                    </Select>
+                  </FormControl>}
                   {selectedEventType && <FormControl required error={!!formErrors.events} sx={{ minWidth: 240, flex: '3 1 240px' }}>
                   <InputLabel id={'event-label-' + index}>{'比赛项目' + ' ' + (index + 1)}</InputLabel>
                   <Select
@@ -1103,7 +1120,7 @@ const RegisterCompetitionPage = () => {
                     disabled={isTrampolineCompetition(competition) ? !formData.birthDate || !formData.gender : !formData.grade}
                     renderValue={(value) => eventsInType.find(event => event.name === value)?.displayName || value}
                   >
-                    {eventsInType.map((event) => (
+                    {visibleEvents.map((event) => (
                       <MenuItem key={event.name} value={event.name} disabled={selectedEvents.includes(event.name) && selectedEvent !== event.name}>
                         {event.displayName}
                       </MenuItem>
@@ -1127,7 +1144,7 @@ const RegisterCompetitionPage = () => {
                     inputProps={{ maxLength: detailConfig.maxLength || 100 }}
                   />
                 )}
-                {selectedEventConfig?.isGroupEvent && (
+                {selectedEventConfig?.isGroupEvent && !trampoline && (
                   <TextField
                     fullWidth
                     sx={{ mt: 1 }}
@@ -1145,9 +1162,9 @@ const RegisterCompetitionPage = () => {
               );
             })}
             {formErrors.events && <FormHelperText error>{formErrors.events}</FormHelperText>}
-            {!formData.grade && <FormHelperText>请先选择年龄组别</FormHelperText>}
-            {formData.grade && getAvailableEvents().length === 0 && <FormHelperText>该组别暂无可选项目</FormHelperText>}
-            <Button variant="outlined" onClick={addEventSelection} disabled={!formData.grade || getAvailableEvents().length === 0} sx={{ mt: 1 }}>添加比赛项目</Button>
+            {!isTrampolineCompetition(competition) && !formData.grade && <FormHelperText>请先选择年龄组别</FormHelperText>}
+            {(isTrampolineCompetition(competition) ? formData.birthDate && formData.gender : formData.grade) && getAvailableEvents().length === 0 && <FormHelperText>该组别暂无可选项目</FormHelperText>}
+            <Button variant="outlined" onClick={addEventSelection} disabled={getAvailableEvents().length === 0} sx={{ mt: 1 }}>添加比赛项目</Button>
           </Paper>
         </Grid>
         
@@ -1218,7 +1235,7 @@ const RegisterCompetitionPage = () => {
                 {registrants.map((item, index) => (
                   <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
                     <Typography>
-                      {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {item.data.grade || '-'} · {getEventLabel(item.data.event) || '-'}{photoSummary(item.photo)}
+                      {index + 1}. {item.data.name || item.data.teamName} · {item.data.gender || '-'} · {getAgeGroupDisplayName(competition, item.data.grade) || '-'} · {getEventLabel(item.data.event) || '-'}{photoSummary(item.photo)}
                       {item.data.additionalInfo?.divingPlan ? ' · ' + divingPlanSummary(item.data.additionalInfo.divingPlan, item.data.additionalInfo?.divingPair) : ''}
                     </Typography>
                     <Button color="error" size="small" onClick={() => removeRegistrant(item.id)}>删除</Button>
@@ -1284,7 +1301,7 @@ const RegisterCompetitionPage = () => {
     <Box>
       <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
-      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{item.data.grade || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{getEventLabel(item.data.event) || '-'}{item.data.groupTeam ? <> {'\u00b7'} {'\u961f\u4f0d\uff1a'}{item.data.groupTeam}</> : null} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
+      <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{getAgeGroupDisplayName(competition, item.data.grade) || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{getEventLabel(item.data.event) || '-'}{item.data.groupTeam ? <> {'\u00b7'} {'\u961f\u4f0d\uff1a'}{item.data.groupTeam}</> : null} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
     </Box>
   );
 

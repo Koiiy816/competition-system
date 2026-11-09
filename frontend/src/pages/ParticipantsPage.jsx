@@ -67,6 +67,7 @@ import EditRegistrationModal from '../components/participants/EditRegistrationMo
 import systemService from '../services/systemService';
 import { getSportType } from '../utils/competitionType';
 import BrandWatermark from '../components/BrandWatermark';
+import { getAgeGroupDisplayName, getEventDisplayName } from '../utils/trampolineRegistration';
 import { createWushuRegistrationPdf, createWushuGroupedRegistrationPdf } from '../utils/wushuRegistrationPdf';
 
 // 标签面板组件
@@ -1529,8 +1530,8 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                   )}
                   <TableCell>{participant.schoolName || '-'}</TableCell>
                   <TableCell>{getGenderLabel(participant.gender)}</TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{participant.ageGroup || participant.grade || '-'}</TableCell>
-                        <TableCell>{participant.event || '-'}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{getAgeGroupDisplayName(registrationCompetition(participant), participant.ageGroup || participant.grade) || '-'}</TableCell>
+                        <TableCell>{getEventDisplayName(registrationCompetition(participant), { name: participant.event }) || '-'}</TableCell>
                   <TableCell>{typeInfo.name}</TableCell>
                   <TableCell>
                     <Chip 
@@ -1755,10 +1756,10 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0, gap: 2, pr: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0, flex: 1, flexWrap: 'wrap' }}>
-                  <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{group.displayName || group.event || '未分类项目'}</Typography>
-                  {group.ageGroup && (
+                  <Typography variant="h6" sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>{getSportType(selectedCompetition) === 'trampoline' ? getEventDisplayName(selectedCompetition, { name: group.event }) : group.displayName || group.event || '未分类项目'}</Typography>
+                  {(group.ageGroup || (getSportType(selectedCompetition) === 'trampoline' && /小学组|幼儿组/.test(group.event))) && (
                     <Chip 
-                      label={group.ageGroup} 
+                      label={getAgeGroupDisplayName(selectedCompetition, group.ageGroup || group.event.match(/小学组|幼儿组/)?.[0])}
                       color="primary" 
                       variant="outlined" 
                       size="small" 
@@ -1817,7 +1818,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                           </TableCell>
                           <TableCell>{participant.schoolName || '-'}</TableCell>
                           <TableCell>{getGenderLabel(participant.gender)}</TableCell>
-                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{participant.ageGroup || participant.grade || '-'}</TableCell>
+                          <TableCell sx={{ whiteSpace: 'nowrap' }}>{getAgeGroupDisplayName(registrationCompetition(participant), participant.ageGroup || participant.grade) || '-'}</TableCell>
                           <TableCell>{typeInfo.name}</TableCell>
                           <TableCell>
                             <Chip 

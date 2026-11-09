@@ -24,6 +24,7 @@ import competitionService from '../services/competitionService';
 import EventItem from '../components/competitions/EventItem';
 import { useAuth } from '../contexts/AuthContext';
 import { SPORT_TYPES, getSportType } from '../utils/competitionType';
+import { getAgeGroupDisplayName, getEventDisplayName } from '../utils/trampolineRegistration';
 
 
 const DIVING_REGULATION_AGE_GROUPS = [
@@ -1292,9 +1293,11 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                 <Grid item xs={12} sm={6} md={4} key={index}>
                   <Card variant="outlined">
                     <CardContent>
-                      <Typography variant="h6">{event.name}</Typography>
+                      <Typography variant="h6">{getSportType(competition) === SPORT_TYPES.TRAMPOLINE ? getEventDisplayName(competition, event) : event.name}</Typography>
                       <Typography color="textSecondary" gutterBottom>
-                        {event.category} {event.subcategory && `- ${event.subcategory}`}
+                        {getSportType(competition) === SPORT_TYPES.TRAMPOLINE && event.isGroupEvent
+                          ? '集体项目'
+                          : <>{event.category} {event.subcategory && `- ${event.subcategory}`}</>}
                       </Typography>
                       {event.isCombinedEvent && (
                         <Box sx={{ mt: 1, mb: 1, p: 1, bgcolor: '#e3f2fd', borderRadius: 1 }}>
@@ -1313,7 +1316,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
                             {event.ageGroups.map((group, idx) => (
                                 <Chip 
                                     key={idx} 
-                                    label={typeof group === 'string' ? group : group.name} 
+                                    label={getAgeGroupDisplayName(competition, group)}
                                     size="small" 
                                     sx={{ mr: 0.5, mb: 0.5 }} 
                                 />

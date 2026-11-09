@@ -15,7 +15,7 @@ import resultService from '../services/resultService';
 import { useAuth } from '../contexts/AuthContext';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import { calculateDivingDiveScore } from '../utils/divingScoring';
-import { getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from '../utils/trampolineRegistration';
+import { getScheduleDisplayName, getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from '../utils/trampolineRegistration';
 import { getTrampolineRoutineD } from '../utils/trampolinePlan';
 
 const normalizeCheckInStatus = (participant) => {
@@ -779,6 +779,7 @@ const CompetitionScoreEntryPage = () => {
 
   const fetchData = async () => {
     setLoading(true);
+    setError('');
     try {
       // These reads do not depend on one another.  Loading them together avoids
       // adding one public-network round trip for every score-page navigation.
@@ -1095,7 +1096,7 @@ const CompetitionScoreEntryPage = () => {
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }} className="no-print">
           <Box>
             <Typography variant="h5" component="h1" gutterBottom>
-              {schedule?.name} - 成绩录入
+              {getScheduleDisplayName(competition, schedule)} - 成绩录入
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
               {formatScheduleTime(schedule)}
@@ -1165,7 +1166,7 @@ const CompetitionScoreEntryPage = () => {
             {participants.map((participant) => <StrengthScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} onSave={handleStrengthSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : schedule?.scoringMode === 'diving' ? <Box sx={{ p: 1 }}>
             <Box className="diving-score-sheet-header">
-              <Typography variant="h4" component="h1">{schedule?.name} - 成绩录入</Typography>
+              <Typography variant="h4" component="h1">{getScheduleDisplayName(competition, schedule)} - 成绩录入</Typography>
               <Typography variant="subtitle1">{formatScheduleTime(schedule)}</Typography>
             </Box>
             <Alert severity="info" sx={{ mb: 2 }}>计分规则：去掉一个最高分及一个最低分后的三位裁判分数总和 × 难度系数。每一轮须由五位裁判全部录入后才会产生有效得分。</Alert>
@@ -1178,7 +1179,7 @@ const CompetitionScoreEntryPage = () => {
               : '小网：E1＋E2－裁判长扣分。'}扣分请输入非负数。</Alert>}
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
-               <Typography variant="h4" align="center" gutterBottom>{schedule?.name} - 成绩单</Typography>
+               <Typography variant="h4" align="center" gutterBottom>{getScheduleDisplayName(competition, schedule)} - 成绩单</Typography>
                <Typography variant="subtitle1" align="center" gutterBottom>
                  日期及時間：{formatScheduleTime(schedule)}
                </Typography>
@@ -1207,6 +1208,11 @@ const CompetitionScoreEntryPage = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
+                {participants.length === 0 && <TableRow><TableCell colSpan={20}>
+                  <Alert severity="warning" action={<Button color="inherit" onClick={fetchData}>重新加载</Button>}>
+                    本场赛程暂无参赛者，无法显示评分输入框。请在赛程编排中添加参赛者或更新出场名单。
+                  </Alert>
+                </TableCell></TableRow>}
                 {participants.map((p, index) => {
                   const result = results[p._id];
                   const checkInStatus = getParticipantCheckInStatus(p);
@@ -1271,7 +1277,7 @@ const CompetitionScoreEntryPage = () => {
                   onClick={() => navigate(`/competitions/${id}/score/${prevSchedule._id}`)}
                   sx={{ px: 4, py: 1.5, fontSize: '1.1rem', fontWeight: 'bold', boxShadow: 1 }}
                 >
-                  上一个比赛项目：{prevSchedule.name}
+                  上一个比赛项目：{getScheduleDisplayName(competition, prevSchedule)}
                 </Button>
               )}
             </Box>
@@ -1283,7 +1289,7 @@ const CompetitionScoreEntryPage = () => {
                   onClick={() => navigate(`/competitions/${id}/score/${nextSchedule._id}`)}
                   sx={{ px: 4, py: 1.5, fontSize: '1.1rem', fontWeight: 'bold', boxShadow: 3 }}
                 >
-                  下一个比赛项目：{nextSchedule.name}
+                  下一个比赛项目：{getScheduleDisplayName(competition, nextSchedule)}
                 </Button>
               )}
             </Box>
@@ -1296,7 +1302,7 @@ const CompetitionScoreEntryPage = () => {
       <PrintPreviewModal
         open={printModalOpen}
         onClose={() => setPrintModalOpen(false)}
-        schedule={schedule ? { ...schedule, competitionName: competition?.name || schedule?.competitionName, divingPrintType } : schedule}
+        schedule={schedule ? { ...schedule, name: getScheduleDisplayName(competition, schedule), competitionName: competition?.name || schedule?.competitionName, divingPrintType } : schedule}
         participants={(schedule?.scoringMode === 'diving' ? scoringParticipants : participants).filter(p => !p.isTest)}
         results={results}
         user={user}

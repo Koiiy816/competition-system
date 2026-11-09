@@ -32,6 +32,13 @@ function formatScheduleName({ ageGroup, eventName, eventConfig, participantGende
   const age = String(ageGroup || '未知组别').trim();
   const event = String(eventName || '未知项目').trim();
   const resolvedGender = gender || getScheduleGender({ eventName: event, eventConfig, participantGender });
+  if (['大网', '小网'].includes(eventConfig?.category) && /蹦床/.test(event)) {
+    const group = age.replace(/^(?:混合集体\s*)?(?:大网|小网)/, '');
+    if (event.includes('蹦床操')) return `${group} 蹦床操`;
+    return eventConfig.category === '小网'
+      ? `${group} 小网${genderLabel(resolvedGender)}个人`
+      : [group, genderLabel(resolvedGender), '大网个人'].filter(Boolean).join(' ');
+  }
   // 项目自身已带性别词时不再重复追加；混合项目也始终保留原项目全名。
   const prefix = hasGenderInEventName(event) ? '' : genderLabel(resolvedGender);
   return [age, prefix, event].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
