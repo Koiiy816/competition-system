@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import PrintPreviewModal from '../components/PrintPreviewModal';
 import { calculateDivingDiveScore } from '../utils/divingScoring';
 import { getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from '../utils/trampolineRegistration';
+import { getTrampolineRoutineD } from '../utils/trampolinePlan';
 
 const normalizeCheckInStatus = (participant) => {
   if (!participant) return 'not_checked';
@@ -140,7 +141,7 @@ const formatScheduleTime = (schedule) => {
   return schedule?.startTime ? new Date(schedule.startTime).toLocaleDateString() : '';
 };
 
-export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus, hideParticipantName, scoringType }) => {
+export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupParticipantId, canEdit, onSave, onCheckIn, canCheckIn, isCheckInUpdating, index, displayNameContent, isChiefOrAdmin, allowedIndex, judgeCount, currentRank, isDuplicateScore, checkInStatus, hideParticipantName, scoringType, routineLabel, plannedDifficulty, showIdentity = true, identityRowSpan = 1, combinedScore }) => {
   const [scores, setScores] = useState(Array(Math.max(5, judgeCount)).fill(''));
   const [deduction, setDeduction] = useState('');
   const [finalScore, setFinalScore] = useState(0);
@@ -237,7 +238,7 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
     : 0;
   // 只有当自己打的分数大于 0 时，或者裁判长已经确认（verified）时才锁定
   // 如果分数是 0，说明被重置了，应该解锁
-  const isLockedForMe = !isChiefOrAdmin && ((scoringType ? initialResult?.details?.scoringType === scoringType && initialResult?.details?.scores?.[allowedIndex] != null : myInitialScore > 0) || ((!scoringType || initialResult?.details?.scoringType === scoringType) && initialResult?.status === 'verified'));
+  const isLockedForMe = !isChiefOrAdmin && ((scoringType ? initialResult?.details?.scoringType === scoringType && initialResult?.details?.scores?.[allowedIndex] != null && !(allowedIndex === 4 && initialResult?.details?.autoDifficulty) : myInitialScore > 0) || ((!scoringType || initialResult?.details?.scoringType === scoringType) && initialResult?.status === 'verified'));
 
   const isMakeupTarget = makeupParticipantId && String(participant._id) === String(makeupParticipantId);
   const disabled = (isCompleted && !isMakeupTarget) || !canEdit || isLockedForMe || isAbsent || isNotChecked || isMixed;
@@ -251,15 +252,15 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
         bgcolor: isAbsent ? '#ffebee' : (isNotChecked || isMixed ? '#fff8e1' : 'inherit')
       }}
     >
-      <TableCell sx={{ verticalAlign: 'middle' }}>{index + 1}</TableCell>
-      {!hideParticipantName && <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '250px', lineHeight: '1.8', verticalAlign: 'middle', py: 1.5 }}>
+      {showIdentity && <><TableCell rowSpan={identityRowSpan} sx={{ verticalAlign: 'middle' }}>{index + 1}</TableCell>
+      {!hideParticipantName && <TableCell rowSpan={identityRowSpan} sx={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '250px', lineHeight: '1.8', verticalAlign: 'middle', py: 1.5 }}>
         {displayNameContent}
         {participant.isTest && (
           <Chip label="测试" color="secondary" size="small" sx={{ ml: 1, height: 20, verticalAlign: 'middle' }} />
         )}
       </TableCell>}
-      <TableCell sx={{ verticalAlign: 'middle' }}>{participant.schoolName || (participant.user && participant.user.schoolName) || (hideParticipantName && participant.teamName) || '-'}</TableCell>
-      <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
+      <TableCell rowSpan={identityRowSpan} sx={{ verticalAlign: 'middle' }}>{participant.schoolName || (participant.user && participant.user.schoolName) || (hideParticipantName && participant.teamName) || '-'}</TableCell>
+      <TableCell rowSpan={identityRowSpan} align="center" sx={{ verticalAlign: 'middle' }}>
         <Chip size="small" label={checkInMeta.label} color={checkInMeta.color} />
         {canCheckIn && (
           <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.5, mt: 0.75, flexWrap: 'wrap' }} className="no-print">
@@ -274,7 +275,9 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
             )}
           </Box>
         )}
-      </TableCell>
+      </TableCell></>}
+      {routineLabel && <><TableCell align="center" sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{routineLabel}</TableCell>
+        <TableCell align="center">{plannedDifficulty == null ? '待补录' : Number(plannedDifficulty).toFixed(2)}</TableCell></>}
       
       {renderIndices.map(idx => {
         // isMyField 决定了这个格子是否属于当前登录的裁判
@@ -341,7 +344,8 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
         </Typography>
       </TableCell>}
 
-      {isChiefOrAdmin && <TableCell align="center" sx={{ verticalAlign: 'middle' }}>
+      {isChiefOrAdmin && showIdentity && combinedScore !== undefined && <TableCell rowSpan={identityRowSpan} align="center" sx={{ fontWeight: 800 }}>{combinedScore}</TableCell>}
+      {isChiefOrAdmin && showIdentity && <TableCell rowSpan={identityRowSpan} align="center" sx={{ verticalAlign: 'middle' }}>
         <Typography variant="h6" fontWeight="bold" color="secondary" sx={{ fontSize: '1.1rem' }}>
           {currentRank || '-'}
         </Typography>
@@ -362,7 +366,7 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
             }
             size="small"
             onClick={handleSave}
-            disabled={disabled || isSaving || (!isDirty && !isChiefOrAdmin)}
+            disabled={disabled || isSaving || (!isDirty && !isChiefOrAdmin && !(allowedIndex === 4 && initialResult?.details?.autoDifficulty && scores[4] !== '' && scores[4] != null))}
             sx={{ minWidth: '50px', px: 1, py: 0.5, fontSize: '0.8rem', mr: 0.5 }}
           >
             {isSaving ? '中' : 
@@ -389,6 +393,25 @@ export const ScoreRow = ({ participant, initialResult, scheduleStatus, makeupPar
       </TableCell>
     </TableRow>
   );
+};
+
+export const LargeTrampolineScoreRows = (props) => {
+  const { participant, initialResult, onSave } = props;
+  const routines = participant.additionalInfo?.trampolinePlan?.routines;
+  const rowResults = React.useMemo(() => [0, 1].map(index => {
+    const saved = initialResult?.details?.routines?.[index];
+    const scores = [...(saved?.scores || Array(7).fill(null))];
+    const autoDifficulty = saved?.autoDifficulty ?? true;
+    if (autoDifficulty) scores[4] = getTrampolineRoutineD(routines?.[index]);
+    return { score: saved?.score || 0, status: saved?.status,
+      details: { ...saved, scoringType: 'large', scores, autoDifficulty, isAbsent: initialResult?.details?.isAbsent } };
+  }), [initialResult, routines]);
+  const combinedScore = initialResult?.details?.routines
+    ? `${Number(initialResult.score || 0).toFixed(2)}${initialResult.status === 'verified' ? '' : '（待确认）'}` : '待两套评分';
+  return <>{[0, 1].map(index => <ScoreRow {...props} key={index} initialResult={rowResults[index]}
+    routineLabel={`蹦床${index + 1}`} plannedDifficulty={getTrampolineRoutineD(routines?.[index])}
+    showIdentity={index === 0} identityRowSpan={2} combinedScore={combinedScore}
+    onSave={(participantId, data) => onSave(participantId, { ...data, routineIndex: index })} />)}</>;
 };
 
 const DivingScoreCard = ({ participant, schedule, initialResult, format, scheduleStatus, canEdit, isChiefOrAdmin, allowedIndex, onSave, currentRank, checkInStatus, canCheckIn, onCheckIn, isCheckInUpdating }) => {
@@ -845,7 +868,8 @@ const CompetitionScoreEntryPage = () => {
         scores: scoreData.scores,
         deduction: scoreData.deduction,
         finalScore: scoreData.finalScore,
-        isAbsent: scoreData.isAbsent
+        isAbsent: scoreData.isAbsent,
+        ...(scoreData.routineIndex !== undefined ? { routineIndex: scoreData.routineIndex } : {})
       };
       
       const res = await resultService.submitScore(id, data);
@@ -960,7 +984,9 @@ const CompetitionScoreEntryPage = () => {
   // 计算当前的实时排名 (必须放在所有 return 之前，遵循 Hooks 规则)
   const participantRanks = React.useMemo(() => {
     // 排除测试人员，不让他们参与排名计算
-    const scoresList = participants.filter(p => !p.isTest).map(p => {
+    const scoresList = participants.filter(p => !p.isTest && (scoringType !== 'large'
+      || (results[p._id]?.status === 'verified' && results[p._id]?.details?.routines?.length === 2
+        && results[p._id].details.routines.every(routine => routine?.status === 'verified')))).map(p => {
       const res = results[p._id];
       const isAbsent = isParticipantAbsent(p, res);
       const score = getResultScore(res);
@@ -1014,7 +1040,7 @@ const CompetitionScoreEntryPage = () => {
     });
 
     return ranks;
-  }, [participants, results, schedule]);
+  }, [participants, results, schedule, scoringType]);
 
   const isSynchronizedDiving = schedule?.scoringMode === 'diving' && schedule?.divingFormat === 'synchronized';
   const scoringParticipants = isSynchronizedDiving
@@ -1146,9 +1172,9 @@ const CompetitionScoreEntryPage = () => {
             {isChiefOrAdmin && <Alert severity="info" sx={{ mb: 2 }}>每位选手完成当前轮五位裁判打分后，点击该选手的“确认并上屏”即可立即公开该轮累计分；无需等待其他选手。</Alert>}
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
             {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
-          </Box> : <TableContainer sx={{ p: 2 }}>
+          </Box> : <Box sx={{ p: 2 }}>
             {scoringType && <Alert severity="info" sx={{ mb: 2 }}>{scoringType === 'large'
-              ? '大网：E1–E4 去掉一个最高分和一个最低分，剩余两项相加，再减裁判长扣分。D1（难度）、T1（高度）、H1（位移）单独记录，不计入总分。'
+              ? '大网：蹦床1、蹦床2分别评分，两套得分相加。动作表难度自动带入各套D分，难度裁判可修改。沿用现有单套公式：E1–E4去掉一个最高分和一个最低分，剩余两项相加再减扣分；D、T、H单独记录。'
               : '小网：E1＋E2－裁判长扣分。'}扣分请输入非负数。</Alert>}
             {/* Print Header - Visible only in print */}
             <Box sx={{ display: 'none', '@media print': { display: 'block', mb: 3, textAlign: 'center' } }}>
@@ -1158,13 +1184,14 @@ const CompetitionScoreEntryPage = () => {
                </Typography>
             </Box>
 
-            <Table>
+            <TableContainer><Table sx={scoringType === 'large' ? { minWidth: 1600, '& th': { width: 'auto', whiteSpace: 'nowrap' } } : undefined}>
               <TableHead>
                 <TableRow>
                   <TableCell width="5%">序号</TableCell>
                   {!hideParticipantName && <TableCell width="23%">姓名</TableCell>}
                   <TableCell width="14%">代表队/学校</TableCell>
                   <TableCell width="9%" align="center">检录状态</TableCell>
+                  {scoringType === 'large' && <><TableCell align="center">套次</TableCell><TableCell align="center" sx={{ minWidth: 80 }}>动作表难度</TableCell></>}
                   {Array.from({ length: judgeCount }, (_, index) => (
                     <TableCell key={index} width="7%" align="center" sx={scoringType ? { minWidth: 64, fontWeight: 'bold' } : undefined}>
                       {judgeLabels?.[index] ? judgeLabels[index].split('\n').map((line, lineIndex) => (
@@ -1173,7 +1200,8 @@ const CompetitionScoreEntryPage = () => {
                     </TableCell>
                   ))}
                   <TableCell width="7%" align="center" sx={scoringType ? { whiteSpace: 'nowrap', minWidth: 110, fontWeight: 'bold' } : undefined}>{scoringType ? '裁判长扣分' : '裁判长加减分'}</TableCell>
-                  {isChiefOrAdmin && <TableCell width="8%" align="center">最后得分</TableCell>}
+                  {isChiefOrAdmin && <TableCell width="8%" align="center">{scoringType === 'large' ? '套次得分' : '最后得分'}</TableCell>}
+                  {isChiefOrAdmin && scoringType === 'large' && <TableCell align="center" sx={{ minWidth: 100 }}>两套总分</TableCell>}
                   {isChiefOrAdmin && <TableCell width="5%" align="center">实时排名</TableCell>}
                   <TableCell width="5%" align="center" className="no-print">操作</TableCell>
                 </TableRow>
@@ -1203,8 +1231,9 @@ const CompetitionScoreEntryPage = () => {
                     ));
                   }
                   
+                  const RowComponent = scoringType === 'large' ? LargeTrampolineScoreRows : ScoreRow;
                   return (
-                    <ScoreRow 
+                    <RowComponent
                       key={p._id}
                       participant={p}
                       initialResult={result}
@@ -1229,8 +1258,8 @@ const CompetitionScoreEntryPage = () => {
                   );
                 })}
               </TableBody>
-            </Table>
-          </TableContainer>}
+            </Table></TableContainer>
+          </Box>}
 
           {/* 上一个/下一个比赛项目按钮 */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3, mx: 2 }} className="no-print">

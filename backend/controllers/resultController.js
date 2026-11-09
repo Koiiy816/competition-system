@@ -1,4 +1,5 @@
 const { getTrampolineScoringType, calculateTrampolineScore, getTrampolineJudgeIndex } = require('../utils/trampolineScoring');
+const { isLargeTrampolineEvent } = require('../utils/trampolinePlan');
 const Result = require('../models/Result');
 const Schedule = require('../models/Schedule');
 const Competition = require('../models/Competition');
@@ -629,7 +630,7 @@ exports.createResult = async (req, res, next) => {
  * @access  Private/Referee/Admin
  */
 exports.submitScore = async (req, res, next) => {
-  const { scheduleId, participantId, scores, deduction } = req.body;
+  const { scheduleId, participantId, scores, deduction, routineIndex } = req.body;
 
   if (!scheduleId || !participantId || !scores) {
     return res.status(400).json({
@@ -642,12 +643,15 @@ exports.submitScore = async (req, res, next) => {
   await acquireLock(lockKey);
 
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount status name competition');
+    const schedule = await Schedule.findById(scheduleId).select('judgeCount status name competition participants');
     if (!schedule) {
       return res.status(404).json({ success: false, message: '未找到对应赛程' });
     }
     const competition = await Competition.findById(schedule.competition);
     const scoringType = getTrampolineScoringType(competition, schedule);
+    if (scoringType === 'large' && ![0, 1].includes(routineIndex)) {
+      return res.status(400).json({ success: false, message: '请选择蹦床1或蹦床2套次' });
+    }
     const judgeCount = scoringType ? (scoringType === 'large' ? 7 : 2) : (schedule.judgeCount || 5);
     const scoreSlots = scoringType ? judgeCount : 5;
     const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
@@ -666,6 +670,11 @@ exports.submitScore = async (req, res, next) => {
         success: false,
         message: `未找到ID为${participantId}的参赛者`
       });
+    }
+    if (scoringType === 'large' && (String(schedule.competition) !== req.params.competitionId
+      || String(participant.competition) !== req.params.competitionId || !isLargeTrampolineEvent(participant)
+      || !schedule.participants.some(id => String(id) === String(participantId)))) {
+      return res.status(400).json({ success: false, message: '选手不属于当前大网赛程' });
     }
 
     const effectiveCheckInStatus = getEffectiveCheckInStatus(participant);
@@ -707,21 +716,34 @@ exports.submitScore = async (req, res, next) => {
       schedule: scheduleId,
       participant: participantId
     });
+    const previousRoutine = scoringType === 'large' ? result?.details?.routines?.[routineIndex] : null;
+    const planRoutine = scoringType === 'large' ? participant.additionalInfo?.trampolinePlan?.routines?.[routineIndex] : null;
+    const plannedDifficulty = planRoutine?.difficultyComplete === true && Number.isFinite(planRoutine.totalDifficulty)
+      ? planRoutine.totalDifficulty : null;
+    let autoDifficulty = false;
 
     if (scoringType) {
       const allowedIndex = isChiefOrAdmin ? -1 : getTrampolineJudgeIndex(req.user, scoringType);
       if (!isChiefOrAdmin && allowedIndex < 0) {
         return res.status(403).json({ success: false, message: '当前赛程未分配此裁判评分栏位' });
       }
-      const previous = result?.details?.scoringType === scoringType ? result.details.scores || [] : [];
+      const previous = scoringType === 'large' ? previousRoutine?.scores || [] : result?.details?.scoringType === scoringType ? result.details.scores || [] : [];
       newScores = Array.from({ length: judgeCount }, (_, index) => {
         const value = isChiefOrAdmin || index === allowedIndex ? scores[index] : previous[index];
         return value === '' || value == null ? null : Number(value);
       });
+      if (scoringType === 'large') {
+        autoDifficulty = previousRoutine?.autoDifficulty ?? true;
+        if ((isChiefOrAdmin || allowedIndex === 4) && scores[4] != null && scores[4] !== '') autoDifficulty = false;
+        if (newScores[4] == null || (autoDifficulty && !isChiefOrAdmin && allowedIndex !== 4)) {
+          newScores[4] = plannedDifficulty;
+          autoDifficulty = true;
+        }
+      }
       if (newScores.some(value => value !== null && (!Number.isFinite(value) || value < 0))) {
         return res.status(400).json({ success: false, message: '裁判分数须为非负数' });
       }
-      newDeduction = isChiefOrAdmin ? Number(deduction || 0) : Number(result?.details?.scoringType === scoringType ? result.details.deduction || 0 : 0);
+      newDeduction = isChiefOrAdmin ? Number(deduction || 0) : Number(scoringType === 'large' ? previousRoutine?.deduction || 0 : result?.details?.scoringType === scoringType ? result.details.deduction || 0 : 0);
       if (finalIsAbsent) { newScores = Array(judgeCount).fill(0); newDeduction = 0; }
       finalScore = finalIsAbsent ? 0 : calculateTrampolineScore(newScores, newDeduction, scoringType);
     }
@@ -801,6 +823,22 @@ exports.submitScore = async (req, res, next) => {
       status: newStatus,
       updatedAt: new Date()
     };
+    if (scoringType === 'large') {
+      const routines = [0, 1].map(index => result?.details?.routines?.[index] || null);
+      routines[routineIndex] = { name: `蹦床${routineIndex + 1}`, scores: newScores, deduction: newDeduction,
+        score: finalScore, status: newStatus, plannedDifficulty, autoDifficulty };
+      resultData.details = { ...resultData.details, routines };
+      // 旧单套成绩保留备查，不推测它属于哪一套，也不计入新的两套总分。
+      if (result?.details && !result.details.routines) resultData.details.legacySingleRoutine = result.details;
+      else if (result?.details?.legacySingleRoutine) resultData.details.legacySingleRoutine = result.details.legacySingleRoutine;
+      if (finalIsAbsent) {
+        resultData.details.routines = [0, 1].map(index => ({ name: `蹦床${index + 1}`, scores: Array(7).fill(0), deduction: 0, score: 0, status: 'verified' }));
+      }
+      resultData.score = Math.round(resultData.details.routines.reduce((sum, routine) => sum + (routine?.score || 0), 0) * 100) / 100;
+      resultData.status = resultData.details.routines.every(routine => routine?.status === 'verified') ? 'verified' : 'pending';
+      delete resultData.details.scores;
+      delete resultData.details.deduction;
+    }
 
     if (result) {
       result = await Result.findByIdAndUpdate(result._id, resultData, {
