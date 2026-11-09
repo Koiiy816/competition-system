@@ -40,6 +40,7 @@ test('真实HTTP与MongoDB：蹦床跨项目报名、权限、年龄、团体编
     assert.equal(importResponse.status, 201, JSON.stringify(importResponse.body));
     assert.equal(importResponse.body.data.imported, 2);
     assert.equal(importResponse.body.data.failed, 1);
+    await f.Participant.updateMany({ competition: competition.id, status: 'pending' }, { $set: { status: 'approved' } });
     const generated = await f.request(`/competitions/${competition.id}/schedules/generate-start-list`, { role: 'admin', method: 'POST', body: {} });
     assert.equal(generated.status, 200, JSON.stringify(generated.body));
     const teams = await f.Participant.find({ competition: competition.id, isVirtualTeam: true, event: team.event });

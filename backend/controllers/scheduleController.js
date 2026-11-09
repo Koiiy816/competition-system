@@ -5,6 +5,7 @@ const Participant = require('../models/Participant');
 const { normalizeParticipantGender, getScheduleGender, formatScheduleName, parseScheduleIdentity } = require('../utils/scheduleNaming');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
+const { syncTrampolineSchedules } = require('../utils/trampolineScheduleSync');
 
 function mergeUndersizedAgeGroups(groups, competition) {
   const minimum = competition?.awardRules?.mergeGroupsBelow || 0;
@@ -149,7 +150,8 @@ exports.generateStartList = async (req, res, next) => {
     // 获取所有真实参赛者（排除虚拟队伍）
     const participants = await Participant.find({ 
       competition: competitionId,
-      isVirtualTeam: { $ne: true }
+      isVirtualTeam: { $ne: true },
+      ...(getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE ? { status: 'approved' } : {})
     });
     if (participants.length === 0) {
       return res.status(400).json({
@@ -1201,11 +1203,19 @@ exports.syncNewParticipants = async (req, res, next) => {
     const competition = await Competition.findById(competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛未找到' });
 
-    // 同步只允许追加到已存在的日程，绝不自动创建新项目。
+    // 蹦床为缺少的组别建立待编排场次；其他赛事仍只追加到已导入的日程。
     const schedules = await Schedule.find({ competition: competitionId }).populate({
       path: 'participants',
       populate: { path: 'teamMembers', select: 'name schoolName' }
     });
+    if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+      const participants = await Participant.find({ competition: competitionId, status: 'approved', isVirtualTeam: { $ne: true } });
+      const data = await syncTrampolineSchedules(competition, schedules, participants);
+      return res.status(200).json({
+        success: true, data,
+        message: `已追加 ${data.appendedCount} 条已通过报名；新增 ${data.createdScheduleCount} 个待编排场次。${data.unmatchedCount ? `另有 ${data.unmatchedCount} 条报名因项目组别无效或对应场次已结束而未追加。` : ''}`
+      });
+    }
     if (schedules.length === 0) {
       return res.status(400).json({ success: false, message: '当前没有日程。请先使用「导入日程表（Excel）」建立日程，再同步新选手。' });
     }

@@ -27,7 +27,8 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { useAuth } from '../contexts/AuthContext';
 import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
-import { isDivingCompetition } from '../utils/competitionType';
+import { isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
+import { getScheduleDisplayName } from '../utils/trampolineRegistration';
 
 const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
   const reader = new FileReader();
@@ -216,10 +217,10 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
 });
 
 // 提取独立的赛程卡片组件，实现列表级别的记忆化隔离，避免不必要的重新渲染
-const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpenAssignDialog, onDeleteSchedule }) => {
+const ScheduleCard = memo(({ schedule, competition, competitionId, isAdminOrOrganizer, onOpenAssignDialog, onDeleteSchedule }) => {
   const navigate = useNavigate();
   
-  const isGroupEvent = (schedule.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(schedule.name || '').includes('集体');
+  const isGroupEvent = (schedule.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(schedule.name || '').includes('集体') || (isTrampolineCompetition(competition) && String(schedule.name || '').includes('蹦床操'));
   const participantCountText = isGroupEvent 
     ? `${schedule.participants.length}队` 
     : `${schedule.participants.length}人`;
@@ -245,7 +246,7 @@ const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpen
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', flex: 1, pr: 1 }}>
-            {schedule.name}
+            {getScheduleDisplayName(competition, schedule)}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, justifyContent: 'flex-end' }}>
             <Chip label={participantCountText} size="small" color="primary" variant="outlined" />
@@ -272,6 +273,7 @@ const ScheduleCard = memo(({ schedule, competitionId, isAdminOrOrganizer, onOpen
         </Box>
         
         <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {isTrampolineCompetition(competition) && (!schedule.scheduleDate || !schedule.timeSlot || !schedule.court) && <Chip size="small" label="待编排" variant="outlined" />}
           {schedule.scheduleDate && <Chip size="small" label={schedule.scheduleDate} />}
           {schedule.timeSlot && <Chip size="small" label={schedule.timeSlot} color="secondary" />}
           {schedule.court && <Chip size="small" label={schedule.court} color="info" />}
@@ -1231,9 +1233,9 @@ const CompetitionScheduleManagementPage = () => {
                 startIcon={<SyncIcon />}
                 onClick={handleSyncNewParticipants}
                 disabled={syncing}
-                title="仅按已导入 Excel 日程的项目、性别和合并年龄组追加选手；不会创建新项目"
+                title={isTrampolineCompetition(competition) ? '追加已通过的新报名；缺少组别时建立待编排场次，保留已有时间、场地和顺序' : '仅按已导入 Excel 日程的项目、性别和合并年龄组追加选手；不会创建新项目'}
               >
-                {syncing ? '同步中...' : '同步到导入日程'}
+                {syncing ? '同步中...' : isTrampolineCompetition(competition) ? '同步已通过报名' : '同步到导入日程'}
               </Button>
             )}
             
@@ -1264,6 +1266,9 @@ const CompetitionScheduleManagementPage = () => {
           </Tabs>
         </Box>
 
+        {isTrampolineCompetition(competition) && isAdminOrOrganizer && <Alert severity="info" sx={{ mb: 2 }}>
+          新报名审核通过后，请点击“同步已通过报名”。缺少的组别将建立为待编排场次，请再设置时间和场地；随机排序按钮只调整已有名单的顺序。
+        </Alert>}
         {tabValue === 0 && (
           schedules.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center' }}>
@@ -1277,6 +1282,7 @@ const CompetitionScheduleManagementPage = () => {
                 <Grid item xs={12} md={6} lg={4} key={schedule._id}>
                   <ScheduleCard 
                     schedule={schedule}
+                    competition={competition}
                     competitionId={id}
                     isAdminOrOrganizer={isAdminOrOrganizer}
                     onOpenAssignDialog={handleOpenAssignDialog}
@@ -1417,7 +1423,7 @@ const CompetitionScheduleManagementPage = () => {
                                                       }}>
                                                         {index + 1}
                                                       </span>
-                                                      {s.name}
+                                                      {getScheduleDisplayName(competition, s)}
                                                     </Typography>
                                                     <Typography variant="caption" color="textSecondary">
                                                       {((s.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(s.name || '').includes('集体'))
