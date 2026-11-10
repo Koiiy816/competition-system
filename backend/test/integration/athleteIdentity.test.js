@@ -61,6 +61,19 @@ test('real MongoDB and HTTP: identity lifecycle, privacy, ownership, fees and le
     assert.equal(updated.body.data.schoolName, '联调武术馆（规范名称）');
     assert.equal(updated.body.data.ageGroup, 'A组');
     assert.equal(updated.body.data.grade, 'A组');
+    const contacts = await f.request(editPath, { method: 'PUT', body: { ...edit, updatedAt: updated.body.data.updatedAt,
+      teamLeader: '新领队', leaderPhone: '+852 12345678', coach: '新教练', coachPhone: '13800138000' } });
+    assert.equal(contacts.status, 200, JSON.stringify(contacts.body));
+    const storedContacts = await f.Participant.findById(third.body.data._id);
+    assert.equal(storedContacts.teamLeader, '新领队');
+    assert.equal(storedContacts.leaderPhone, '+852 12345678');
+    assert.equal(storedContacts.coach, '新教练');
+    assert.equal(storedContacts.coachPhone, '13800138000');
+    await require('../../models/Competition').updateOne({ _id: f.competition.id }, { $push: { events: { name: '集体拳', isGroupEvent: true } } });
+    const collective = await f.request(editPath, { method: 'PUT', body: { ...edit, event: '集体拳', updatedAt: contacts.body.data.updatedAt } });
+    assert.equal(collective.status, 200, JSON.stringify(collective.body));
+    assert.equal(collective.body.data.groupTeam, '');
+
     assert.equal((await f.request(editPath, { method: 'PUT', body: edit })).status, 409);
     assert.equal((await f.request(editPath, { role: 'other', method: 'PUT', body: { ...edit, updatedAt: updated.body.data.updatedAt } })).status, 403);
     await toggle('wushu_registration_edit_enabled', false);

@@ -642,10 +642,12 @@ exports.updateRegistrationContent = async (req, res, next) => {
       try { await resolveAthleteNumber({ ...participant.toObject(), user: participant.user }, req.user, { allowRegistrationSnapshot: true }); }
       catch (error) { return fail(error.statusCode || 500, error.message); }
     }
-    const allowed = ['event', 'ageGroup', 'groupTeam', 'eventDetail', 'schoolName', 'updatedAt', 'athleteNumber'];
+    const contactFields = ['teamLeader', 'leaderPhone', 'coach', 'coachPhone'];
+    const optionalFields = ['schoolName', 'groupTeam', ...contactFields];
+    const allowed = ['event', 'ageGroup', 'eventDetail', 'updatedAt', 'athleteNumber', ...optionalFields];
     if (!req.body || Object.keys(req.body).some(key => !allowed.includes(key))) return fail(400, '提交了不允许修改的字段');
-    const required = allowed.filter(key => key !== 'schoolName' && (sportType === SPORT_TYPES.WUSHU || key !== 'athleteNumber'));
-    if (required.some(key => typeof req.body[key] !== 'string') || (req.body.schoolName !== undefined && typeof req.body.schoolName !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
+    const required = allowed.filter(key => !optionalFields.includes(key) && (sportType === SPORT_TYPES.WUSHU || key !== 'athleteNumber'));
+    if (required.some(key => typeof req.body[key] !== 'string') || optionalFields.some(key => req.body[key] !== undefined && typeof req.body[key] !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
     if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return fail(409, '报名已被修改，请刷新后重试');
     const eventName = req.body.event.trim();
     const event = competition.events.find(item => item.name === eventName);
@@ -661,8 +663,9 @@ exports.updateRegistrationContent = async (req, res, next) => {
     const detail = req.body.eventDetail.trim();
     if (event.registrationDetail?.required && !detail) return fail(400, '请填写项目补充说明');
     if (detail.length > (event.registrationDetail?.maxLength || 100)) return fail(400, '项目补充说明超过长度限制');
-    const groupTeam = event.isGroupEvent ? req.body.groupTeam.trim() : '';
-    if (event.isGroupEvent && !groupTeam) return fail(400, '请填写集体项目队伍编号');
+    const groupTeam = event.isGroupEvent ? (req.body.groupTeam ?? (eventName === participant.event ? participant.groupTeam || '' : '')).trim() : '';
+    const contacts = Object.fromEntries(contactFields.filter(key => req.body[key] !== undefined).map(key => [key, req.body[key].trim()]));
+    if ((contacts.teamLeader?.length || 0) > 50 || (contacts.coach?.length || 0) > 50) return fail(400, '领队和教练姓名不能超过50个字符');
     if (groupTeam.length > 30) return fail(400, '队伍编号不能超过30个字符');
     const limitError = await validateWushuEventLimits(competition, { ...participant.toObject(), event: eventName }, participant._id);
     if (limitError) return fail(400, limitError);
@@ -684,7 +687,7 @@ exports.updateRegistrationContent = async (req, res, next) => {
       { _id: participant._id, user: req.user.id, competition: participant.competition,
         updatedAt: participant.updatedAt, status: participant.status, athleteNumber: participant.athleteNumber,
         isCheckedIn: { $ne: true }, checkInStatus: { $nin: ['checked', 'absent'] } },
-      { $set: { event: eventName, groupTeam, schoolName,
+      { $set: { event: eventName, groupTeam, schoolName, ...contacts,
         category: event.category || '', manualEventGroup: '', status: 'pending',
         additionalInfo: { ...participant.additionalInfo, eventDetail: detail,
           eventDetailLabel: event.registrationDetail?.label || '' },

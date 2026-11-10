@@ -101,7 +101,6 @@ const cases = [
   ['detail too long', x => { x.req.body.eventDetail = 'x'.repeat(101); }, 400],
   ['blank representative unit', x => { x.req.body.schoolName = '   '; }, 400],
   ['representative unit too long', x => { x.req.body.schoolName = 'x'.repeat(101); }, 400],
-  ['team number required', x => { x.req.body.event = '集体拳'; }, 400],
   ['protected fields', x => { x.req.body.status = 'approved'; }, 400],
   ['operator injection', x => { x.req.body.$set = { user: 'other' }; }, 400],
   ['malformed field', x => { x.req.body.event = { $ne: '' }; }, 400],
@@ -204,4 +203,39 @@ test('legacy registration cannot assign itself another athlete number', () => fi
   delete x.row.athleteNumber;
   assert.equal((await x.invoke()).code, 409);
   assert.equal(x.state.writes.length, 0);
+}));
+
+test('organization updates leader and coach contacts with whitespace trimmed', () => fixture(async x => {
+  Object.assign(x.req.body, { teamLeader: ' 领队 ', leaderPhone: '+852 12345678', coach: ' 教练 ', coachPhone: '13800138000' });
+  assert.equal((await x.invoke()).code, 200);
+  const saved = x.state.writes[0].update.$set;
+  assert.equal(saved.teamLeader, '领队'); assert.equal(saved.coach, '教练');
+  assert.equal(saved.leaderPhone, '+852 12345678'); assert.equal(saved.coachPhone, '13800138000');
+}));
+for (const field of ['teamLeader', 'leaderPhone', 'coach', 'coachPhone', 'groupTeam']) {
+  test(field + ' rejects structured input without writing', () => fixture(async x => {
+    x.req.body[field] = { $set: 'bad' };
+    assert.equal((await x.invoke()).code, 400); assert.equal(x.state.writes.length, 0);
+  }));
+}
+test('omitted contact fields preserve stored data; explicit empty strings clear them', () => fixture(async x => {
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(Object.hasOwn(x.state.writes[0].update.$set, 'coach'), false);
+  x.req.body.coach = ''; x.req.body.teamLeader = '';
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(x.state.writes[1].update.$set.coach, '');
+}));
+for (const field of ['teamLeader', 'coach']) test(field + ' rejects overlong names', () => fixture(async x => {
+  x.req.body[field] = '名'.repeat(51);
+  assert.equal((await x.invoke()).code, 400); assert.equal(x.state.writes.length, 0);
+}));
+test('collective event accepts empty team number', () => fixture(async x => {
+  x.req.body.event = '集体拳';
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(x.state.writes[0].update.$set.groupTeam, '');
+}));
+test('collective event retains existing team number when omitted', () => fixture(async x => {
+  x.row.event = '集体拳'; x.row.groupTeam = '原队伍'; x.req.body.event = '集体拳'; delete x.req.body.groupTeam;
+  assert.equal((await x.invoke()).code, 200);
+  assert.equal(x.state.writes[0].update.$set.groupTeam, '原队伍');
 }));

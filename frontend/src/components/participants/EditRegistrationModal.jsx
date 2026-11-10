@@ -15,7 +15,7 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
     setForm(null);
     setError('');
     if (participant) {
-      setForm({ athleteNumber: participant.athleteNumber || '', schoolName: participant.schoolName || '', event: participant.event || '', ageGroup: participant.ageGroup || participant.grade || '', groupTeam: participant.groupTeam || '', eventDetail: participant.additionalInfo?.eventDetail || '', updatedAt: participant.updatedAt });
+      setForm({ teamLeader: participant.teamLeader || '', leaderPhone: participant.leaderPhone || '', coach: participant.coach || '', coachPhone: participant.coachPhone || '', athleteNumber: participant.athleteNumber || '', schoolName: participant.schoolName || '', event: participant.event || '', ageGroup: participant.ageGroup || participant.grade || '', groupTeam: participant.groupTeam || '', eventDetail: participant.additionalInfo?.eventDetail || '', updatedAt: participant.updatedAt });
       competitionService.getCompetition(participant.competition?._id || participant.competition)
         .then(response => { if (active) setCompetition(response.data); })
         .catch(err => { if (active) setError(err.message || '获取比赛失败'); });
@@ -47,7 +47,11 @@ export default function EditRegistrationModal({ participant, onClose, onSuccess 
         </TextField>
         <TextField fullWidth label="年龄组别" margin="normal" value={form.ageGroup} disabled helperText="组别不可自行修改，如需更正请联系管理员" />
         <TextField fullWidth required label="代表单位 / 学校" margin="normal" value={form.schoolName} disabled={saving} inputProps={{ maxLength: 100 }} helperText="请统一填写本次报名使用的代表单位名称" onChange={e => setForm({ ...form, schoolName: e.target.value })} />
-        {event?.isGroupEvent && <TextField fullWidth required label="队伍编号" margin="normal" value={form.groupTeam} disabled={saving} inputProps={{ maxLength: 30 }} onChange={e => setForm({ ...form, groupTeam: e.target.value })} />}
+        <TextField fullWidth label="领队" margin="normal" value={form.teamLeader} disabled={saving} inputProps={{ maxLength: 50 }} onChange={e => setForm({ ...form, teamLeader: e.target.value })} />
+        <TextField fullWidth label="领队联系电话" margin="normal" value={form.leaderPhone} disabled={saving} onChange={e => setForm({ ...form, leaderPhone: e.target.value })} />
+        <TextField fullWidth label="教练" margin="normal" value={form.coach} disabled={saving} inputProps={{ maxLength: 50 }} onChange={e => setForm({ ...form, coach: e.target.value })} />
+        <TextField fullWidth label="教练联系电话" margin="normal" value={form.coachPhone} disabled={saving} onChange={e => setForm({ ...form, coachPhone: e.target.value })} />
+        {event?.isGroupEvent && <TextField fullWidth label="队伍编号（选填）" margin="normal" value={form.groupTeam} disabled={saving} inputProps={{ maxLength: 30 }} onChange={e => setForm({ ...form, groupTeam: e.target.value })} />}
         <TextField fullWidth label={event?.registrationDetail?.label || '项目补充说明'} required={event?.registrationDetail?.required} margin="normal" value={form.eventDetail} disabled={saving} inputProps={{ maxLength: event?.registrationDetail?.maxLength || 100 }} onChange={e => setForm({ ...form, eventDetail: e.target.value })} />
       </>}
     </DialogContent>
