@@ -208,6 +208,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     else summary.complete += 1;
     return summary;
   }, { complete: 0, needSupplement: 0 });
+  const registrationDocumentCount = (registrationDocuments?.attachments || []).length;
 
   const uploadRegistrationDocument = async (key, file) => {
     if (!file || !filters.competitionId) return;
@@ -2301,8 +2302,16 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             )}
 
             {myRegistrations && user?.roles?.includes('organization') && selectedCompetition && isTrampolineRegistration && (
-              <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>单位报名材料</Typography>
+              <Accordion disableGutters elevation={0} sx={{ mt: 2, border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box>
+                    <Typography variant="subtitle1">单位报名材料</Typography>
+                    <Typography variant="caption" color={participantDocumentSummary.needSupplement ? 'warning.main' : 'success.main'}>
+                      已上传 {registrationDocumentCount} 份 · {participantDocumentSummary.needSupplement ? `${participantDocumentSummary.needSupplement} 名选手待补交` : '选手材料已齐'}
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
                   可为每位运动员补交多份材料；新文件会追加保存，不覆盖原文件。三项均为选填，不影响已提交的报名。
                 </Typography>
@@ -2367,7 +2376,8 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     ))}
                   </AccordionDetails>
                 </Accordion>
-              </Paper>
+                </AccordionDetails>
+              </Accordion>
             )}
           </Box>
           
