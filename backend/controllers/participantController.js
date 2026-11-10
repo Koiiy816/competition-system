@@ -739,6 +739,53 @@ exports.getRegistrationDocuments = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// 管理员查看蹦床赛事各参赛单位的材料提交情况；只返回提交状态，不开放代传或删除。
+exports.getRegistrationDocumentOverview = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
+
+    const [documents, participants] = await Promise.all([
+      RegistrationDocument.find({ competition: competition._id }).populate('user', 'name email profile.organization').lean(),
+      Participant.find({ competition: competition._id, isVirtualTeam: { $ne: true } }).select('user name teamName schoolName').lean()
+    ]);
+    const documentsByUser = new Map(documents.map(document => [String(document.user?._id || document.user), serializeRegistrationDocuments(document)]));
+    const participantsByUser = participants.reduce((groups, participant) => {
+      const userId = String(participant.user || '');
+      if (!userId) return groups;
+      const group = groups.get(userId) || [];
+      group.push(participant);
+      groups.set(userId, group);
+      return groups;
+    }, new Map());
+    const userIds = new Set([...participantsByUser.keys(), ...documentsByUser.keys()]);
+    const units = [...userIds].map(userId => {
+      const unitParticipants = participantsByUser.get(userId) || [];
+      const document = documentsByUser.get(userId) || { attachments: [] };
+      const athleteGroups = [...unitParticipants.reduce((groups, participant) => {
+        const key = participant.name || participant.teamName || String(participant._id);
+        const group = groups.get(key) || { name: participant.name || participant.teamName || '未命名选手', ids: [] };
+        group.ids.push(String(participant._id));
+        groups.set(key, group);
+        return groups;
+      }, new Map()).values()].map(group => ({
+        ...group,
+        submittedTypes: REGISTRATION_DOCUMENT_TYPES.filter(type => document.attachments.some(attachment => attachment.type === type && group.ids.includes(String(attachment.participant))))
+      }));
+      const profileOrganization = document.user?.profile?.organization;
+      return {
+        userId,
+        organization: unitParticipants.find(participant => participant.schoolName)?.schoolName || profileOrganization || document.user?.name || document.user?.email || '未命名单位',
+        athleteCount: athleteGroups.length,
+        attachmentCount: document.attachments.length,
+        athletes: athleteGroups
+      };
+    }).sort((a, b) => a.organization.localeCompare(b.organization, 'zh-CN'));
+    return res.status(200).json({ success: true, data: units });
+  } catch (error) { next(error); }
+};
+
 exports.deleteRegistrationDocument = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);

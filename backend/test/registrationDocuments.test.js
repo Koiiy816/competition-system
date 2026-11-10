@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const Competition = require('../models/Competition');
+const Participant = require('../models/Participant');
 const RegistrationDocument = require('../models/RegistrationDocument');
 const controller = require('../controllers/participantController');
 
@@ -62,3 +63,34 @@ test('registration document upload is unavailable outside trampoline competition
   assert.equal(res.body.message, '报名材料功能仅适用于蹦床赛事');
   assert.equal(writes.length, 0);
 }, { _id: 'match', sportType: 'wushu', status: 'registration' }));
+
+test('administrator overview groups trampoline material status by organization', async () => {
+  const originalCompetition = Competition.findById;
+  const originalDocumentFind = RegistrationDocument.find;
+  const originalParticipantFind = Participant.find;
+  Competition.findById = async () => ({ _id: 'match', sportType: 'trampoline' });
+  RegistrationDocument.find = () => ({ populate: () => ({ lean: async () => [{
+    user: { _id: 'unit-1', profile: { organization: '测试单位' } },
+    attachments: [
+      { type: 'riskNotice', participant: 'participant-1', filename: 'risk.pdf', originalName: '告知书.pdf' },
+      { type: 'insurance', participant: 'participant-1', filename: 'insurance.pdf', originalName: '保险.pdf' }
+    ]
+  }] }) });
+  Participant.find = () => ({ select: () => ({ lean: async () => [
+    { _id: 'participant-1', user: 'unit-1', name: '张三', schoolName: '测试单位' },
+    { _id: 'participant-2', user: 'unit-1', name: '李四', schoolName: '测试单位' }
+  ] }) });
+  try {
+    const res = response();
+    await controller.getRegistrationDocumentOverview({ user: { roles: ['admin'] }, params: { competitionId: 'match' } }, res, error => { throw error; });
+    assert.equal(res.code, 200);
+    assert.equal(res.body.data.length, 1);
+    assert.equal(res.body.data[0].organization, '测试单位');
+    assert.deepEqual(res.body.data[0].athletes[0].submittedTypes, ['riskNotice', 'insurance']);
+    assert.deepEqual(res.body.data[0].athletes[1].submittedTypes, []);
+  } finally {
+    Competition.findById = originalCompetition;
+    RegistrationDocument.find = originalDocumentFind;
+    Participant.find = originalParticipantFind;
+  }
+});

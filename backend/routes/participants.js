@@ -11,6 +11,7 @@ router.post('/athlete-identities/merge-preview', auth, authorize('admin'), requi
 router.post('/athlete-identities/merge', auth, authorize('admin'), require('../controllers/athleteIdentityController').merge);
 
 router.get('/registration-documents', auth, authorize('organization'), participantController.getRegistrationDocuments);
+router.get('/registration-documents/overview', auth, authorize('admin'), participantController.getRegistrationDocumentOverview);
 
 // @route   GET api/competitions/all/participants/me
 // @desc    获取当前用户的所有参赛记录（不区分比赛）

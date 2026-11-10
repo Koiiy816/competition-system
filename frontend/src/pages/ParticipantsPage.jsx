@@ -101,6 +101,8 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationEditEnabled, setRegistrationEditEnabled] = useState(false);
   const [registrationDocuments, setRegistrationDocuments] = useState(null);
   const [registrationDocumentsLoading, setRegistrationDocumentsLoading] = useState(false);
+  const [registrationDocumentOverview, setRegistrationDocumentOverview] = useState([]);
+  const [registrationDocumentOverviewLoading, setRegistrationDocumentOverviewLoading] = useState(false);
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
@@ -187,6 +189,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
   const canViewSchoolGroups = canViewParticipants && (!myRegistrations || getSportType(selectedCompetition) === 'trampoline');
   const isTrampolineRegistration = getSportType(selectedCompetition) === 'trampoline';
+  const isAdmin = user?.roles?.includes('admin');
 
   const registrationDocumentSlots = [
     { key: 'riskNotice', label: '盖章版自愿参赛责任及风险告知书' },
@@ -209,6 +212,11 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     return summary;
   }, { complete: 0, needSupplement: 0 });
   const registrationDocumentCount = (registrationDocuments?.attachments || []).length;
+  const adminDocumentOverviewSummary = registrationDocumentOverview.reduce((summary, unit) => {
+    if (unit.athletes.some(athlete => athlete.submittedTypes.length < registrationDocumentSlots.length)) summary.needSupplement += 1;
+    else summary.complete += 1;
+    return summary;
+  }, { complete: 0, needSupplement: 0 });
 
   const uploadRegistrationDocument = async (key, file) => {
     if (!file || !filters.competitionId) return;
@@ -1087,6 +1095,26 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       .finally(() => { if (active) setRegistrationDocumentsLoading(false); });
     return () => { active = false; };
   }, [myRegistrations, user?.roles, filters.competitionId, isTrampolineRegistration]);
+
+  useEffect(() => {
+    let active = true;
+    if (!isAdmin || !filters.competitionId || !isTrampolineRegistration) {
+      setRegistrationDocumentOverview([]);
+      return () => { active = false; };
+    }
+    setRegistrationDocumentOverviewLoading(true);
+    fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+      .then(async response => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.message || '获取单位材料总览失败');
+        if (active) setRegistrationDocumentOverview(result.data || []);
+      })
+      .catch(loadError => { if (active) setError(loadError.message || '获取单位材料总览失败'); })
+      .finally(() => { if (active) setRegistrationDocumentOverviewLoading(false); });
+    return () => { active = false; };
+  }, [isAdmin, filters.competitionId, isTrampolineRegistration]);
 
   // 获取参赛者列表
   useEffect(() => {
@@ -2376,6 +2404,52 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     ))}
                   </AccordionDetails>
                 </Accordion>
+                </AccordionDetails>
+              </Accordion>
+            )}
+            {isAdmin && selectedCompetition && isTrampolineRegistration && (
+              <Accordion disableGutters elevation={0} sx={{ mt: 2, border: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box>
+                    <Typography variant="subtitle1">单位材料提交总览</Typography>
+                    <Typography variant="caption" color={adminDocumentOverviewSummary.needSupplement ? 'warning.main' : 'success.main'}>
+                      共 {registrationDocumentOverview.length} 个参赛单位 · {adminDocumentOverviewSummary.needSupplement ? `${adminDocumentOverviewSummary.needSupplement} 个单位存在待补交材料` : '所有单位材料已齐'}
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0 }}>
+                  {registrationDocumentOverviewLoading ? <CircularProgress size={24} /> : registrationDocumentOverview.length === 0 ? (
+                    <Typography variant="body2" color="text.secondary">当前赛事暂未找到参赛单位报名材料。</Typography>
+                  ) : (
+                    <Box sx={{ maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
+                      {registrationDocumentOverview.map(unit => {
+                        const missingAthletes = unit.athletes.filter(athlete => athlete.submittedTypes.length < registrationDocumentSlots.length).length;
+                        return <Accordion key={unit.userId} disableGutters elevation={0} sx={{ borderTop: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Box>
+                              <Typography variant="body2" fontWeight="medium">{unit.organization}</Typography>
+                              <Typography variant="caption" color={missingAthletes ? 'warning.main' : 'success.main'}>
+                                {unit.athleteCount} 名选手 · 已上传 {unit.attachmentCount} 份 · {missingAthletes ? `${missingAthletes} 名待补交` : '材料已齐'}
+                              </Typography>
+                            </Box>
+                          </AccordionSummary>
+                          <AccordionDetails sx={{ pt: 0 }}>
+                            {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位尚无报名选手。</Typography> : unit.athletes.map(athlete => (
+                              <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                                <Typography variant="body2" fontWeight="medium">{athlete.name}</Typography>
+                                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                                  {registrationDocumentSlots.map(({ key, label }) => {
+                                    const submitted = athlete.submittedTypes.includes(key);
+                                    return <Typography key={key} variant="caption" color={submitted ? 'success.main' : 'warning.main'}>{label}：{submitted ? '已提交' : '待补交'}</Typography>;
+                                  })}
+                                </Box>
+                              </Box>
+                            ))}
+                          </AccordionDetails>
+                        </Accordion>;
+                      })}
+                    </Box>
+                  )}
                 </AccordionDetails>
               </Accordion>
             )}
