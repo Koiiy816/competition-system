@@ -9,6 +9,7 @@ const { uploadParticipantPhoto, uploadRegistrationDocuments, uploadTrampolineBat
 router.post('/trampoline-batch', auth, authorize('organization'), uploadTrampolineBatchPhotos,
   participantController.createTrampolineBatch);
 router.post('/trampoline-check', auth, authorize('organization'), participantController.checkTrampolineRegistration);
+router.post('/trampoline-coach-quota', auth, authorize('organization'), participantController.getTrampolineCoachQuota);
 
 router.get('/athlete-identities', auth, authorize('admin', 'chief_referee', 'organization'), require('../controllers/athleteIdentityController').list);
 router.post('/athlete-identities/merge-preview', auth, authorize('admin'), require('../controllers/athleteIdentityController').previewMerge);

@@ -55,6 +55,9 @@ test('organization can standardize its representative unit name when editing a r
 }));
 
 test('approved trampoline registration can change event without a wushu athlete number', () => fixture(async x => {
+  const Lock = require('../models/TrampolineRegistrationLock');
+  x.stub(Lock, 'findOneAndUpdate', async () => ({}));
+  x.stub(Lock, 'deleteOne', async () => ({}));
   x.stub(Participant, 'find', () => ({ select() { return this; }, lean: async () => [] }));
   x.competition.sportType = 'trampoline';
   x.competition.name = '蹦床比赛';

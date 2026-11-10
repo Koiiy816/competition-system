@@ -113,10 +113,12 @@ const RegisterCompetitionPage = () => {
   const [documentError, setDocumentError] = useState('');
   const [registrants, setRegistrants] = useState([]);
   const [checkingRegistrant, setCheckingRegistrant] = useState(false);
+  const [checkingQuota, setCheckingQuota] = useState(false);
+  const [unitQuota, setUnitQuota] = useState(null);
   const [staff, setStaff] = useState({ leader: { name: '', phone: '' }, coaches: [{ name: '', phone: '' }] });
   const trampoline = isTrampolineCompetition(competition);
   const athleteCount = getTrampolineAthleteCount(registrants.map(item => item.data));
-  const coachLimit = getTrampolineCoachLimit(athleteCount);
+  const coachLimit = unitQuota?.coachLimit ?? getTrampolineCoachLimit(athleteCount);
   const filledCoaches = getFilledTrampolineCoaches(staff.coaches);
   const reportError = message => {
     setError(message);
@@ -784,6 +786,7 @@ const RegisterCompetitionPage = () => {
       finally { setCheckingRegistrant(false); }
     }
     setRegistrants(prev => [...prev, ...entries]);
+    setUnitQuota(null);
     setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', additionalInfo: {} }));
     setSelectedEvents(['']);
     setSelectedEventTypes(['']);
@@ -792,21 +795,42 @@ const RegisterCompetitionPage = () => {
     setSelectedPhoto(null); setRiskNoticeFile(null); setInsuranceFile(null); setFormErrors({}); setError('');
   };
 
-  const removeRegistrant = (entryId) => setRegistrants(prev => prev
-    .filter(item => item.id !== entryId)
-    .map(item => {
+  const removeRegistrant = (entryId) => {
+    setUnitQuota(null);
+    setRegistrants(prev => prev.filter(item => item.id !== entryId).map(item => {
       if (item.data.additionalInfo?.divingPair?.partnerRegistrantId !== entryId) return item;
       const { divingPair, ...additionalInfo } = item.data.additionalInfo;
       return { ...item, data: { ...item.data, additionalInfo } };
     }));
+  };
 
-  const handleNext = () => {
+  const refreshTrampolineQuota = async (includeStaff) => {
+    const response = await fetch(`/api/competitions/${id}/participants/trampoline-coach-quota`, {
+      method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participants: registrants.map(item => item.data), staff: includeStaff ? staff : undefined })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || '单位累计教练名额核对失败，请稍后重试');
+    setUnitQuota(result.data);
+    return result.data;
+  };
+
+  const handleNext = async () => {
+    if (checkingQuota) return;
     if (activeStep === 0 && registrants.length === 0) { reportError('请先将至少一名运动员加入报名名单。'); return; }
     if (activeStep === 0 && hasUnpairedDivingRegistrants()) { setError('请先完成所有跳水双人项目的配对。'); return; }
     if (trampoline && activeStep === 0 && (formData.name.trim() || formData.idCard.trim() || selectedEvents.some(Boolean))) { reportError('当前运动员尚未加入名单，请先点击“加入报名名单并继续添加”。'); return; }
     if (trampoline && activeStep === 1) {
       const staffError = validateTrampolineStaff(staff, athleteCount);
       if (staffError) { reportError(staffError); return; }
+    }
+    if (trampoline && activeStep <= 1) {
+      setCheckingQuota(true);
+      try {
+        const quota = await refreshTrampolineQuota(activeStep === 1);
+        if (activeStep === 1 && quota.error) { reportError(quota.error); return; }
+      } catch (error) { reportError(error.message); return; }
+      finally { setCheckingQuota(false); }
     }
     setError(''); setActiveStep(prev => prev + 1);
   };
@@ -1428,8 +1452,9 @@ const RegisterCompetitionPage = () => {
   const renderStaffForm = () => (
     <Box>
       <Alert severity="info" sx={{ mb: 3 }}>
-        本次名单共{athleteCount}名运动员（{registrants.length}项报名），最多可报{coachLimit}名教练。
-        5名及以下可报1名，每增加5名增报1名，尾数不足5名按1名计。教练和领队资料均为选填，可全部留空；填写的资料将绑定到本次名单全部运动员。
+        本次名单共{athleteCount}名运动员（{registrants.length}项报名）。本单位在本赛事已有{unitQuota?.existingAthleteCount || 0}名运动员、{unitQuota?.existingCoachCount || 0}名教练；
+        合并本次名单后累计{unitQuota?.athleteCount ?? athleteCount}名运动员，教练总名额上限为{coachLimit}名。
+        同一单位跨批次、跨账号累计核验，运动员按证件、教练按姓名和电话去重。教练和领队资料均为选填，可全部留空；填写的资料将绑定到本次名单全部运动员。
       </Alert>
       <Typography variant="h6" gutterBottom>领队资料（选填）</Typography>
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -1474,7 +1499,7 @@ const RegisterCompetitionPage = () => {
         <Typography fontWeight="medium">统一绑定的教练和领队资料</Typography>
         <Typography>领队：{[staff.leader.name, staff.leader.phone && `（${staff.leader.phone}）`].filter(Boolean).join('') || '未填写'}</Typography>
         {filledCoaches.length ? filledCoaches.map((coach, index) => <Typography key={index}>教练{index + 1}：{[coach.name, coach.phone && `（${coach.phone}）`].filter(Boolean).join('')}</Typography>) : <Typography>教练：未填写</Typography>}
-        <Typography variant="body2" color="text.secondary">{athleteCount}名运动员，已报{filledCoaches.length}名教练，最多可报{coachLimit}名。</Typography>
+        <Typography variant="body2" color="text.secondary">本次填写{filledCoaches.length}名教练。本单位累计{unitQuota?.athleteCount ?? athleteCount}名运动员、{unitQuota?.coachCount ?? filledCoaches.length}名教练，上限{coachLimit}名；提交时会再次核验。</Typography>
       </Paper>}
       <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{getAgeGroupDisplayName(competition, item.data.grade) || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{getEventLabel(item.data.event) || '-'}{item.data.groupTeam ? <> {'\u00b7'} {'\u961f\u4f0d\uff1a'}{item.data.groupTeam}</> : null} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
     </Box>
@@ -1571,7 +1596,7 @@ const RegisterCompetitionPage = () => {
                   {activeStep > 0 && (
                     <Button
                       onClick={handleBack}
-                      disabled={submitting}
+                      disabled={submitting || checkingQuota}
                     >
                       上一步
                     </Button>
@@ -1581,9 +1606,9 @@ const RegisterCompetitionPage = () => {
                     <Button
                       variant="contained"
                       onClick={handleNext}
-                      disabled={checkingRegistrant}
+                      disabled={checkingRegistrant || checkingQuota}
                     >
-                      下一步
+                      {checkingQuota ? '正在核对单位名额…' : '下一步'}
                     </Button>
                   ) : (
                     <Button

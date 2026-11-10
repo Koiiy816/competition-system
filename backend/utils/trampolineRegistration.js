@@ -23,7 +23,6 @@ const normalizeTrampolineStaff = (staff, participants) => {
   if (!Array.isArray(participants) || !participants.length) throw new Error('请先添加运动员');
   const missing = participants.findIndex(row => !String(row?.idCard || '').trim());
   if (missing !== -1) throw new Error(`第${missing + 1}条报名（${participants[missing]?.name || '未填写姓名'}）：请填写运动员证件号码`);
-  const count = new Set(participants.map(row => String(row.idCard).replace(/\s+/g, '').toUpperCase())).size;
   const person = (value, label) => {
     const name = value?.name ?? '', phone = value?.phone ?? '';
     if (typeof name !== 'string' || name.trim().length > 50 || typeof phone !== 'string' || phone.trim().length > 30) {
@@ -35,8 +34,6 @@ const normalizeTrampolineStaff = (staff, participants) => {
   if (staff?.coaches != null && !Array.isArray(staff.coaches)) throw new Error('教练资料格式不正确');
   const coaches = (staff?.coaches || []).map((value, index) => person(value, `教练${index + 1}`))
     .filter(value => value.name || value.phone);
-  const limit = Math.ceil(count / 5);
-  if (coaches.length > limit) throw new Error(`${count}名运动员最多可报${limit}名教练，当前已填${coaches.length}名`);
   if (new Set(coaches.map(value => `${value.name.toLowerCase()}|${value.phone}`)).size !== coaches.length) throw new Error('请勿重复添加同一名教练');
   return { leader, coaches };
 };

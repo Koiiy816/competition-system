@@ -5,12 +5,8 @@ const staff = count => ({ leader: { name: '领队', phone: '13800138000' },
   coaches: Array.from({ length: count }, (_, i) => ({ name: `教练${i}`, phone: `1380013800${i}` })) });
 const athletes = count => Array.from({ length: count }, (_, i) => ({ idCard: `ID-${i}` }));
 
-test('教练限额按5人一档向上取整，人数按证件去重而非项目条数', () => {
-  for (const [count, limit] of [[1, 1], [5, 1], [6, 2], [10, 2], [11, 3]]) {
-    assert.equal(normalizeTrampolineStaff(staff(limit), athletes(count)).coaches.length, limit);
-    assert.throws(() => normalizeTrampolineStaff(staff(limit + 1), athletes(count)), /最多可报/);
-  }
-  assert.throws(() => normalizeTrampolineStaff(staff(2), [...athletes(5), { idCard: ' id-0 ' }]), /最多可报1名/);
+test('资料规范化不再按当前批次限制人数，名额交给单位累计校验', () => {
+  assert.equal(normalizeTrampolineStaff(staff(2), athletes(1)).coaches.length, 2);
 });
 
 test('领队和教练均可留空，姓名和电话分别选填，空白教练不占名额', () => {

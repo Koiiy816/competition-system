@@ -32,14 +32,13 @@ test('领队教练全部留空或仅填姓名、电话之一，均可进入确�
   }
 });
 
-test('教练超额、重复及字段过长时仍阻止进入确认页', () => {
+test('教练人数交给服务端累计校验，重复及字段过长仍在前端阻止', () => {
   const leader = { name: '领队', phone: '123' };
   const coaches = [{ name: '甲', phone: '456' }, { name: '乙', phone: '789' }];
   assert.equal(validateTrampolineStaff({ leader, coaches }, 6), '');
-  assert.match(validateTrampolineStaff({ leader, coaches }, 5), /最多可报1名/);
+  assert.equal(validateTrampolineStaff({ leader, coaches }, 5), '');
   assert.equal(validateTrampolineStaff({ leader: {}, coaches }, 6), '');
   assert.equal(validateTrampolineStaff({ leader, coaches: [] }, 6), '');
   assert.ok(validateTrampolineStaff({ leader, coaches: [coaches[0], coaches[0]] }, 6));
   assert.match(validateTrampolineStaff({ leader, coaches: [coaches[0], { name: '乙'.repeat(51) }] }, 6), /教练2/);
-  assert.match(validateTrampolineStaff({ leader, coaches }, 5), /当前已填2名/);
 });

@@ -20,11 +20,12 @@ test('蹦床整批报名：名额、全员绑定、资料验证及权限，失�
       { method: 'POST', role, body: { participants, staff: contacts, athleteCount: 999 } });
     for (const [count, limit] of [[1, 1], [5, 1], [6, 2], [10, 2], [11, 3]]) {
       const before = await f.Participant.countDocuments({ competition: competition.id });
-      const rejected = await submit(rows(count, `LIMIT-${count}`), staff(limit + 1));
-      assert.equal(rejected.status, 400, JSON.stringify(rejected.body));
+      const participants = rows(count, `LIMIT-${count}`).map(row => ({ ...row, schoolName: `人数边界单位${count}` }));
+      const rejected = await submit(participants, staff(limit + 1));
+      assert.equal(rejected.status, 409, JSON.stringify(rejected.body));
       assert.match(rejected.body.message, new RegExp(`最多可报${limit}名`));
       assert.equal(await f.Participant.countDocuments({ competition: competition.id }), before);
-      const result = await submit(rows(count, `LIMIT-${count}`), staff(limit));
+      const result = await submit(participants, staff(limit));
       assert.equal(result.status, 201, JSON.stringify(result.body));
       assert.equal(result.body.data.length, count);
       const records = await f.Participant.find({ _id: { $in: result.body.data.map(row => row._id) } });
@@ -51,7 +52,7 @@ test('蹦床整批报名：名额、全员绑定、资料验证及权限，失�
       assert.equal(record.coach, expected.coaches[0]?.name || '');
     }
     const multiEvent = [...rows(5), { ...rows(1)[0], idCard: ' athlete-0 ', event: '小网U7组男子蹦床个人', grade: '小网U7组', ageGroup: '小网U7组' }];
-    assert.equal((await submit(multiEvent, staff(2))).status, 400);
+    assert.equal((await submit(multiEvent, staff(2))).status, 409);
     assert.equal((await submit(multiEvent, staff(1))).status, 201);
     const before = await f.Participant.countDocuments({ competition: competition.id });
     const invalidAthlete = await submit([...rows(5), { ...rows(1)[0], name: '资料错误选手', birthDate: '2099-01-01' }], staff(1));
