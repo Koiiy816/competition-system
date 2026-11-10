@@ -1,7 +1,8 @@
 const Participant = require('../models/Participant');
 const { resolveAthleteNumber } = require('../utils/athleteIdentity');
 const { validateTrampolineRegistration, normalizeTrampolineStaff } = require('../utils/trampolineRegistration');
-const { getTrampolineRegistrationKey, findTrampolineDuplicate, isTrampolineDuplicateError, getTrampolineBirthDateError } = require('../utils/trampolineIdentity');
+const { getTrampolineRegistrationKey, findTrampolineDuplicate, isTrampolineDuplicateError, getTrampolineBirthDateError, findTrampolineIdentityConflict } = require('../utils/trampolineIdentity');
+const { bindTrampolineIdentities } = require('../utils/trampolineIdentityBinding');
 const { normalizeTrampolinePlan, isLargeTrampolineEvent } = require('../utils/trampolinePlan');
 const Competition = require('../models/Competition');
 const RegistrationDocument = require('../models/RegistrationDocument');
@@ -11,10 +12,12 @@ const archiver = require('archiver');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES, canUserAccessCompetitionType } = require('../utils/competitionType');
 
+// 校验重复及身份一致性；首次校验通过时持久化证件绑定。
 const checkTrampolineDuplicates = async (competitionId, rows, excludeId) => {
   const existing = await Participant.find({ competition: competitionId, isVirtualTeam: { $ne: true },
-    ...(excludeId ? { _id: { $ne: excludeId } } : {}) }).select('name gender idCard event').lean();
-  return findTrampolineDuplicate(rows, existing);
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}) }).select('name gender idCard birthDate event').lean();
+  const error = findTrampolineIdentityConflict(rows, existing) || findTrampolineDuplicate(rows, existing);
+  return error || await bindTrampolineIdentities(rows);
 };
 
 const removeStoredRegistrationDocument = (filename) => {

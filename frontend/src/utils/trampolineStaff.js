@@ -1,6 +1,22 @@
 export const getTrampolineAthleteCount = participants => new Set(participants
   .map(row => String(row.idCard || '').replace(/\s+/g, '').toUpperCase()).filter(Boolean)).size;
 
+export const findTrampolineIdentityConflict = rows => {
+  const normalize = value => String(value || '').replace(/\s+/g, '').toUpperCase();
+  const identities = new Map();
+  for (const row of rows) {
+    const key = normalize(row.idCard);
+    const details = [normalize(row.name), normalize(row.gender), String(row.birthDate || '').slice(0, 10)];
+    const previous = identities.get(key);
+    if (previous) {
+      const conflicts = ['姓名', '性别', '出生日期'].filter((_, index) => previous[index] !== details[index]);
+      if (conflicts.length) return `${row.name}的证件号码已绑定其他${conflicts.join('、')}，请核对资料；如需更正，请联系管理员`;
+    }
+    if (key) identities.set(key, details);
+  }
+  return '';
+};
+
 export const findTrampolineDuplicate = rows => {
   const keys = new Set();
   for (const row of rows) {

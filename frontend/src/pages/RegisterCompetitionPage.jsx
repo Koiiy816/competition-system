@@ -44,7 +44,7 @@ import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
 import { isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
 import { getAgeGroupDisplayName, getEventDisplayName, getTrampolineEventGroup, getTrampolineEvents } from '../utils/trampolineRegistration';
-import { getTrampolineAthleteCount, getTrampolineCoachLimit, validateTrampolineStaff, findTrampolineDuplicate, getFilledTrampolineCoaches } from '../utils/trampolineStaff';
+import { getTrampolineAthleteCount, getTrampolineCoachLimit, validateTrampolineStaff, findTrampolineDuplicate, getFilledTrampolineCoaches, findTrampolineIdentityConflict } from '../utils/trampolineStaff';
 const isDivingEvent = (competition) => isDivingCompetition(competition);
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -769,7 +769,8 @@ const RegisterCompetitionPage = () => {
       documents: isTrampolineCompetition(competition) && index === 0 ? { riskNotice: riskNoticeFile, insurance: insuranceFile } : {}
     }));
     if (trampoline) {
-      const duplicate = findTrampolineDuplicate([...registrants, ...entries].map(item => item.data));
+      const rows = [...registrants, ...entries].map(item => item.data);
+      const duplicate = findTrampolineIdentityConflict(rows) || findTrampolineDuplicate(rows);
       if (duplicate) { reportError(duplicate); return; }
       setCheckingRegistrant(true);
       try {

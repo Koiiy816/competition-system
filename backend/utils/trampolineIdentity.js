@@ -2,6 +2,30 @@ const { createHash } = require('crypto');
 
 const normalize = value => String(value || '').replace(/\s+/g, '').toUpperCase();
 
+const getTrampolineDocumentKey = idCard => createHash('sha256').update(normalize(idCard)).digest('hex');
+
+const getTrampolineIdentityDetails = row => {
+  const birth = row.birthDate ? new Date(row.birthDate) : null;
+  return { name: normalize(row.name), gender: String(row.gender || '').trim().toLowerCase(),
+    birthDate: birth && !Number.isNaN(birth.getTime()) ? birth.toISOString().slice(0, 10) : '' };
+};
+
+const findTrampolineIdentityConflict = (rows, existing = []) => {
+  const requested = new Map(rows.map(row => [normalize(row.idCard), row]));
+  const identities = new Map();
+  for (const row of [...existing, ...rows]) {
+    const key = normalize(row.idCard);
+    if (!key || row.isVirtualTeam || !requested.has(key)) continue;
+    const details = getTrampolineIdentityDetails(row);
+    const previous = identities.get(key) || {};
+    const fields = [['name', '姓名'], ['gender', '性别'], ['birthDate', '出生日期']];
+    const conflicts = fields.filter(([field]) => previous[field] && details[field] && previous[field] !== details[field]);
+    if (conflicts.length) return `${requested.get(key).name || '当前选手'}的证件号码已绑定其他${conflicts.map(([, label]) => label).join('、')}，请核对资料；如需更正，请联系管理员`;
+    identities.set(key, Object.fromEntries(fields.map(([field]) => [field, previous[field] || details[field]])));
+  }
+  return '';
+};
+
 // 与报名页面一致，仅从校验码及日期有效的18位证件中识别生日。
 const parseChineseResidentIdentityNumber = input => {
   const value = normalize(input);
@@ -44,4 +68,5 @@ const getTrampolineBirthDateError = row => {
   return '';
 };
 
-module.exports = { parseChineseResidentIdentityNumber, getTrampolineRegistrationKey, findTrampolineDuplicate, isTrampolineDuplicateError, getTrampolineBirthDateError };
+module.exports = { parseChineseResidentIdentityNumber, getTrampolineRegistrationKey, findTrampolineDuplicate, isTrampolineDuplicateError, getTrampolineBirthDateError,
+  getTrampolineDocumentKey, getTrampolineIdentityDetails, findTrampolineIdentityConflict };
