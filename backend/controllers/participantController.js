@@ -701,6 +701,7 @@ exports.uploadRegistrationDocuments = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
     if (!canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
     if (competition.status !== 'registration' && !await Participant.exists({ competition: competition._id, user: req.user.id })) {
       return res.status(400).json({ success: false, message: '该比赛当前不在报名阶段，且未找到本单位已提交的报名' });
@@ -728,6 +729,7 @@ exports.getRegistrationDocuments = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
     if (!canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '该单位未获授权参与此赛事类型' });
     const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
     return res.status(200).json({ success: true, data: serializeRegistrationDocuments(document) });
@@ -738,6 +740,7 @@ exports.deleteRegistrationDocument = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
     const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.user.id });
     if (!document) return res.status(404).json({ success: false, message: '未找到单位报名材料' });
     const legacyType = String(req.params.attachmentId || '').replace(/^legacy-/, '');

@@ -6,12 +6,12 @@ const controller = require('../controllers/participantController');
 
 const response = () => ({ code: 0, body: null, status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 
-const withStubs = async (run) => {
+const withStubs = async (run, competition = { _id: 'match', sportType: 'trampoline', status: 'registration' }) => {
   const originalCompetition = Competition.findById;
   const originalFindOne = RegistrationDocument.findOne;
   const originalUpdate = RegistrationDocument.findOneAndUpdate;
   const writes = [];
-  Competition.findById = async () => ({ _id: 'match', sportType: 'trampoline', status: 'registration' });
+  Competition.findById = async () => competition;
   RegistrationDocument.findOne = async () => null;
   RegistrationDocument.findOneAndUpdate = async (...args) => { writes.push(args); return { attachments: args[1].$push.attachments.$each }; };
   const req = {
@@ -52,3 +52,13 @@ test('unit registration document endpoint rejects an empty upload request', () =
   assert.equal(res.code, 400);
   assert.equal(writes.length, 0);
 }));
+
+test('registration document upload is unavailable outside trampoline competitions', () => withStubs(async ({ req, writes }) => {
+  req.body.type = 'riskNotice';
+  req.files = { files: [{ filename: 'risk.pdf', originalname: '告知书.pdf', mimetype: 'application/pdf', size: 100 }] };
+  const res = response();
+  await controller.uploadRegistrationDocuments(req, res, error => { throw error; });
+  assert.equal(res.code, 403);
+  assert.equal(res.body.message, '报名材料功能仅适用于蹦床赛事');
+  assert.equal(writes.length, 0);
+}, { _id: 'match', sportType: 'wushu', status: 'registration' }));

@@ -186,6 +186,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   // 决定是否能查看标签页和列表（管理员/主裁/裁判 或 开启了"我的报名"功能）
   const canViewParticipants = canUseDivingPlanPdf || myRegistrations;
   const canViewSchoolGroups = canViewParticipants && (!myRegistrations || getSportType(selectedCompetition) === 'trampoline');
+  const isTrampolineRegistration = getSportType(selectedCompetition) === 'trampoline';
 
   const registrationDocumentSlots = [
     { key: 'riskNotice', label: '盖章版自愿参赛责任及风险告知书' },
@@ -1068,7 +1069,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
 
   useEffect(() => {
     let active = true;
-    if (!myRegistrations || !user?.roles?.includes('organization') || !filters.competitionId) {
+    if (!myRegistrations || !user?.roles?.includes('organization') || !filters.competitionId || !isTrampolineRegistration) {
       setRegistrationDocuments(null);
       return () => { active = false; };
     }
@@ -1084,7 +1085,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       .catch(loadError => { if (active) setError(loadError.message || '获取单位报名材料失败'); })
       .finally(() => { if (active) setRegistrationDocumentsLoading(false); });
     return () => { active = false; };
-  }, [myRegistrations, user?.roles, filters.competitionId]);
+  }, [myRegistrations, user?.roles, filters.competitionId, isTrampolineRegistration]);
 
   // 获取参赛者列表
   useEffect(() => {
@@ -2299,7 +2300,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
               </Box>
             )}
 
-            {myRegistrations && user?.roles?.includes('organization') && selectedCompetition && (
+            {myRegistrations && user?.roles?.includes('organization') && selectedCompetition && isTrampolineRegistration && (
               <Paper variant="outlined" sx={{ mt: 2, p: 2 }}>
                 <Typography variant="subtitle1" gutterBottom>单位报名材料</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>

@@ -743,7 +743,7 @@ const RegisterCompetitionPage = () => {
         })()
       },
       photo: selectedPhoto,
-      documents: index === 0 ? { riskNotice: riskNoticeFile, insurance: insuranceFile } : {}
+      documents: isTrampolineCompetition(competition) && index === 0 ? { riskNotice: riskNoticeFile, insurance: insuranceFile } : {}
     }))]);
     setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', additionalInfo: {} }));
     setSelectedEvents(['']);
@@ -1263,7 +1263,7 @@ const RegisterCompetitionPage = () => {
             <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>{'\u4ec5\u652f\u6301 JPG\u3001PNG\uff0c\u5355\u5f20\u4e0d\u8d85\u8fc7 10MB\u3002'}</Typography>
           </Paper>
           )}
-          <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
+          {isTrampolineCompetition(competition) && <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
             <Typography variant="subtitle1" gutterBottom>当前运动员材料（选填）</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>材料会随当前运动员的报名一并保存；暂不提交也不影响报名，之后可在“我的报名”补交。</Typography>
             <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id="current-risk-notice-upload" type="file" onChange={selectRegistrationDocument(setRiskNoticeFile)} />
@@ -1271,7 +1271,7 @@ const RegisterCompetitionPage = () => {
             <input accept="application/pdf,image/jpeg,image/png" style={{ display: 'none' }} id="current-insurance-upload" type="file" onChange={selectRegistrationDocument(setInsuranceFile)} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}><label htmlFor="current-insurance-upload"><Button variant="outlined" component="span" startIcon={<DescriptionIcon />}>上传比赛当天保险</Button></label><Typography variant="body2" color={insuranceFile ? 'success.main' : 'text.secondary'}>{insuranceFile ? `已选择：${insuranceFile.name}` : '暂未上传'}</Typography></Box>
             {documentError && <Alert severity="error" sx={{ mt: 1 }}>{documentError}</Alert>}
-          </Paper>
+          </Paper>}
           <Box sx={{ mt: 2 }}>
             <Button variant="contained" onClick={addRegistrant} disabled={submitting} sx={{ mr: 2 }}>{'\u52a0\u5165\u62a5\u540d\u540d\u5355\u5e76\u7ee7\u7eed\u6dfb\u52a0'}</Button>
             <Typography variant="caption" color="text.secondary">{'\u6bcf\u4f4d\u8fd0\u52a8\u5458\u586b\u5199\u5b8c\u6210\u540e\u70b9\u51fb\u4e00\u6b21\uff1b\u5355\u4f4d\u3001\u9886\u961f\u548c\u6559\u7ec3\u4fe1\u606f\u4f1a\u4fdd\u7559\u3002'}</Typography>
