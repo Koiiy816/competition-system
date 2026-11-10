@@ -4,7 +4,11 @@ const { check } = require('express-validator');
 const participantController = require('../controllers/participantController');
 const divingPairController = require('../controllers/divingPairController');
 const { protect: auth, authorize } = require('../middlewares/authMiddleware');
-const { uploadParticipantPhoto, uploadRegistrationDocuments } = require('../middlewares/uploadMiddleware');
+const { uploadParticipantPhoto, uploadRegistrationDocuments, uploadTrampolineBatchPhotos } = require('../middlewares/uploadMiddleware');
+
+router.post('/trampoline-batch', auth, authorize('organization'), uploadTrampolineBatchPhotos,
+  participantController.createTrampolineBatch);
+router.post('/trampoline-check', auth, authorize('organization'), participantController.checkTrampolineRegistration);
 
 router.get('/athlete-identities', auth, authorize('admin', 'chief_referee', 'organization'), require('../controllers/athleteIdentityController').list);
 router.post('/athlete-identities/merge-preview', auth, authorize('admin'), require('../controllers/athleteIdentityController').previewMerge);

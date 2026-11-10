@@ -68,6 +68,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   });
 
   const [errors, setErrors] = useState({});
+  const recognizedCertificate = isTrampolineCompetition(competition) ? parseChineseResidentIdentityNumber(formData.idCard) : null;
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [pairCandidates, setPairCandidates] = useState([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState('');
@@ -212,6 +213,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
 
   // 处理输入改变
   const handleChange = (e) => {
+    if (e.target.name === 'birthDate' && recognizedCertificate) return;
     const { name, value, checked, type } = e.target;
     const val = type === 'checkbox' ? checked : value;
     
@@ -623,6 +625,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 InputLabelProps={{ shrink: true }}
                 value={formData.birthDate}
                 onChange={handleChange}
+                InputProps={{ readOnly: Boolean(recognizedCertificate) }}
+                helperText={recognizedCertificate ? '出生日期已由证件号码识别并锁定；如需更正，请修改证件号码' : ''}
               />
             </Grid>
 

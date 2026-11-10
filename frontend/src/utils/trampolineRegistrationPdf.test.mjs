@@ -47,3 +47,22 @@ test('空组别不生成空白 PDF', async () => {
   await assert.rejects(createTrampolineSchoolPdf(undefined, competition), /没有可导出/);
   await assert.rejects(createTrampolineSchoolPdf({ rows: [] }, competition), /没有可导出/);
 });
+
+test('整批绑定的多名教练完整导出，各项目记录去重且兼容旧报名', () => {
+  const staff = { leader: { name: '领队', phone: '100' }, coaches: [
+    { name: '教练一', phone: '101' }, { name: '教练二', phone: '102' }
+  ] };
+  const [section] = toTrampolineSchoolSections({ participants: [
+    { ...row, additionalInfo: { trampolineStaff: staff } },
+    { ...row, additionalInfo: { trampolineStaff: staff } }
+  ] }, competition);
+  assert.equal(section.leader, '领队（100）');
+  assert.equal(section.coach, '教练一（101）、教练二（102）');
+});
+
+test('未填写可选教练和领队时，导出显示未填写', () => {
+  const [section] = toTrampolineSchoolSections({ participants: [{ ...row, teamLeader: '', leaderPhone: '', coach: '', coachPhone: '',
+    additionalInfo: { trampolineStaff: { leader: { name: '', phone: '' }, coaches: [] } } }] }, competition);
+  assert.equal(section.leader, '未填写');
+  assert.equal(section.coach, '未填写');
+});

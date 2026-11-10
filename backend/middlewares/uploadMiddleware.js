@@ -79,6 +79,7 @@ module.exports = {
   // 上传报名表文件
   uploadRegistrationForm: upload.single('registrationForm'),
   uploadParticipantPhoto: upload.single('photo'),
+  uploadTrampolineBatchPhotos: upload.array('photo'),
   uploadRegistrationDocuments: upload.fields([
     { name: 'files', maxCount: 10 }
   ]),
