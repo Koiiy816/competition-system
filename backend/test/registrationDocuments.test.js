@@ -94,3 +94,24 @@ test('administrator overview groups trampoline material status by organization',
     Participant.find = originalParticipantFind;
   }
 });
+
+test('administrator can remove an organization material archive', async () => {
+  const originalCompetition = Competition.findById;
+  const originalFindOne = RegistrationDocument.findOne;
+  let deleted = false;
+  Competition.findById = async () => ({ _id: 'match', sportType: 'trampoline' });
+  RegistrationDocument.findOne = async () => ({
+    riskNotice: { filename: 'legacy-risk.pdf' },
+    attachments: [{ filename: 'insurance.pdf' }],
+    deleteOne: async () => { deleted = true; }
+  });
+  try {
+    const res = response();
+    await controller.deleteRegistrationDocumentArchive({ params: { competitionId: 'match', userId: 'unit-1' } }, res, error => { throw error; });
+    assert.equal(res.code, 200);
+    assert.equal(deleted, true);
+  } finally {
+    Competition.findById = originalCompetition;
+    RegistrationDocument.findOne = originalFindOne;
+  }
+});

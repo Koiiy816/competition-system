@@ -104,6 +104,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationDocumentOverview, setRegistrationDocumentOverview] = useState([]);
   const [registrationDocumentOverviewLoading, setRegistrationDocumentOverviewLoading] = useState(false);
   const [registrationDocumentArchiveUserId, setRegistrationDocumentArchiveUserId] = useState('');
+  const [registrationDocumentDeletingUserId, setRegistrationDocumentDeletingUserId] = useState('');
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
@@ -218,6 +219,12 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     else summary.complete += 1;
     return summary;
   }, { complete: 0, needSupplement: 0 });
+  const activeDocumentUnits = registrationDocumentOverview.filter(unit => unit.athleteCount > 0);
+  const archivedDocumentUnits = registrationDocumentOverview.filter(unit => unit.athleteCount === 0);
+  const adminDocumentSections = [
+    { key: 'active', title: '当前报名单位', description: '仍有参赛选手的单位', units: activeDocumentUnits },
+    { key: 'archived', title: '历史留档材料', description: '报名已清空，仅保留材料归档的单位', units: archivedDocumentUnits }
+  ].filter(section => section.units.length > 0);
 
   const uploadRegistrationDocument = async (key, file) => {
     if (!file || !filters.competitionId) return;
@@ -288,6 +295,29 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       setError(downloadError.message || '下载单位材料失败');
     } finally {
       setRegistrationDocumentArchiveUserId('');
+    }
+  };
+
+  const deleteRegistrationDocumentArchive = async (unit) => {
+    if (!filters.competitionId || !unit?.userId) return;
+    const message = unit.athleteCount === 0
+      ? `确定永久删除“${unit.organization}”的历史留档材料吗？此操作会删除服务器原文件，无法恢复。`
+      : `确定永久删除“${unit.organization}”的全部报名材料吗？该单位的报名选手不会删除，但材料文件无法恢复。`;
+    if (!window.confirm(message)) return;
+    setRegistrationDocumentDeletingUserId(unit.userId);
+    setError('');
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview/${unit.userId}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '删除单位材料失败');
+      setRegistrationDocumentOverview(previous => previous.filter(item => item.userId !== unit.userId));
+      setSuccessMessage(result.message || '该单位全部报名材料已删除。');
+    } catch (deleteError) {
+      setError(deleteError.message || '删除单位材料失败');
+    } finally {
+      setRegistrationDocumentDeletingUserId('');
     }
   };
 
@@ -2468,36 +2498,46 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                         导出单位材料提交状态 Excel
                       </Button>
                       <Box sx={{ maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
-                        {registrationDocumentOverview.map(unit => {
-                          const missingAthletes = unit.athletes.filter(athlete => athlete.submittedTypes.length < registrationDocumentSlots.length).length;
-                          const downloading = registrationDocumentArchiveUserId === unit.userId;
-                          return <Accordion key={unit.userId} disableGutters elevation={0} sx={{ borderTop: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
-                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                              <Box>
-                                <Typography variant="body2" fontWeight="medium">{unit.organization}</Typography>
-                                <Typography variant="caption" color={missingAthletes ? 'warning.main' : 'success.main'}>
-                                  {unit.athleteCount} 名选手 · 已上传 {unit.attachmentCount} 份 · {missingAthletes ? `${missingAthletes} 名待补交` : '材料已齐'}
-                                </Typography>
-                              </Box>
-                            </AccordionSummary>
-                            <AccordionDetails sx={{ pt: 0 }}>
-                              <Button size="small" variant="outlined" startIcon={downloading ? <CircularProgress size={16} /> : <DownloadIcon />} disabled={!unit.attachmentCount || Boolean(registrationDocumentArchiveUserId)} onClick={() => downloadRegistrationDocumentArchive(unit)} sx={{ mb: 1 }}>
-                                {downloading ? '正在打包…' : '下载本单位材料 ZIP'}
-                              </Button>
-                              {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位尚无报名选手。</Typography> : unit.athletes.map(athlete => (
-                                <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
-                                  <Typography variant="body2" fontWeight="medium">{athlete.name}</Typography>
-                                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
-                                    {registrationDocumentSlots.map(({ key, label }) => {
-                                      const submitted = athlete.submittedTypes.includes(key);
-                                      return <Typography key={key} variant="caption" color={submitted ? 'success.main' : 'warning.main'}>{label}：{submitted ? '已提交' : '待补交'}</Typography>;
-                                    })}
-                                  </Box>
+                        {adminDocumentSections.map(section => <Box key={section.key} sx={{ mb: 1.5 }}>
+                          <Typography variant="subtitle2">{section.title}</Typography>
+                          <Typography variant="caption" color="text.secondary">{section.description}</Typography>
+                          {section.units.map(unit => {
+                            const missingAthletes = unit.athletes.filter(athlete => athlete.submittedTypes.length < registrationDocumentSlots.length).length;
+                            const downloading = registrationDocumentArchiveUserId === unit.userId;
+                            const deleting = registrationDocumentDeletingUserId === unit.userId;
+                            return <Accordion key={unit.userId} disableGutters elevation={0} sx={{ borderTop: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                <Box>
+                                  <Typography variant="body2" fontWeight="medium">{unit.organization}</Typography>
+                                  <Typography variant="caption" color={missingAthletes ? 'warning.main' : 'success.main'}>
+                                    {unit.athleteCount} 名选手 · 已上传 {unit.attachmentCount} 份 · {unit.athleteCount === 0 ? '报名已清空，材料留档中' : (missingAthletes ? `${missingAthletes} 名待补交` : '材料已齐')}
+                                  </Typography>
                                 </Box>
-                              ))}
-                            </AccordionDetails>
-                          </Accordion>;
-                        })}
+                              </AccordionSummary>
+                              <AccordionDetails sx={{ pt: 0 }}>
+                                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                                  <Button size="small" variant="outlined" startIcon={downloading ? <CircularProgress size={16} /> : <DownloadIcon />} disabled={!unit.attachmentCount || Boolean(registrationDocumentArchiveUserId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => downloadRegistrationDocumentArchive(unit)}>
+                                    {downloading ? '正在打包…' : '下载本单位材料 ZIP'}
+                                  </Button>
+                                  <Button size="small" color="error" variant="outlined" startIcon={deleting ? <CircularProgress size={16} /> : <DeleteIcon />} disabled={Boolean(registrationDocumentArchiveUserId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => deleteRegistrationDocumentArchive(unit)}>
+                                    {deleting ? '正在删除…' : '删除全部材料'}
+                                  </Button>
+                                </Box>
+                                {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位报名已清空；如不需要继续留档，可删除全部材料。</Typography> : unit.athletes.map(athlete => (
+                                  <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                                    <Typography variant="body2" fontWeight="medium">{athlete.name}</Typography>
+                                    <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                                      {registrationDocumentSlots.map(({ key, label }) => {
+                                        const submitted = athlete.submittedTypes.includes(key);
+                                        return <Typography key={key} variant="caption" color={submitted ? 'success.main' : 'warning.main'}>{label}：{submitted ? '已提交' : '待补交'}</Typography>;
+                                      })}
+                                    </Box>
+                                  </Box>
+                                ))}
+                              </AccordionDetails>
+                            </Accordion>;
+                          })}
+                        </Box>)}
                       </Box>
                     </Box>
                   )}
