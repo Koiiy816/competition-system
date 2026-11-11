@@ -103,6 +103,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationDocumentsLoading, setRegistrationDocumentsLoading] = useState(false);
   const [registrationDocumentOverview, setRegistrationDocumentOverview] = useState([]);
   const [registrationDocumentOverviewLoading, setRegistrationDocumentOverviewLoading] = useState(false);
+  const [registrationDocumentArchiveUserId, setRegistrationDocumentArchiveUserId] = useState('');
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
@@ -260,6 +261,47 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
     } finally {
       setRegistrationDocumentUploading('');
     }
+  };
+
+  const downloadRegistrationDocumentArchive = async (unit) => {
+    if (!filters.competitionId || !unit?.userId) return;
+    setRegistrationDocumentArchiveUserId(unit.userId);
+    setError('');
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview/${unit.userId}/archive`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || '下载单位材料失败');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${unit.organization}_报名材料.zip`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(downloadError.message || '下载单位材料失败');
+    } finally {
+      setRegistrationDocumentArchiveUserId('');
+    }
+  };
+
+  const exportRegistrationDocumentOverview = () => {
+    if (!selectedCompetition) return;
+    const rows = registrationDocumentOverview.flatMap(unit => unit.athletes.length ? unit.athletes.map(athlete => {
+      const row = { 参赛单位: unit.organization, 选手: athlete.name, 已上传文件数: unit.attachmentCount };
+      registrationDocumentSlots.forEach(({ key, label }) => { row[label] = athlete.submittedTypes.includes(key) ? '已提交' : '待补交'; });
+      return row;
+    }) : [{ 参赛单位: unit.organization, 选手: '无报名选手', 已上传文件数: unit.attachmentCount, 材料状态: '仅有单位材料' }]);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '单位材料提交状态');
+    XLSX.writeFile(workbook, `${selectedCompetition.name || '蹦床赛事'}_单位材料提交状态.xlsx`);
   };
 
   const handleExportWushuPdf = async () => {
@@ -2421,33 +2463,42 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                   {registrationDocumentOverviewLoading ? <CircularProgress size={24} /> : registrationDocumentOverview.length === 0 ? (
                     <Typography variant="body2" color="text.secondary">当前赛事暂未找到参赛单位报名材料。</Typography>
                   ) : (
-                    <Box sx={{ maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
-                      {registrationDocumentOverview.map(unit => {
-                        const missingAthletes = unit.athletes.filter(athlete => athlete.submittedTypes.length < registrationDocumentSlots.length).length;
-                        return <Accordion key={unit.userId} disableGutters elevation={0} sx={{ borderTop: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                            <Box>
-                              <Typography variant="body2" fontWeight="medium">{unit.organization}</Typography>
-                              <Typography variant="caption" color={missingAthletes ? 'warning.main' : 'success.main'}>
-                                {unit.athleteCount} 名选手 · 已上传 {unit.attachmentCount} 份 · {missingAthletes ? `${missingAthletes} 名待补交` : '材料已齐'}
-                              </Typography>
-                            </Box>
-                          </AccordionSummary>
-                          <AccordionDetails sx={{ pt: 0 }}>
-                            {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位尚无报名选手。</Typography> : unit.athletes.map(athlete => (
-                              <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
-                                <Typography variant="body2" fontWeight="medium">{athlete.name}</Typography>
-                                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
-                                  {registrationDocumentSlots.map(({ key, label }) => {
-                                    const submitted = athlete.submittedTypes.includes(key);
-                                    return <Typography key={key} variant="caption" color={submitted ? 'success.main' : 'warning.main'}>{label}：{submitted ? '已提交' : '待补交'}</Typography>;
-                                  })}
-                                </Box>
+                    <Box>
+                      <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={exportRegistrationDocumentOverview} sx={{ mb: 1 }}>
+                        导出单位材料提交状态 Excel
+                      </Button>
+                      <Box sx={{ maxHeight: 420, overflowY: 'auto', pr: 0.5 }}>
+                        {registrationDocumentOverview.map(unit => {
+                          const missingAthletes = unit.athletes.filter(athlete => athlete.submittedTypes.length < registrationDocumentSlots.length).length;
+                          const downloading = registrationDocumentArchiveUserId === unit.userId;
+                          return <Accordion key={unit.userId} disableGutters elevation={0} sx={{ borderTop: '1px solid', borderColor: 'divider', '&:before': { display: 'none' } }}>
+                            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                              <Box>
+                                <Typography variant="body2" fontWeight="medium">{unit.organization}</Typography>
+                                <Typography variant="caption" color={missingAthletes ? 'warning.main' : 'success.main'}>
+                                  {unit.athleteCount} 名选手 · 已上传 {unit.attachmentCount} 份 · {missingAthletes ? `${missingAthletes} 名待补交` : '材料已齐'}
+                                </Typography>
                               </Box>
-                            ))}
-                          </AccordionDetails>
-                        </Accordion>;
-                      })}
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ pt: 0 }}>
+                              <Button size="small" variant="outlined" startIcon={downloading ? <CircularProgress size={16} /> : <DownloadIcon />} disabled={!unit.attachmentCount || Boolean(registrationDocumentArchiveUserId)} onClick={() => downloadRegistrationDocumentArchive(unit)} sx={{ mb: 1 }}>
+                                {downloading ? '正在打包…' : '下载本单位材料 ZIP'}
+                              </Button>
+                              {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位尚无报名选手。</Typography> : unit.athletes.map(athlete => (
+                                <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                                  <Typography variant="body2" fontWeight="medium">{athlete.name}</Typography>
+                                  <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
+                                    {registrationDocumentSlots.map(({ key, label }) => {
+                                      const submitted = athlete.submittedTypes.includes(key);
+                                      return <Typography key={key} variant="caption" color={submitted ? 'success.main' : 'warning.main'}>{label}：{submitted ? '已提交' : '待补交'}</Typography>;
+                                    })}
+                                  </Box>
+                                </Box>
+                              ))}
+                            </AccordionDetails>
+                          </Accordion>;
+                        })}
+                      </Box>
                     </Box>
                   )}
                 </AccordionDetails>

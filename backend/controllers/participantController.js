@@ -917,6 +917,44 @@ exports.getRegistrationDocumentOverview = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// 管理员按参赛单位下载全部报名材料，作为赛事资料留档。
+exports.downloadRegistrationDocumentArchive = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
+    const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.params.userId }).populate('user', 'name email profile.organization').lean();
+    if (!document) return res.status(404).json({ success: false, message: '该单位尚未提交报名材料' });
+    const attachments = serializeRegistrationDocuments(document).attachments || [];
+    if (!attachments.length) return res.status(404).json({ success: false, message: '该单位尚未提交可归档的报名材料' });
+
+    const participantIds = attachments.map(attachment => attachment.participant).filter(Boolean);
+    const participants = participantIds.length ? await Participant.find({ _id: { $in: participantIds } }).select('name teamName').lean() : [];
+    const participantNames = new Map(participants.map(participant => [String(participant._id), participant.name || participant.teamName || '未命名选手']));
+    const labels = { riskNotice: '盖章版自愿参赛责任及风险告知书', insurance: '比赛当天保险', paperRegistrationForm: '纸质版报名表' };
+    const safeName = value => String(value || '未命名').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const organization = document.user?.profile?.organization || document.user?.name || document.user?.email || '参赛单位';
+    const archive = archiver('zip', { zlib: { level: 1 } });
+    archive.on('error', next);
+    res.attachment(`${safeName(competition.name)}_${safeName(organization)}_报名材料.zip`);
+    archive.pipe(res);
+    const manifest = ['材料类别,关联选手,原始文件名,上传时间'];
+    const usedNames = new Set();
+    attachments.forEach((attachment, index) => {
+      const filePath = path.join(__dirname, '..', 'uploads', 'registration-documents', path.basename(attachment.filename || ''));
+      const participantName = participantNames.get(String(attachment.participant)) || '未关联具体选手';
+      manifest.push([labels[attachment.type] || attachment.type, participantName, attachment.originalName || attachment.filename, attachment.uploadedAt ? new Date(attachment.uploadedAt).toISOString() : ''].map(value => `"${String(value).replace(/"/g, '""')}"`).join(','));
+      if (!fs.existsSync(filePath)) return;
+      let archiveName = `${String(index + 1).padStart(2, '0')}_${safeName(attachment.originalName || attachment.filename)}`;
+      while (usedNames.has(archiveName)) archiveName = `副本_${archiveName}`;
+      usedNames.add(archiveName);
+      archive.file(filePath, { name: archiveName });
+    });
+    archive.append('\ufeff' + manifest.join('\n'), { name: '材料清单.csv' });
+    archive.finalize();
+  } catch (error) { next(error); }
+};
+
 exports.deleteRegistrationDocument = async (req, res, next) => {
   try {
     const competition = await Competition.findById(req.params.competitionId);
