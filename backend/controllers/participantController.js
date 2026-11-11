@@ -910,6 +910,10 @@ exports.getRegistrationDocumentOverview = async (req, res, next) => {
         organization: unitParticipants.find(participant => participant.schoolName)?.schoolName || profileOrganization || document.user?.name || document.user?.email || '未命名单位',
         athleteCount: athleteGroups.length,
         attachmentCount: document.attachments.length,
+        attachments: document.attachments.map(attachment => ({
+          _id: String(attachment._id), type: attachment.type, participant: attachment.participant,
+          originalName: attachment.originalName, uploadedAt: attachment.uploadedAt
+        })),
         athletes: athleteGroups
       };
     }).sort((a, b) => a.organization.localeCompare(b.organization, 'zh-CN'));
@@ -970,6 +974,24 @@ exports.deleteRegistrationDocumentArchive = async (req, res, next) => {
     await document.deleteOne();
     filenames.forEach(removeStoredRegistrationDocument);
     return res.status(200).json({ success: true, message: '该单位全部报名材料已删除' });
+  } catch (error) { next(error); }
+};
+
+// 管理员删除某单位内一名选手的一份材料，不影响同单位的其他留档。
+exports.deleteRegistrationDocumentAttachmentAsAdmin = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
+    const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.params.userId });
+    if (!document) return res.status(404).json({ success: false, message: '未找到该单位的报名材料' });
+    const attachment = document.attachments.id(req.params.attachmentId);
+    if (!attachment) return res.status(404).json({ success: false, message: '未找到该材料，历史单文件请使用删除全部材料' });
+    const filename = attachment.filename;
+    attachment.deleteOne();
+    await document.save();
+    removeStoredRegistrationDocument(filename);
+    return res.status(200).json({ success: true, message: '选手材料已删除' });
   } catch (error) { next(error); }
 };
 

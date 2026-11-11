@@ -105,6 +105,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationDocumentOverviewLoading, setRegistrationDocumentOverviewLoading] = useState(false);
   const [registrationDocumentArchiveUserId, setRegistrationDocumentArchiveUserId] = useState('');
   const [registrationDocumentDeletingUserId, setRegistrationDocumentDeletingUserId] = useState('');
+  const [registrationDocumentDeletingAttachmentId, setRegistrationDocumentDeletingAttachmentId] = useState('');
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
@@ -318,6 +319,38 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       setError(deleteError.message || '删除单位材料失败');
     } finally {
       setRegistrationDocumentDeletingUserId('');
+    }
+  };
+
+  const deleteRegistrationDocumentAttachmentAsAdmin = async (unit, attachment) => {
+    if (!filters.competitionId || !unit?.userId || !attachment?._id) return;
+    if (!window.confirm(`确定删除“${attachment.originalName}”吗？只会删除这一份选手材料，无法恢复。`)) return;
+    setRegistrationDocumentDeletingAttachmentId(attachment._id);
+    setError('');
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview/${unit.userId}/attachments/${attachment._id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '删除选手材料失败');
+      setRegistrationDocumentOverview(previous => previous.map(item => {
+        if (item.userId !== unit.userId) return item;
+        const attachments = item.attachments.filter(file => file._id !== attachment._id);
+        return {
+          ...item,
+          attachments,
+          attachmentCount: attachments.length,
+          athletes: item.athletes.map(athlete => ({
+            ...athlete,
+            submittedTypes: registrationDocumentSlots.filter(({ key }) => attachments.some(file => file.type === key && athlete.ids.includes(String(file.participant))))
+          }))
+        };
+      }));
+      setSuccessMessage(result.message || '选手材料已删除。');
+    } catch (deleteError) {
+      setError(deleteError.message || '删除选手材料失败');
+    } finally {
+      setRegistrationDocumentDeletingAttachmentId('');
     }
   };
 
@@ -2523,8 +2556,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                     {deleting ? '正在删除…' : '删除全部材料'}
                                   </Button>
                                 </Box>
-                                {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位报名已清空；如不需要继续留档，可删除全部材料。</Typography> : unit.athletes.map(athlete => (
-                                  <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
+                                {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位报名已清空；如不需要继续留档，可删除全部材料。</Typography> : unit.athletes.map(athlete => {
+                                  const athleteAttachments = (unit.attachments || []).filter(file => athlete.ids.includes(String(file.participant)));
+                                  return <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
                                     <Typography variant="body2" fontWeight="medium">{athlete.name}</Typography>
                                     <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', mt: 0.5 }}>
                                       {registrationDocumentSlots.map(({ key, label }) => {
@@ -2532,8 +2566,18 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                         return <Typography key={key} variant="caption" color={submitted ? 'success.main' : 'warning.main'}>{label}：{submitted ? '已提交' : '待补交'}</Typography>;
                                       })}
                                     </Box>
-                                  </Box>
-                                ))}
+                                    {athleteAttachments.length > 0 && <Box sx={{ mt: 0.75, pl: 1, borderLeft: '2px solid', borderColor: 'divider' }}>
+                                      {athleteAttachments.map(file => {
+                                        const label = registrationDocumentSlots.find(slot => slot.key === file.type)?.label || file.type;
+                                        const deletingFile = registrationDocumentDeletingAttachmentId === file._id;
+                                        return <Box key={file._id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                          <Typography variant="caption" color="text.secondary">{label}：{file.originalName}{file.uploadedAt ? `（${new Date(file.uploadedAt).toLocaleString('zh-CN')}）` : ''}</Typography>
+                                          <Tooltip title="删除这一份选手材料"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentDeletingAttachmentId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => deleteRegistrationDocumentAttachmentAsAdmin(unit, file)}>{deletingFile ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
+                                        </Box>;
+                                      })}
+                                    </Box>}
+                                  </Box>;
+                                })}
                               </AccordionDetails>
                             </Accordion>;
                           })}

@@ -115,3 +115,25 @@ test('administrator can remove an organization material archive', async () => {
     RegistrationDocument.findOne = originalFindOne;
   }
 });
+
+test('administrator can remove one athlete material without deleting the organization archive', async () => {
+  const originalCompetition = Competition.findById;
+  const originalFindOne = RegistrationDocument.findOne;
+  let attachmentDeleted = false;
+  let saved = false;
+  Competition.findById = async () => ({ _id: 'match', sportType: 'trampoline' });
+  RegistrationDocument.findOne = async () => ({
+    attachments: { id: () => ({ filename: 'insurance.pdf', deleteOne: () => { attachmentDeleted = true; } }) },
+    save: async () => { saved = true; }
+  });
+  try {
+    const res = response();
+    await controller.deleteRegistrationDocumentAttachmentAsAdmin({ params: { competitionId: 'match', userId: 'unit-1', attachmentId: 'file-1' } }, res, error => { throw error; });
+    assert.equal(res.code, 200);
+    assert.equal(attachmentDeleted, true);
+    assert.equal(saved, true);
+  } finally {
+    Competition.findById = originalCompetition;
+    RegistrationDocument.findOne = originalFindOne;
+  }
+});
