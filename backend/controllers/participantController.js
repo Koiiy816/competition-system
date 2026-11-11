@@ -1,6 +1,9 @@
 const Participant = require('../models/Participant');
 const { resolveAthleteNumber } = require('../utils/athleteIdentity');
-const { validateTrampolineRegistration } = require('../utils/trampolineRegistration');
+const { validateTrampolineRegistration, normalizeTrampolineStaff } = require('../utils/trampolineRegistration');
+const { getTrampolineRegistrationKey, findTrampolineDuplicate, isTrampolineDuplicateError, getTrampolineBirthDateError, findTrampolineIdentityConflict } = require('../utils/trampolineIdentity');
+const { bindTrampolineIdentities } = require('../utils/trampolineIdentityBinding');
+const { getTrampolineQuotaPreview, withTrampolineCoachQuota, syncTrampolineCoachContacts, normalizeTrampolineUnit } = require('../utils/trampolineCoachQuota');
 const { normalizeTrampolinePlan, isLargeTrampolineEvent } = require('../utils/trampolinePlan');
 const Competition = require('../models/Competition');
 const RegistrationDocument = require('../models/RegistrationDocument');
@@ -9,6 +12,14 @@ const path = require('path');
 const archiver = require('archiver');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES, canUserAccessCompetitionType } = require('../utils/competitionType');
+
+// 校验重复及身份一致性；首次校验通过时持久化证件绑定。
+const checkTrampolineDuplicates = async (competitionId, rows, excludeId) => {
+  const existing = await Participant.find({ competition: competitionId, isVirtualTeam: { $ne: true },
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}) }).select('name gender idCard birthDate event').lean();
+  const error = findTrampolineIdentityConflict(rows, existing) || findTrampolineDuplicate(rows, existing);
+  return error || await bindTrampolineIdentities(rows);
+};
 
 const removeStoredRegistrationDocument = (filename) => {
   if (!filename) return;
@@ -486,6 +497,108 @@ exports.getParticipant = async (req, res, next) => {
  * @route   POST /api/competitions/:competitionId/participants
  * @access  Private
  */
+// 先验证整批名单及共享随队人员，再保存；教练名额由实际证件去重人数计算。
+exports.checkTrampolineRegistration = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE || !canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '此入口仅适用于获授权的蹦床参赛单位' });
+    if (competition.status !== 'registration') return res.status(400).json({ success: false, message: '该比赛当前不在报名阶段' });
+    if (!Array.isArray(req.body.participants) || !req.body.participants.length) return res.status(400).json({ success: false, message: '请填写运动员资料' });
+    const rows = req.body.participants.map(row => ({ ...row, isVirtualTeam: false }));
+    for (const row of rows) {
+      if (!row?.name || !row?.idCard) return res.status(400).json({ success: false, message: '请填写姓名和证件号码' });
+      const error = validateRegistrationAgainstCompetition({ competition, body: row });
+      if (error) return res.status(400).json({ success: false, message: `${row.name}：${error}` });
+    }
+    const duplicate = await checkTrampolineDuplicates(competition._id, rows);
+    if (duplicate) return res.status(409).json({ success: false, message: duplicate });
+    return res.status(200).json({ success: true });
+  } catch (error) { next(error); }
+};
+
+exports.getTrampolineCoachQuota = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE || !canUserAccessCompetitionType(req.user, competition)) return res.status(403).json({ success: false, message: '此入口仅适用于获授权的蹦床参赛单位' });
+    const rows = req.body.participants;
+    if (!Array.isArray(rows) || !rows.length || rows.some(row => !normalizeTrampolineUnit(row?.schoolName))
+      || new Set(rows.map(row => normalizeTrampolineUnit(row.schoolName))).size !== 1) return res.status(400).json({ success: false, message: '请提交同一单位的运动员名单' });
+    const staff = normalizeTrampolineStaff(req.body.staff, rows);
+    const data = await getTrampolineQuotaPreview(competition._id, rows.map(row => ({ ...row, status: 'pending', isVirtualTeam: false,
+      additionalInfo: { trampolineStaff: staff }, coach: '', coachPhone: '' })));
+    return res.status(200).json({ success: true, data });
+  } catch (error) { res.status(400); next(error); }
+};
+
+exports.createTrampolineBatch = async (req, res, next) => {
+  let documents = [];
+  let saved = false;
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE || !canUserAccessCompetitionType(req.user, competition)) {
+      return res.status(403).json({ success: false, message: '此入口仅适用于获授权的蹦床参赛单位' });
+    }
+    if (competition.status !== 'registration') return res.status(400).json({ success: false, message: '该比赛当前不在报名阶段' });
+    let rows, staff;
+    try {
+      rows = typeof req.body.participants === 'string' ? JSON.parse(req.body.participants) : req.body.participants;
+      const input = typeof req.body.staff === 'string' ? JSON.parse(req.body.staff) : req.body.staff;
+      staff = normalizeTrampolineStaff(input, rows);
+    } catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+    rows = rows.map(row => ({ ...row, isVirtualTeam: false }));
+    const units = new Set(rows.map(row => String(row.schoolName || '').trim()));
+    if (units.size !== 1) return res.status(400).json({ success: false, message: '同一批名单须属于同一参赛单位，请分别报名' });
+    const fields = ['name', 'idCard', 'schoolName', 'birthDate', 'gender', 'type', 'event', 'grade', 'ageGroup', 'groupTeam'];
+    for (const [index, row] of rows.entries()) {
+      const label = `第${index + 1}条报名（${row.name || '未填写姓名'}）`;
+      if (!String(row.name || '').trim()) return res.status(400).json({ success: false, message: `${label}：请填写运动员姓名` });
+      const error = validateRegistrationAgainstCompetition({ competition, body: row });
+      if (error) return res.status(400).json({ success: false, message: `${label}：${error}` });
+      const photo = row.photoIndex == null ? null : req.files?.[row.photoIndex];
+      if (row.photoIndex != null && (!Number.isInteger(row.photoIndex) || !photo)) return res.status(400).json({ success: false, message: `${label}：运动员照片关联无效` });
+      if (competition.participantRequirements?.requirePhoto === true && !photo) return res.status(400).json({ success: false, message: `${label}：请上传运动员照片` });
+      if (photo && (!['image/jpeg', 'image/png', 'image/jpg'].includes(photo.mimetype) || photo.size > 10 * 1024 * 1024)) return res.status(400).json({ success: false, message: `${label}：运动员照片须为不超过10MB的JPG或PNG图片` });
+      documents.push(new Participant({
+        ...Object.fromEntries(fields.filter(key => row[key] !== undefined).map(key => [key, row[key]])),
+        user: req.user.id, competition: competition._id, photoFile: photo?.filename,
+        trampolineRegistrationKey: getTrampolineRegistrationKey(competition._id, row),
+        teamLeader: staff.leader.name, leaderPhone: staff.leader.phone,
+        coach: staff.coaches[0]?.name || '', coachPhone: staff.coaches[0]?.phone || '',
+        additionalInfo: { eventDetail: '', trampolineStaff: staff }
+      }));
+    }
+    try {
+      await Promise.all(documents.map(async (document, index) => {
+        try { await document.validate(); }
+        catch (error) { throw new Error(`第${index + 1}条报名（${document.name}）：${error.message}`); }
+      }));
+    }
+    catch (error) { return res.status(400).json({ success: false, message: error.message }); }
+    const duplicate = await checkTrampolineDuplicates(competition._id, rows);
+    if (duplicate) return res.status(409).json({ success: false, message: duplicate });
+    await withTrampolineCoachQuota(competition, documents.map(document => document.toObject()), [], async () => {
+      try {
+        for (const document of documents) await document.save();
+      } catch (error) {
+        await Participant.deleteMany({ _id: { $in: documents.map(document => document._id) }, user: req.user.id });
+        throw error;
+      }
+    });
+    saved = true;
+    return res.status(201).json({ success: true, data: documents });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    if (isTrampolineDuplicateError(error)) return res.status(409).json({ success: false, message: '该运动员已报名同一项目，请勿重复报名' });
+    next(error);
+  }
+  finally {
+    if (!saved) for (const file of req.files || []) fs.unlink(file.path, () => {});
+  }
+};
+
 exports.createParticipant = async (req, res, next) => {
   try {
     // 处理报名表文件上传（可选）
@@ -544,6 +657,7 @@ exports.createParticipant = async (req, res, next) => {
 
     // 管理员或主裁手动添加可暂不上传照片；参赛单位自主报名仍遵循比赛的照片要求。
     const isAdmin = req.user.roles && (req.user.roles.includes('admin') || req.user.roles.includes('chief_referee'));
+    if (!isAdmin && getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) req.body.isVirtualTeam = false;
     if (isAdmin && getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
       const error = validateTrampolineRegistration(competition, req.body);
       if (error) return res.status(400).json({ success: false, message: error });
@@ -599,17 +713,23 @@ exports.createParticipant = async (req, res, next) => {
       if (limitError) return res.status(400).json({ success: false, message: limitError });
     }
 
-    // 取消同一身份证只能报名一次同一项目的限制，允许参赛单位为多名学生报名同一项目
-    // (已删除 existingParticipant 的校验逻辑)
+    delete req.body.trampolineRegistrationKey;
+    if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+      const duplicate = await checkTrampolineDuplicates(competition._id, [req.body]);
+      if (duplicate) return res.status(409).json({ success: false, message: duplicate });
+      req.body.trampolineRegistrationKey = getTrampolineRegistrationKey(competition._id, req.body);
+    }
 
     // 创建参赛者
-    const participant = await Participant.create(req.body);
+    const participant = await withTrampolineCoachQuota(competition, [req.body], [], () => Participant.create(req.body));
 
     res.status(201).json({
       success: true,
       data: participant
     });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    if (isTrampolineDuplicateError(error)) return res.status(409).json({ success: false, message: '该运动员已报名同一项目，请勿重复报名' });
     next(error);
   }
 };
@@ -669,6 +789,11 @@ exports.updateRegistrationContent = async (req, res, next) => {
     if (groupTeam.length > 30) return fail(400, '队伍编号不能超过30个字符');
     const limitError = await validateWushuEventLimits(competition, { ...participant.toObject(), event: eventName }, participant._id);
     if (limitError) return fail(400, limitError);
+    const trampolineData = { ...participant.toObject(), event: eventName };
+    if (sportType === SPORT_TYPES.TRAMPOLINE) {
+      const duplicate = await checkTrampolineDuplicates(competition._id, [trampolineData], participant._id);
+      if (duplicate) return fail(409, duplicate);
+    }
     // 项目去重只依据已确认的参赛者编号。
     if (sportType === SPORT_TYPES.WUSHU && eventName !== participant.event && await Participant.exists({
       _id: { $ne: participant._id }, competition: participant.competition,
@@ -683,20 +808,26 @@ exports.updateRegistrationContent = async (req, res, next) => {
       Participant.exists({ competition: participant.competition, isVirtualTeam: true, teamMembers: participant._id })
     ]);
     if (scheduled || result || virtualTeam) return fail(409, '报名已关联赛程、成绩或集体队伍，请联系管理员');
-    const updated = await Participant.findOneAndUpdate(
+    let changes = { event: eventName, groupTeam, schoolName, ...contacts,
+      ...(sportType === SPORT_TYPES.TRAMPOLINE ? { trampolineRegistrationKey: getTrampolineRegistrationKey(competition._id, trampolineData) } : {}),
+      category: event.category || '', manualEventGroup: '', status: 'pending',
+      additionalInfo: { ...participant.additionalInfo, eventDetail: detail, eventDetailLabel: event.registrationDetail?.label || '' },
+      updatedAt: new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1)) };
+    if (sportType === SPORT_TYPES.TRAMPOLINE) changes = syncTrampolineCoachContacts(participant.toObject(), changes);
+    const updated = await withTrampolineCoachQuota(competition, [{ ...participant.toObject(), ...changes }], [participant.toObject()], () => Participant.findOneAndUpdate(
       { _id: participant._id, user: req.user.id, competition: participant.competition,
         updatedAt: participant.updatedAt, status: participant.status, athleteNumber: participant.athleteNumber,
         isCheckedIn: { $ne: true }, checkInStatus: { $nin: ['checked', 'absent'] } },
-      { $set: { event: eventName, groupTeam, schoolName, ...contacts,
-        category: event.category || '', manualEventGroup: '', status: 'pending',
-        additionalInfo: { ...participant.additionalInfo, eventDetail: detail,
-          eventDetailLabel: event.registrationDetail?.label || '' },
-        updatedAt: new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1)) } },
+      { $set: changes },
       { new: true, runValidators: true }
-    );
+    ));
     if (!updated) return fail(409, '报名状态已变化，请刷新后重试');
     return res.status(200).json({ success: true, data: updated });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    if (isTrampolineDuplicateError(error)) return res.status(409).json({ success: false, message: '该运动员已报名同一项目，请勿重复报名' });
+    next(error);
+  }
 };
 
 // 每次上传均作为独立材料保留，不覆盖已有文件；可选关联至某位运动员。
@@ -871,6 +1002,18 @@ exports.updateParticipant = async (req, res, next) => {
     // 不允许更改比赛和用户ID
     delete req.body.competition;
     delete req.body.user;
+    delete req.body.trampolineRegistrationKey;
+    if (isPrivileged) {
+      const competition = await Competition.findById(participant.competition);
+      if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE && !participant.isVirtualTeam) {
+        const data = { ...participant.toObject(), ...req.body };
+        const identityError = getTrampolineBirthDateError(data);
+        if (identityError) return res.status(400).json({ success: false, message: identityError });
+        const duplicate = await checkTrampolineDuplicates(competition._id, [data], participant._id);
+        if (duplicate) return res.status(409).json({ success: false, message: duplicate });
+        req.body.trampolineRegistrationKey = getTrampolineRegistrationKey(competition._id, data);
+      }
+    }
 
     // 参赛单位不能借由通用更新接口修改审核、检录、测试或双人配对状态。
     if (!isPrivileged) {
@@ -899,10 +1042,12 @@ exports.updateParticipant = async (req, res, next) => {
     }
 
     req.body.updatedAt = new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1));
-    participant = await Participant.findOneAndUpdate({ _id: req.params.id, updatedAt: participant.updatedAt }, req.body, {
+    const quotaCompetition = await Competition.findById(participant.competition);
+    if (getCompetitionSportType(quotaCompetition) === SPORT_TYPES.TRAMPOLINE) Object.assign(req.body, syncTrampolineCoachContacts(participant.toObject(), req.body));
+    participant = await withTrampolineCoachQuota(quotaCompetition, [{ ...participant.toObject(), ...req.body }], [participant.toObject()], () => Participant.findOneAndUpdate({ _id: req.params.id, updatedAt: participant.updatedAt }, req.body, {
       new: true,
       runValidators: true
-    });
+    }));
     if (!participant) return res.status(409).json({ success: false, message: '报名已变化，请刷新后重试' });
 
     res.status(200).json({
@@ -910,6 +1055,8 @@ exports.updateParticipant = async (req, res, next) => {
       data: participant
     });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    if (isTrampolineDuplicateError(error)) return res.status(409).json({ success: false, message: '该运动员已报名同一项目，请勿重复报名' });
     next(error);
   }
 };
@@ -942,13 +1089,18 @@ exports.deleteParticipant = async (req, res, next) => {
       });
     }
 
-    await participant.deleteOne();
+    const competition = await Competition.findById(participant.competition);
+    if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
+      const deleted = await withTrampolineCoachQuota(competition, [], [participant.toObject()], () => Participant.findOneAndDelete({ _id: participant._id, updatedAt: participant.updatedAt }));
+      if (!deleted) return res.status(409).json({ success: false, message: '报名已变化，请刷新后重试' });
+    } else { await participant.deleteOne(); }
 
     res.status(200).json({
       success: true,
       data: {}
     });
   } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
     next(error);
   }
 };
@@ -1270,12 +1422,14 @@ exports.importParticipants = async (req, res, next) => {
     const importedKeys = new Set();
     const normalize = (value) => String(value || '').trim().replace(/\s+/g, '').toLowerCase();
     const duplicateKey = (participant) => {
+      if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) return getTrampolineRegistrationKey(competition._id, participant);
       if (participant.athleteNumber) return `athlete:${participant.athleteNumber}:${normalize(participant.event)}`;
       const idCard = normalize(participant.idCard);
       if (idCard) return getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE ? `id:${idCard}:${normalize(participant.event)}` : `id:${idCard}`;
       return `person:${[participant.name, participant.schoolName || participant.teamName, participant.gender, participant.ageGroup || participant.grade, participant.event].map(normalize).join('|')}`;
     };
     const readableError = (error) => {
+      if (isTrampolineDuplicateError(error)) return '该运动员已报名同一项目，请勿重复报名';
       if (error?.name === 'ValidationError') return Object.values(error.errors || {}).map((item) => item.message).filter(Boolean).join('；') || '资料格式不正确';
       if (error?.code === 11000) return '报名编号重复，请重新导入';
       return error?.message || '导入失败';
@@ -1294,16 +1448,21 @@ exports.importParticipants = async (req, res, next) => {
           user: req.user.id,
           members: Array.isArray(sourceData.members) ? sourceData.members : []
         };
+        delete participantData.trampolineRegistrationKey;
         if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU && participantData.athleteNumber) {
           participantData.athleteNumber = await resolveAthleteNumber(participantData, req.user, { allowOwnerSelection: true });
         } else {
           // 未提供已确认编号的旧模板不猜测身份，保留为待管理员关联。
           delete participantData.athleteNumber;
         }
+        if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) participantData.isVirtualTeam = false;
         const key = duplicateKey(participantData);
         if (getCompetitionSportType(competition) === SPORT_TYPES.TRAMPOLINE) {
           const error = validateTrampolineRegistration(competition, participantData);
           if (error) throw new Error(error);
+          const duplicate = await checkTrampolineDuplicates(competition._id, [participantData]);
+          if (duplicate) throw new Error(duplicate);
+          participantData.trampolineRegistrationKey = getTrampolineRegistrationKey(competition._id, participantData);
         }
         if (importedKeys.has(key)) throw new Error('与本次 Excel 中已成功导入的报名重复');
         const existingQuery = participantData.athleteNumber
@@ -1311,8 +1470,8 @@ exports.importParticipants = async (req, res, next) => {
           : participantData.idCard && getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE
           ? { competition: competitionId, idCard: participantData.idCard }
           : { competition: competitionId, name: participantData.name, schoolName: participantData.schoolName, gender: participantData.gender, ageGroup: participantData.ageGroup || participantData.grade, event: participantData.event };
-        if (await Participant.exists(existingQuery)) throw new Error('该报名已成功导入，不能重复导入');
-        const participant = await Participant.create(participantData);
+        if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE && await Participant.exists(existingQuery)) throw new Error('该报名已成功导入，不能重复导入');
+        const participant = await withTrampolineCoachQuota(competition, [participantData], [], () => Participant.create(participantData));
         createdParticipants.push(participant);
         importedKeys.add(key);
         importedDetails.push({ row, participant });

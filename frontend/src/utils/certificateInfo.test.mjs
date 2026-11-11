@@ -13,3 +13,7 @@ test('parses a Hong Kong resident permit number using the national identity-numb
 test('rejects a number with an invalid checksum', () => {
   assert.equal(parseChineseResidentIdentityNumber('810000200001010015'), null);
 });
+
+test('证件号码夹带空格也应识别，避免绕过生日锁定', () => {
+  assert.equal(parseChineseResidentIdentityNumber(' 810000 20000101 0014 ').birthDate, '2000-01-01');
+});

@@ -2,9 +2,12 @@ import { getAgeGroupDisplayName, getEventDisplayName } from './trampolineRegistr
 
 export function toTrampolineSchoolSections(group, competition) {
   const participants = (group.participants || []).filter(row => !row.isVirtualTeam);
-  const contacts = (name, phone) => [...new Set(participants.map(row =>
-    [row[name], row[phone] && `（${row[phone]}）`].filter(Boolean).join('')
-  ).filter(Boolean))].join('、') || '未填写';
+  const contacts = (name, phone) => [...new Set(participants.flatMap(row => {
+    const staff = row.additionalInfo?.trampolineStaff;
+    const people = name === 'coach' && staff?.coaches?.length ? staff.coaches
+      : name === 'teamLeader' && staff?.leader ? [staff.leader] : [{ name: row[name], phone: row[phone] }];
+    return people.map(person => [person.name, person.phone && `（${person.phone}）`].filter(Boolean).join(''));
+  }).filter(Boolean))].join('、') || '未填写';
   const sections = new Map();
   for (const row of participants) {
     const ageGroup = getAgeGroupDisplayName(competition, row.ageGroup || row.grade) || '未填写组别';

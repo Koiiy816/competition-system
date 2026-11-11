@@ -10,7 +10,7 @@ const documentTypeForRegion = (regionCode) => ({
 // 18 位公民身份号码适用于大陆居民身份证和港澳台居民居住证；
 // 香港/澳门本地身份证与护照号码不含相同编码，不能据此猜测个人资料。
 export const parseChineseResidentIdentityNumber = (input) => {
-  const value = String(input || '').trim().toUpperCase();
+  const value = String(input || '').replace(/\s+/g, '').toUpperCase();
   if (!/^\d{17}[0-9X]$/.test(value)) return null;
 
   const checksum = IDENTITY_WEIGHTS.reduce((sum, weight, index) => sum + Number(value[index]) * weight, 0);

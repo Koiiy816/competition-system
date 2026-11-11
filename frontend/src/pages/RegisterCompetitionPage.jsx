@@ -23,6 +23,10 @@ import {
   CardContent,
   CardMedia,
   Chip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   SportsSoccer as SportsSoccerIcon,
@@ -40,6 +44,7 @@ import { getAutoAgeGroup } from '../utils/ageGroup';
 import { parseChineseResidentIdentityNumber } from '../utils/certificateInfo';
 import { isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
 import { getAgeGroupDisplayName, getEventDisplayName, getTrampolineEventGroup, getTrampolineEvents } from '../utils/trampolineRegistration';
+import { getTrampolineAthleteCount, getTrampolineCoachLimit, validateTrampolineStaff, findTrampolineDuplicate, getFilledTrampolineCoaches, findTrampolineIdentityConflict } from '../utils/trampolineStaff';
 const isDivingEvent = (competition) => isDivingCompetition(competition);
 const isSynchronizedDiving = (event = {}) => /双人|雙人/.test([event.name, event.displayName].filter(Boolean).join(' '));
 const isMixedDivingEvent = (event = {}) => /混合|混雙/.test([event.name, event.displayName].filter(Boolean).join(' '));
@@ -95,6 +100,7 @@ const RegisterCompetitionPage = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [validationMessage, setValidationMessage] = useState('');
   const [completed, setCompleted] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   
@@ -106,6 +112,18 @@ const RegisterCompetitionPage = () => {
   const [insuranceFile, setInsuranceFile] = useState(null);
   const [documentError, setDocumentError] = useState('');
   const [registrants, setRegistrants] = useState([]);
+  const [checkingRegistrant, setCheckingRegistrant] = useState(false);
+  const [checkingQuota, setCheckingQuota] = useState(false);
+  const [unitQuota, setUnitQuota] = useState(null);
+  const [staff, setStaff] = useState({ leader: { name: '', phone: '' }, coaches: [{ name: '', phone: '' }] });
+  const trampoline = isTrampolineCompetition(competition);
+  const athleteCount = getTrampolineAthleteCount(registrants.map(item => item.data));
+  const coachLimit = unitQuota?.coachLimit ?? getTrampolineCoachLimit(athleteCount);
+  const filledCoaches = getFilledTrampolineCoaches(staff.coaches);
+  const reportError = message => {
+    setError(message);
+    if (message && trampoline) setValidationMessage(message);
+  };
   const [selectedEvents, setSelectedEvents] = useState(['']);
   const [selectedEventTypes, setSelectedEventTypes] = useState(['']);
   const [selectedEventDetails, setSelectedEventDetails] = useState({});
@@ -136,6 +154,7 @@ const RegisterCompetitionPage = () => {
   
   // 表单错误
   const [formErrors, setFormErrors] = useState({});
+  const recognizedCertificate = trampoline ? parseChineseResidentIdentityNumber(formData.idCard) : null;
 
   // 比赛项目数据结构
   const eventOptions = {
@@ -424,6 +443,7 @@ const RegisterCompetitionPage = () => {
   // 处理表单变更
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+    if (trampoline && name === 'birthDate' && recognizedCertificate) return;
     if (['grade', 'gender', 'birthDate', 'idCard'].includes(name)) {
       setSelectedEvents(['']);
       setSelectedEventTypes(['']);
@@ -452,6 +472,7 @@ const RegisterCompetitionPage = () => {
         updates.gender = certificateInfo.gender;
         updates.event = ''; // 组别或性别变化，清空已选比赛项目
         updates.grade = getAutoAgeGroup(certificateInfo.birthDate, competition?.ageGroups || []);
+        if (trampoline) setFormErrors(prev => ({ ...prev, birthDate: '', gender: '' }));
       }
       
       setFormData(prev => ({
@@ -709,17 +730,21 @@ const RegisterCompetitionPage = () => {
     // 这里可以根据比赛的具体要求添加更多验证
     
     if (!isAdmin && !formData.idCard.trim()) errors.idCard = '请填写证件号码';
+    if (trampoline && (!formData.birthDate || Number.isNaN(new Date(formData.birthDate).getTime()) || new Date(formData.birthDate) > new Date())) errors.birthDate = '请填写有效的出生日期';
+    if (trampoline && registrants.some(item => item.data.schoolName.trim() !== formData.schoolName.trim())) errors.schoolName = '同一批名单须属于同一参赛单位';
     if (competition?.participantRequirements?.requirePhoto === true && !selectedPhoto) errors.photo = '\u8bf7\u4e0a\u4f20\u8fd0\u52a8\u5458\u7167\u7247';
     setFormErrors(errors);
+    if (trampoline && Object.keys(errors).length) setValidationMessage(Object.values(errors).join('\n'));
     return Object.keys(errors).length === 0;
   };
   
   // 同一名运动员的多个项目会拆成对应报名记录，无需重复填写个人资料。
-  const addRegistrant = () => {
+  const addRegistrant = async () => {
+    if (checkingRegistrant) return;
     if (!validateForm()) return;
     const events = selectedEvents.filter(event => event && event.trim());
     const baseId = createRequestKey();
-    setRegistrants(prev => [...prev, ...events.map((event, index) => ({
+    const entries = events.map((event, index) => ({
       id: `${baseId}-${index}`,
       data: {
         ...formData,
@@ -744,7 +769,24 @@ const RegisterCompetitionPage = () => {
       },
       photo: selectedPhoto,
       documents: isTrampolineCompetition(competition) && index === 0 ? { riskNotice: riskNoticeFile, insurance: insuranceFile } : {}
-    }))]);
+    }));
+    if (trampoline) {
+      const rows = [...registrants, ...entries].map(item => item.data);
+      const duplicate = findTrampolineIdentityConflict(rows) || findTrampolineDuplicate(rows);
+      if (duplicate) { reportError(duplicate); return; }
+      setCheckingRegistrant(true);
+      try {
+        const response = await fetch(`/api/competitions/${id}/participants/trampoline-check`, {
+          method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participants: entries.map(item => item.data) })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || '报名资料校验失败，请稍后重试');
+      } catch (error) { reportError(error.message || '报名资料校验失败，请稍后重试'); return; }
+      finally { setCheckingRegistrant(false); }
+    }
+    setRegistrants(prev => [...prev, ...entries]);
+    setUnitQuota(null);
     setFormData(prev => ({ ...prev, name: '', teamName: '', members: [], event: '', grade: '', gender: '', idCard: '', birthDate: '', phone: '', additionalInfo: {} }));
     setSelectedEvents(['']);
     setSelectedEventTypes(['']);
@@ -753,17 +795,43 @@ const RegisterCompetitionPage = () => {
     setSelectedPhoto(null); setRiskNoticeFile(null); setInsuranceFile(null); setFormErrors({}); setError('');
   };
 
-  const removeRegistrant = (entryId) => setRegistrants(prev => prev
-    .filter(item => item.id !== entryId)
-    .map(item => {
+  const removeRegistrant = (entryId) => {
+    setUnitQuota(null);
+    setRegistrants(prev => prev.filter(item => item.id !== entryId).map(item => {
       if (item.data.additionalInfo?.divingPair?.partnerRegistrantId !== entryId) return item;
       const { divingPair, ...additionalInfo } = item.data.additionalInfo;
       return { ...item, data: { ...item.data, additionalInfo } };
     }));
+  };
 
-  const handleNext = () => {
-    if (activeStep === 0 && registrants.length === 0) { setError('请先将至少一名运动员加入报名名单。'); return; }
+  const refreshTrampolineQuota = async (includeStaff) => {
+    const response = await fetch(`/api/competitions/${id}/participants/trampoline-coach-quota`, {
+      method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ participants: registrants.map(item => item.data), staff: includeStaff ? staff : undefined })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || '单位累计教练名额核对失败，请稍后重试');
+    setUnitQuota(result.data);
+    return result.data;
+  };
+
+  const handleNext = async () => {
+    if (checkingQuota) return;
+    if (activeStep === 0 && registrants.length === 0) { reportError('请先将至少一名运动员加入报名名单。'); return; }
     if (activeStep === 0 && hasUnpairedDivingRegistrants()) { setError('请先完成所有跳水双人项目的配对。'); return; }
+    if (trampoline && activeStep === 0 && (formData.name.trim() || formData.idCard.trim() || selectedEvents.some(Boolean))) { reportError('当前运动员尚未加入名单，请先点击“加入报名名单并继续添加”。'); return; }
+    if (trampoline && activeStep === 1) {
+      const staffError = validateTrampolineStaff(staff, athleteCount);
+      if (staffError) { reportError(staffError); return; }
+    }
+    if (trampoline && activeStep <= 1) {
+      setCheckingQuota(true);
+      try {
+        const quota = await refreshTrampolineQuota(activeStep === 1);
+        if (activeStep === 1 && quota.error) { reportError(quota.error); return; }
+      } catch (error) { reportError(error.message); return; }
+      finally { setCheckingQuota(false); }
+    }
     setError(''); setActiveStep(prev => prev + 1);
   };
 
@@ -803,12 +871,42 @@ const RegisterCompetitionPage = () => {
   };
   
   // 提交报名
+  const submitTrampolineBatch = async () => {
+    const payload = new FormData();
+    let photoIndex = 0;
+    const participants = registrants.map(item => {
+      const row = { ...item.data, ageGroup: item.data.grade };
+      if (item.photo) { row.photoIndex = photoIndex++; payload.append('photo', item.photo); }
+      return row;
+    });
+    payload.append('participants', JSON.stringify(participants));
+    payload.append('staff', JSON.stringify(staff));
+    const response = await fetch(`/api/competitions/${id}/participants/trampoline-batch`, {
+      method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, body: payload
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || '报名提交失败');
+    const warnings = [];
+    for (let index = 0; index < registrants.length; index++) {
+      try { await uploadRegistrantDocuments(result.data[index]._id, registrants[index].documents); }
+      catch (error) { warnings.push(`${registrants[index].data.name}：${error.message}`); }
+    }
+    if (warnings.length) setError(`报名已提交，以下材料可在“我的报名”补交：${warnings.join('；')}`);
+    setCompleted(true);
+    if (!warnings.length) setTimeout(() => navigate(`/competitions/${id}`), 3000);
+  };
+
   const handleSubmit = async () => {
-    if (registrants.length === 0) { setError('报名名单为空，请返回添加运动员。'); return; }
+    if (registrants.length === 0) { reportError('报名名单为空，请返回添加运动员。'); return; }
     if (hasUnpairedDivingRegistrants()) { setError('存在尚未完成配对的跳水双人项目。'); return; }
-    if (!window.confirm(`确定提交 ${registrants.length} 名运动员的报名资料吗？`)) return;
+    if (trampoline) {
+      const staffError = validateTrampolineStaff(staff, athleteCount);
+      if (staffError) { reportError(staffError); return; }
+    }
+    if (!window.confirm(`确定提交 ${trampoline ? athleteCount : registrants.length} 名运动员的报名资料吗？`)) return;
     setSubmitting(true); setError(''); const failed = []; const documentWarnings = [];
     try {
+      if (trampoline) { await submitTrampolineBatch(); return; }
       for (const registrant of registrants) {
         const submitData = new FormData(); const data = registrant.data;
         Object.keys(data).forEach(key => { if (key === 'additionalInfo') submitData.append(key, JSON.stringify(data[key])); else if (key === 'members') { if (data[key]?.length) submitData.append(key, JSON.stringify(data[key])); } else submitData.append(key, data[key]); });
@@ -826,7 +924,7 @@ const RegisterCompetitionPage = () => {
       if (failed.length) { setError(`\u4ee5\u4e0b\u8fd0\u52a8\u5458\u672a\u63d0\u4ea4\u6210\u529f\uff1a${failed.join("?")}`); return; }
       if (documentWarnings.length) setError(`报名已提交，但以下材料未上传，可在“我的报名”补交：${documentWarnings.join('；')}`);
       setCompleted(true); setTimeout(() => navigate(`/competitions/${id}`), 3000);
-    } catch (submitError) { setError(submitError.message || '\u62a5\u540d\u63d0\u4ea4\u5931\u8d25'); }
+    } catch (submitError) { reportError(submitError.message || '\u62a5\u540d\u63d0\u4ea4\u5931\u8d25'); }
     finally { setSubmitting(false); }
   };
 
@@ -853,7 +951,7 @@ const RegisterCompetitionPage = () => {
   };
   
   // 步骤标题
-  const steps = ['基本信息', '确认报名'];
+  const steps = trampoline ? ['运动员信息', '教练和领队资料', '确认报名'] : ['基本信息', '确认报名'];
   
   // 渲染步骤内容
   const getStepContent = (step) => {
@@ -861,6 +959,8 @@ const RegisterCompetitionPage = () => {
       case 0:
         return renderBasicInfoForm();
       case 1:
+        return trampoline ? renderStaffForm() : renderConfirmation();
+      case 2:
         return renderConfirmation();
       default:
         return '未知步骤';
@@ -982,6 +1082,7 @@ const RegisterCompetitionPage = () => {
           />
         </Grid>
 
+        {!trampoline && <>
         {/* 领队信息 */}
         <Grid item xs={12} sm={6}>
           <TextField
@@ -1031,6 +1132,7 @@ const RegisterCompetitionPage = () => {
             helperText={formErrors.coachPhone}
           />
         </Grid>
+        </>}
         
         {/* 所属单位 */}
         <Grid item xs={12} sm={6}>
@@ -1057,9 +1159,10 @@ const RegisterCompetitionPage = () => {
               shrink: true,
             }}
             value={formData.birthDate}
+            InputProps={{ readOnly: Boolean(recognizedCertificate) }}
             onChange={handleFormChange}
             error={!!formErrors.birthDate}
-            helperText={formErrors.birthDate || '选择出生日期后，系统将按赛事设置的出生日期范围自动匹配组别'}
+            helperText={formErrors.birthDate || (recognizedCertificate ? '出生日期已由证件号码识别并锁定；如需更正，请修改证件号码' : '选择出生日期后，系统将按赛事设置的出生日期范围自动匹配组别')}
             required
           />
         </Grid>
@@ -1273,13 +1376,13 @@ const RegisterCompetitionPage = () => {
             {documentError && <Alert severity="error" sx={{ mt: 1 }}>{documentError}</Alert>}
           </Paper>}
           <Box sx={{ mt: 2 }}>
-            <Button variant="contained" onClick={addRegistrant} disabled={submitting} sx={{ mr: 2 }}>{'\u52a0\u5165\u62a5\u540d\u540d\u5355\u5e76\u7ee7\u7eed\u6dfb\u52a0'}</Button>
-            <Typography variant="caption" color="text.secondary">{'\u6bcf\u4f4d\u8fd0\u52a8\u5458\u586b\u5199\u5b8c\u6210\u540e\u70b9\u51fb\u4e00\u6b21\uff1b\u5355\u4f4d\u3001\u9886\u961f\u548c\u6559\u7ec3\u4fe1\u606f\u4f1a\u4fdd\u7559\u3002'}</Typography>
+            <Button variant="contained" onClick={addRegistrant} disabled={submitting || checkingRegistrant} sx={{ mr: 2 }}>{checkingRegistrant ? '正在核对报名资料…' : '加入报名名单并继续添加'}</Button>
+            <Typography variant="caption" color="text.secondary">{trampoline ? '每位运动员填写完成后点击一次，名单暂存于当前页面。全部添加后点击下一步，统一填写教练和领队资料。' : '每位运动员填写完成后点击一次；单位、领队和教练信息会保留。'}</Typography>
           </Box>
           {registrants.length > 0 && (
             <>
               <Paper variant="outlined" sx={{ p: 2, mt: 2 }}>
-                <Typography variant="subtitle1" gutterBottom>报名名单 ({registrants.length})</Typography>
+                <Typography variant="subtitle1" gutterBottom>报名名单（{trampoline ? `${athleteCount}名运动员，${registrants.length}项报名，最多${coachLimit}名教练` : registrants.length}）</Typography>
                 {registrants.map((item, index) => (
                   <Box key={item.id} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', py: 1, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}>
                     <Typography>
@@ -1346,11 +1449,58 @@ const RegisterCompetitionPage = () => {
     );
   };
   
+  const renderStaffForm = () => (
+    <Box>
+      <Alert severity="info" sx={{ mb: 3 }}>
+        本次名单共{athleteCount}名运动员（{registrants.length}项报名）。本单位在本赛事已有{unitQuota?.existingAthleteCount || 0}名运动员、{unitQuota?.existingCoachCount || 0}名教练；
+        合并本次名单后累计{unitQuota?.athleteCount ?? athleteCount}名运动员，教练总名额上限为{coachLimit}名。
+        同一单位跨批次、跨账号累计核验，运动员按证件、教练按姓名和电话去重。教练和领队资料均为选填，可全部留空；填写的资料将绑定到本次名单全部运动员。
+      </Alert>
+      <Typography variant="h6" gutterBottom>领队资料（选填）</Typography>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {['name', 'phone'].map(field => <Grid item xs={12} sm={6} key={field}>
+          <TextField fullWidth label={field === 'name' ? '领队姓名' : '领队电话'}
+            value={staff.leader[field]} inputProps={{ maxLength: field === 'name' ? 50 : 30 }}
+            onChange={event => setStaff(prev => ({ ...prev, leader: { ...prev.leader, [field]: event.target.value } }))} />
+        </Grid>)}
+      </Grid>
+      <Typography variant="h6" gutterBottom>教练资料（选填，已填{filledCoaches.length}名 / 最多{coachLimit}名）</Typography>
+      {filledCoaches.length > coachLimit && <Alert severity="error" sx={{ mb: 2 }}>运动员人数减少，请删除超额教练后再继续。</Alert>}
+      {staff.coaches.map((coach, index) => <Paper key={index} variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+          <Typography>教练{index + 1}</Typography>
+          <Button color="error" size="small"
+            onClick={() => setStaff(prev => ({ ...prev, coaches: prev.coaches.filter((_, i) => i !== index) }))}>删除</Button>
+        </Box>
+        <Grid container spacing={2}>
+          {['name', 'phone'].map(field => <Grid item xs={12} sm={6} key={field}>
+            <TextField fullWidth label={field === 'name' ? `教练${index + 1}姓名` : `教练${index + 1}电话`}
+              value={coach[field]} inputProps={{ maxLength: field === 'name' ? 50 : 30 }}
+              onChange={event => setStaff(prev => ({ ...prev, coaches: prev.coaches.map((item, i) => i === index ? { ...item, [field]: event.target.value } : item) }))} />
+          </Grid>)}
+        </Grid>
+      </Paper>)}
+      <Button variant="outlined" onClick={() => {
+        if (staff.coaches.length >= coachLimit) {
+          reportError(`${athleteCount}名运动员最多可报${coachLimit}名教练，当前已有${staff.coaches.length}组教练栏位，请使用现有栏位或删除多余栏位。`);
+          return;
+        }
+        setStaff(prev => ({ ...prev, coaches: [...prev.coaches, { name: '', phone: '' }] }));
+      }}>添加教练</Button>
+    </Box>
+  );
+
   // 渲染确认信息
   const renderConfirmation = () => (
     <Box>
       <Typography variant="h6" gutterBottom>{'\u786e\u8ba4\u62a5\u540d\u540d\u5355'}</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{'\u5c06\u4e00\u6b21\u6027\u63d0\u4ea4\u4ee5\u4e0b'} {registrants.length} {'\u540d\u8fd0\u52a8\u5458\u7684\u62a5\u540d\u8d44\u6599\u548c\u7167\u7247\u3002'}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>将一次性提交以下{trampoline ? `${athleteCount}名运动员、${registrants.length}项报名` : `${registrants.length}名运动员`}的资料和已选材料。</Typography>
+      {trampoline && <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+        <Typography fontWeight="medium">统一绑定的教练和领队资料</Typography>
+        <Typography>领队：{[staff.leader.name, staff.leader.phone && `（${staff.leader.phone}）`].filter(Boolean).join('') || '未填写'}</Typography>
+        {filledCoaches.length ? filledCoaches.map((coach, index) => <Typography key={index}>教练{index + 1}：{[coach.name, coach.phone && `（${coach.phone}）`].filter(Boolean).join('')}</Typography>) : <Typography>教练：未填写</Typography>}
+        <Typography variant="body2" color="text.secondary">本次填写{filledCoaches.length}名教练。本单位累计{unitQuota?.athleteCount ?? athleteCount}名运动员、{unitQuota?.coachCount ?? filledCoaches.length}名教练，上限{coachLimit}名；提交时会再次核验。</Typography>
+      </Paper>}
       <Paper sx={{ p: 2 }}>{registrants.map((item, index) => <Box key={item.id} sx={{ py: 1.5, borderBottom: index < registrants.length - 1 ? '1px solid' : 'none', borderColor: 'divider' }}><Typography fontWeight="medium">{index + 1}. {item.data.name || item.data.teamName}</Typography><Typography variant="body2" color="text.secondary">{'\u5355\u4f4d\uff1a'}{item.data.schoolName || '-'} {'\u00b7'} {'\u6027\u522b\uff1a'}{item.data.gender || '-'} {'\u00b7'} {'\u7ec4\u522b\uff1a'}{getAgeGroupDisplayName(competition, item.data.grade) || '-'} {'\u00b7'} {'\u9879\u76ee\uff1a'}{getEventLabel(item.data.event) || '-'}{item.data.groupTeam ? <> {'\u00b7'} {'\u961f\u4f0d\uff1a'}{item.data.groupTeam}</> : null} {'\u00b7'} {'\u7167\u7247\uff1a'}{item.photo ? '\u5df2\u4e0a\u4f20' : '\u672a\u4e0a\u4f20'}</Typography></Box>)}</Paper>
     </Box>
   );
@@ -1373,10 +1523,10 @@ const RegisterCompetitionPage = () => {
         </Typography>
         
         <Typography variant="body2" paragraph>
-          正在跳转到比赛详情页...
+          {trampoline && error ? '报名已保存，请根据上方提示补交材料。' : '正在跳转到比赛详情页...'}
         </Typography>
         
-        <CircularProgress size={24} sx={{ mt: 2 }} />
+        {trampoline && error ? <Button onClick={() => navigate(`/competitions/${id}`)}>返回比赛详情</Button> : <CircularProgress size={24} sx={{ mt: 2 }} />}
       </Box>
     );
   };
@@ -1386,6 +1536,11 @@ const RegisterCompetitionPage = () => {
   
   return (
     <Box>
+      <Dialog open={Boolean(validationMessage)} onClose={() => setValidationMessage('')} fullWidth maxWidth="sm">
+        <DialogTitle>请检查报名资料</DialogTitle>
+        <DialogContent><Typography sx={{ whiteSpace: 'pre-line' }}>{validationMessage}</Typography></DialogContent>
+        <DialogActions><Button onClick={() => setValidationMessage('')} autoFocus>返回修改</Button></DialogActions>
+      </Dialog>
       {/* 错误提示 */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -1441,7 +1596,7 @@ const RegisterCompetitionPage = () => {
                   {activeStep > 0 && (
                     <Button
                       onClick={handleBack}
-                      disabled={submitting}
+                      disabled={submitting || checkingQuota}
                     >
                       上一步
                     </Button>
@@ -1451,8 +1606,9 @@ const RegisterCompetitionPage = () => {
                     <Button
                       variant="contained"
                       onClick={handleNext}
+                      disabled={checkingRegistrant || checkingQuota}
                     >
-                      下一步
+                      {checkingQuota ? '正在核对单位名额…' : '下一步'}
                     </Button>
                   ) : (
                     <Button

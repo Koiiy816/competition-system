@@ -164,6 +164,8 @@ const ParticipantSchema = new mongoose.Schema({
     type: String,
     unique: true
   },
+  // 仅新建或编辑的蹦床报名写入此键；稀疏索引不影响其他赛事及历史资料。
+  trampolineRegistrationKey: { type: String, select: false },
   isCheckedIn: {
     type: Boolean,
     default: false
@@ -210,6 +212,8 @@ const ParticipantSchema = new mongoose.Schema({
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
+
+ParticipantSchema.index({ trampolineRegistrationKey: 1 }, { unique: true, sparse: true });
 
 // 更新updatedAt字段
 ParticipantSchema.pre('save', function(next) {
