@@ -50,6 +50,7 @@ const normalizeGender = (value) => {
   return input;
 };
 const normalizeUnit = (value) => text(value).replace(/[\s·・、,，.。'"“”]/g, '').toLocaleLowerCase('zh-CN');
+const normalizeTeamSuffix = (value) => normalizeUnit(value).replace(/队$/, '');
 
 const reportPath = (args) => path.resolve(args.report || path.join(process.cwd(), `collective-unit-preview-${Date.now()}.json`));
 
@@ -77,7 +78,7 @@ function readRoster(file, targetEvent) {
   })).filter((row) => row.name && row.schoolName && normalizeEvent(row.event) === normalizedTargetEvent);
 }
 
-function buildReport({ competitionId, event, roster, participants, virtualTeams }) {
+function buildReport({ competitionId, event, roster, participants, allRealParticipants, virtualTeams }) {
   const candidatesByKey = new Map();
   participants.forEach((participant) => {
     const key = `${normalizeName(participant.name)}\u0000${normalizeGender(participant.gender)}`;
@@ -113,7 +114,10 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
         changed: text(participant.schoolName) !== row.schoolName
       });
     } else if (candidates.length === 0) {
-      unmatched.push({ excelRow: row.excelRow, name: row.name, gender: row.gender, schoolName: row.schoolName });
+      const nearCandidates = allRealParticipants
+        .filter((participant) => normalizeName(participant.name) === normalizeName(row.name) && normalizeGender(participant.gender) === normalizeGender(row.gender))
+        .map((participant) => ({ id: participant._id.toString(), event: participant.event || '', schoolName: participant.schoolName || '', groupTeam: participant.groupTeam || '' }));
+      unmatched.push({ excelRow: row.excelRow, name: row.name, gender: row.gender, schoolName: row.schoolName, nearCandidates });
     } else {
       // 集体项目历史报名有重名。优先以原“代表单位 + 队伍编号”与 Excel 的完整队名匹配；
       // 只有最高分仍并列时才拒绝写入，不会凭数组顺序猜测。
@@ -123,7 +127,7 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
         const groupTeam = normalizeUnit(candidate.groupTeam);
         let score = 0;
         if (groupTeam && targetUnit === groupTeam) score = 4;
-        else if (groupTeam && targetUnit === `${schoolName}${groupTeam}`) score = 3;
+        else if (groupTeam && (targetUnit === `${schoolName}${groupTeam}` || normalizeTeamSuffix(targetUnit) === normalizeTeamSuffix(`${schoolName}${groupTeam}`))) score = 3;
         else if (targetUnit === schoolName) score = 2;
         else if (groupTeam && targetUnit.includes(schoolName) && targetUnit.endsWith(groupTeam)) score = 1;
         return { candidate, score };
@@ -169,6 +173,7 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
   const virtualTeamConflicts = [];
   const virtualTeamUpdates = [];
   const virtualKeys = new Map();
+  const targetParticipantById = new Map(participants.map((participant) => [participant._id.toString(), participant]));
   virtualTeams.forEach((team) => {
     const memberUnits = [...new Set((team.teamMembers || []).map((member) => newUnitById.get(member.toString())).filter(Boolean))];
     if (!memberUnits.length) return;
@@ -184,7 +189,17 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
     virtualTeamUpdates.push({ teamId: team._id.toString(), oldSchoolName: team.schoolName || '', newSchoolName, groupTeam: team.groupTeam || '' });
   });
   virtualKeys.forEach((teams, key) => {
-    if (teams.length > 1) virtualTeamConflicts.push({ reason: '单位更新后会产生重复虚拟队伍', key, teamIds: teams.map((team) => team._id.toString()) });
+    if (teams.length > 1) virtualTeamConflicts.push({
+      reason: '单位更新后会产生重复虚拟队伍',
+      key,
+      teams: teams.map((team) => ({
+        id: team._id.toString(),
+        schoolName: team.schoolName || '',
+        groupTeam: team.groupTeam || '',
+        memberCount: (team.teamMembers || []).length,
+        memberNames: (team.teamMembers || []).map((memberId) => targetParticipantById.get(memberId.toString())?.name).filter(Boolean)
+      }))
+    });
   });
 
   return {
@@ -222,7 +237,7 @@ async function main() {
     .map((participant) => participant.event)
     .filter((value) => normalizeEvent(value) === normalizeEvent(event)))];
   const virtualTeams = await Participant.find({ competition: competitionId, isVirtualTeam: true, event: { $in: targetEventValues } }).select('_id name teamName schoolName groupTeam gender event ageGroup grade teamMembers').lean();
-  const report = buildReport({ competitionId, event, roster, participants, virtualTeams });
+  const report = buildReport({ competitionId, event, roster, participants, allRealParticipants, virtualTeams });
   const output = reportPath(args);
   fs.writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({ report: output, summary: report.summary }, null, 2));
