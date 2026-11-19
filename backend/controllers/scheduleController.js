@@ -7,37 +7,7 @@ const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
 const { syncTrampolineSchedules } = require('../utils/trampolineScheduleSync');
 
-function mergeUndersizedAgeGroups(groups, competition) {
-  const minimum = competition?.awardRules?.mergeGroupsBelow || 0;
-  if (minimum < 2) return groups;
-  const order = (competition?.ageGroups || []).map(group => group.name);
-  const buckets = {};
-  Object.values(groups).forEach(group => {
-    const eventConfig = (competition?.events || []).find(event => event.name === group.event);
-    if (group.isGroup || !String(eventConfig?.category || '').includes('\u4e2a\u4eba')) return;
-    const key = [group.event, group.gender || 'mixed'].join('|');
-    (buckets[key] ||= []).push(group);
-  });
-  Object.values(buckets).forEach(list => {
-    list.sort((a, b) => {
-      const ai = order.indexOf(a.ageGroup); const bi = order.indexOf(b.ageGroup);
-      return (ai < 0 ? Number.MAX_SAFE_INTEGER : ai) - (bi < 0 ? Number.MAX_SAFE_INTEGER : bi);
-    });
-    const merged = []; let pending = null;
-    list.forEach(group => {
-      if (!pending) { pending = { ...group, participants: [...group.participants], mergedAgeGroups: [group.ageGroup] }; return; }
-      if (pending.participants.length < minimum) { pending.participants.push(...group.participants); pending.mergedAgeGroups.push(group.ageGroup); }
-      else { merged.push(pending); pending = { ...group, participants: [...group.participants], mergedAgeGroups: [group.ageGroup] }; }
-    });
-    if (pending) {
-      if (pending.participants.length < minimum && merged.length > 0) { const previous = merged[merged.length - 1]; previous.participants.push(...pending.participants); previous.mergedAgeGroups.push(...pending.mergedAgeGroups); }
-      else merged.push(pending);
-    }
-    list.forEach(group => Object.keys(groups).forEach(key => { if (groups[key] === group) delete groups[key]; }));
-    merged.forEach((group, index) => { if (group.mergedAgeGroups.length > 1) group.ageGroup = group.mergedAgeGroups.join('/'); groups['merged|' + group.event + '|' + group.gender + '|' + index + '|' + group.ageGroup] = group; });
-  });
-  return groups;
-}
+const { getParticipantScheduleGroup, mergeUndersizedAgeGroups } = require('../utils/scheduleGrouping');
 
 /**
  * 仅供管理员核对的分组预览：不创建赛程、不写入数据库、不随机排序。
@@ -51,21 +21,14 @@ exports.previewGroups = async (req, res, next) => {
     const participants = await Participant.find({ competition: competitionId, isVirtualTeam: { $ne: true } })
       .select('name schoolName event ageGroup grade gender manualEventGroup remark status')
       .sort({ event: 1, ageGroup: 1, gender: 1, name: 1 });
-    const groups = new Map();
+    const groups = {};
 
     participants.forEach((participant) => {
-      const sourceEvent = String(participant.event || '未填写项目').trim();
-      const groupEvent = String(participant.manualEventGroup || '').trim() || sourceEvent;
-      const ageGroup = String(participant.ageGroup || participant.grade || '未填写年龄组').trim();
-      const eventConfig = competition.events?.find((event) => event.name === sourceEvent);
-      const isMixed = sourceEvent.includes('混合') || sourceEvent.includes('集体') || ageGroup.includes('集体') || eventConfig?.isGroupEvent;
-      const gender = isMixed ? 'mixed' : getScheduleGender({ eventName: sourceEvent, eventConfig, participantGender: participant.gender });
+      const group = getParticipantScheduleGroup(participant, competition);
+      const { key, gender } = group;
       const genderLabel = gender === 'male' ? '男子' : gender === 'female' ? '女子' : gender === 'mixed' ? '混合' : '未填写性别';
-      const key = [groupEvent, ageGroup, gender].join('|');
-      if (!groups.has(key)) {
-        groups.set(key, { key, event: groupEvent, sourceEvent, ageGroup, gender, genderLabel, participants: [] });
-      }
-      groups.get(key).participants.push({
+      if (!groups[key]) groups[key] = { ...group, genderLabel, participants: [] };
+      groups[key].participants.push({
         _id: participant._id,
         name: participant.name,
         schoolName: participant.schoolName || '-',
@@ -74,7 +37,8 @@ exports.previewGroups = async (req, res, next) => {
       });
     });
 
-    const data = [...groups.values()]
+    mergeUndersizedAgeGroups(groups, competition);
+    const data = Object.values(groups)
       .sort((a, b) => a.event.localeCompare(b.event, 'zh-CN') || a.ageGroup.localeCompare(b.ageGroup, 'zh-CN') || a.gender.localeCompare(b.gender))
       .map((group) => ({ ...group, count: group.participants.length, name: formatScheduleName({ ageGroup: group.ageGroup, eventName: group.event, eventConfig: competition.events?.find((event) => event.name === group.sourceEvent), gender: group.gender }) }));
 
@@ -165,62 +129,10 @@ exports.generateStartList = async (req, res, next) => {
     const teamGroups = {}; // 用于临时存储集体项目的队伍聚合
 
     participants.forEach(p => {
-      // 如果缺少必要信息，跳过或归入未知组
-      let event = p.event || '未知项目';
-      const ageGroup = p.ageGroup || p.grade || '未知组别';
-      const gender = p.gender || 'unknown';
+      const group = getParticipantScheduleGroup(p, competition);
+      const { key, isGroup } = group;
       const schoolName = p.schoolName || '未知单位';
       const groupTeam = String(p.groupTeam || '').trim();
-      
-      // --- 核心纠错：统一“集体混合”到“集体项目” ---
-      if (event.includes('集体混合')) {
-        event = event.replace('集体混合', '集体项目');
-      }
-      
-      // 管理员明确填写的人工项目分组才参与编排；报名备注不参与自动分组。
-      const manualEventGroup = String(p.manualEventGroup || '').trim();
-      const scheduleEvent = manualEventGroup || event;
-      const eventConfig = competition.events?.find(e => e.name === event);
-      
-      // 容错处理：即使用户在创建比赛时忘记勾选“集体项目”，只要名称或组别里带有“集体”字眼，我们也认为是集体项目
-      const isGroup = (eventConfig && eventConfig.isGroupEvent) || event.includes('集体') || ageGroup.includes('集体');
-      
-      let finalAgeGroup = ageGroup;
-      
-      // --- 终极规则：集体项目合并策略 ---
-      // 幼儿集体拳、武术操等集体项目需要合并男女，统称为混合集体
-      const isForceMixedGroup = (eventConfig?.isGroupEvent && eventConfig.genderRestriction === 'both') || event === '集体项目' || event.includes('集体') || event.includes('武术操');
-      if (isForceMixedGroup) {
-         // 我们将带有男/女字眼的前缀去掉，但保留小学组/幼儿组等信息
-         let strippedAgeGroup = ageGroup.replace(/男(子|童)?|女(子|童)?/g, '').trim();
-         
-         // 如果是武术操或幼儿集体拳，不仅不分男女，还不分具体的年龄组别（如U10、U13），直接按组别大类（小学组、幼儿组）或项目本身合并
-          if (event.includes('武术操') || event.includes('集体拳')) {
-             strippedAgeGroup = strippedAgeGroup.replace(/U\d+组?\s*/g, '').trim();
-          }
-         
-         if (!strippedAgeGroup.includes('混合')) {
-            finalAgeGroup = strippedAgeGroup ? `混合集体 ${strippedAgeGroup}` : '混合集体';
-         } else {
-            finalAgeGroup = strippedAgeGroup;
-         }
-      }
-
-      // --- 这里原有的 isTeamEvent 逻辑已经被顶部的 isForceMixedGroup 拦截并处理了 ---
-      // 所以我们直接处理普通个人项目
-
-      // 生成分组 Key
-      let key;
-      const normalizedGender = getScheduleGender({ eventName: event, eventConfig, participantGender: gender });
-
-      if (finalAgeGroup.includes('混合') || event.includes('混合') || isForceMixedGroup) {
-        // 只要明确标明是“混合”的，或者属于强制混合项目，统统无视自身性别，划入 mixed
-        key = `${scheduleEvent}|${finalAgeGroup}|mixed`;
-      } else {
-        // 其他项目（包括标明了男/女的集体项目），严格按照性别拆分
-        key = `${scheduleEvent}|${finalAgeGroup}|${normalizedGender}`;
-      }
-      
       if (isGroup) {
          // 集体项目：按“单位 + 队伍编号”聚合，支持同一单位报名多支队伍。
          if (!teamGroups[key]) {
@@ -234,13 +146,7 @@ exports.generateStartList = async (req, res, next) => {
       } else {
         // 个人项目：正常加入
         if (!groups[key]) {
-          groups[key] = {
-            event: scheduleEvent,
-            sourceEvent: event,
-            ageGroup: finalAgeGroup,
-            gender: normalizedGender,
-            participants: []
-          };
+          groups[key] = { ...group, participants: [] };
         }
         groups[key].participants.push(p._id);
       }

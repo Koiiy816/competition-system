@@ -318,7 +318,7 @@ const CompetitionSchema = new mongoose.Schema({
       thirdPrize: { type: Number, default: 1 }
     },
     teamMinEventsPerParticipant: { type: Number, default: 2 },
-    mergeGroupsBelow: { type: Number, default: 3 }
+    mergeGroupsBelow: { type: Number, default: 0 }
   },
   scoringRules: {
     traditionalExclusion: {
