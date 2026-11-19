@@ -18,6 +18,7 @@ import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { useAuth } from '../contexts/AuthContext';
 import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
+import StartOrderPrint from '../components/StartOrderPrint';
 
 const CompetitionScheduleDetailPage = () => {
   const { id, scheduleId } = useParams();
@@ -517,7 +518,9 @@ const CompetitionScheduleDetailPage = () => {
         </Box>
       </Box>
 
-      <DivingStartOrderPrint competitionName={competition?.name} schedules={[{ ...schedule, participants }]} />
+      {schedule.scoringMode === 'diving'
+        ? <DivingStartOrderPrint competitionName={competition?.name} schedules={[{ ...schedule, participants }]} />
+        : <StartOrderPrint competitionName={competition?.name} schedule={schedule} participants={participants} />}
 
       <Dialog
         open={addDialogOpen}
