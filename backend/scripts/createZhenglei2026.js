@@ -51,6 +51,7 @@ async function main() {
     status: 'registration',
     maxParticipants: 500,
     participantType: 'both',
+    awardRules: { enabled: false, mergeGroupsBelow: 0 },
     ageGroups: [
       { name: 'A1组', description: '学生组，12岁及以下', birthDateStart: '2014-01-01' },
       { name: 'A2组', description: '学生组，13～18岁', birthDateStart: '2008-01-01', birthDateEnd: '2013-12-31' },

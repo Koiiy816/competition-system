@@ -833,6 +833,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           // 导出时优先保留备注，确保传统拳术／器械的具体套路不会遗漏。
           '项目详情': p.additionalInfo?.notes || p.additionalInfo?.eventDetail || '-',
           '代表单位': p.schoolName || '-',
+          '队伍编号': p.groupTeam || '-',
           '领队': p.teamLeader || '-',
           '领队电话': p.leaderPhone || '-',
           '教练': p.coach || '-',
@@ -862,6 +863,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         { wch: 25 }, // 比赛项目
         { wch: 30 }, // 项目详情
         { wch: 25 }, // 代表单位
+        { wch: 15 }, // 队伍编号
         { wch: 12 }, // 领队
         { wch: 15 }, // 领队电话
         { wch: 12 }, // 教练
