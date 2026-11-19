@@ -49,6 +49,7 @@ const normalizeGender = (value) => {
   if (['女', 'female', 'f', '女性'].includes(input)) return 'female';
   return input;
 };
+const normalizeUnit = (value) => text(value).replace(/[\s·・、,，.。'"“”]/g, '').toLocaleLowerCase('zh-CN');
 
 const reportPath = (args) => path.resolve(args.report || path.join(process.cwd(), `collective-unit-preview-${Date.now()}.json`));
 
@@ -114,7 +115,37 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
     } else if (candidates.length === 0) {
       unmatched.push({ excelRow: row.excelRow, name: row.name, gender: row.gender, schoolName: row.schoolName });
     } else {
-      ambiguous.push({ excelRow: row.excelRow, name: row.name, gender: row.gender, schoolName: row.schoolName, candidates: candidates.map((candidate) => ({ id: candidate._id.toString(), schoolName: candidate.schoolName || '', groupTeam: candidate.groupTeam || '' })) });
+      // 集体项目历史报名有重名。优先以原“代表单位 + 队伍编号”与 Excel 的完整队名匹配；
+      // 只有最高分仍并列时才拒绝写入，不会凭数组顺序猜测。
+      const targetUnit = normalizeUnit(row.schoolName);
+      const scoredCandidates = candidates.map((candidate) => {
+        const schoolName = normalizeUnit(candidate.schoolName);
+        const groupTeam = normalizeUnit(candidate.groupTeam);
+        let score = 0;
+        if (groupTeam && targetUnit === groupTeam) score = 4;
+        else if (groupTeam && targetUnit === `${schoolName}${groupTeam}`) score = 3;
+        else if (targetUnit === schoolName) score = 2;
+        else if (groupTeam && targetUnit.includes(schoolName) && targetUnit.endsWith(groupTeam)) score = 1;
+        return { candidate, score };
+      });
+      const highestScore = Math.max(...scoredCandidates.map((item) => item.score));
+      const bestCandidates = scoredCandidates.filter((item) => item.score === highestScore);
+      if (highestScore > 0 && bestCandidates.length === 1) {
+        const participant = bestCandidates[0].candidate;
+        matched.push({
+          excelRow: row.excelRow,
+          participantId: participant._id.toString(),
+          name: participant.name,
+          gender: participant.gender,
+          groupTeam: participant.groupTeam || '',
+          oldSchoolName: participant.schoolName || '',
+          newSchoolName: row.schoolName,
+          changed: text(participant.schoolName) !== row.schoolName,
+          resolvedBy: '单位与队伍编号'
+        });
+      } else {
+        ambiguous.push({ excelRow: row.excelRow, name: row.name, gender: row.gender, schoolName: row.schoolName, candidates: scoredCandidates.map(({ candidate, score }) => ({ id: candidate._id.toString(), schoolName: candidate.schoolName || '', groupTeam: candidate.groupTeam || '', score })) });
+      }
     }
   });
 
@@ -122,6 +153,17 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
     name: rows[0].name,
     gender: rows[0].gender,
     rows: rows.map((row) => ({ excelRow: row.excelRow, schoolName: row.schoolName }))
+  }));
+  const matchedByParticipant = new Map();
+  matched.forEach((item) => {
+    const rows = matchedByParticipant.get(item.participantId) || [];
+    rows.push(item);
+    matchedByParticipant.set(item.participantId, rows);
+  });
+  const reusedParticipantMatches = [...matchedByParticipant.values()].filter((rows) => rows.length > 1).map((rows) => ({
+    participantId: rows[0].participantId,
+    name: rows[0].name,
+    rows: rows.map((row) => ({ excelRow: row.excelRow, schoolName: row.newSchoolName }))
   }));
   const newUnitById = new Map(matched.map((item) => [item.participantId, item.newSchoolName]));
   const virtualTeamConflicts = [];
@@ -155,10 +197,11 @@ function buildReport({ competitionId, event, roster, participants, virtualTeams 
       unmatched: unmatched.length,
       ambiguous: ambiguous.length,
       duplicateExcelRows: duplicateExcelRows.length,
+      reusedParticipantMatches: reusedParticipantMatches.length,
       virtualTeamConflicts: virtualTeamConflicts.length,
-      canApply: unmatched.length === 0 && ambiguous.length === 0 && duplicateExcelRows.length === 0 && virtualTeamConflicts.length === 0
+      canApply: unmatched.length === 0 && ambiguous.length === 0 && reusedParticipantMatches.length === 0 && virtualTeamConflicts.length === 0
     },
-    matched, unmatched, ambiguous, duplicateExcelRows, virtualTeamUpdates, virtualTeamConflicts
+    matched, unmatched, ambiguous, duplicateExcelRows, reusedParticipantMatches, virtualTeamUpdates, virtualTeamConflicts
   };
 }
 
