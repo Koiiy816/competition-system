@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const Schedule = require('../models/Schedule');
-const { getSchedules } = require('../controllers/scheduleController');
+const { getSchedules, getUnassignedParticipants } = require('../controllers/scheduleController');
 
 test('getSchedules includes diving action plans for start-order printing', async () => {
   const originalFind = Schedule.find;
@@ -58,5 +58,37 @@ test('getSchedules navigation mode does not populate participant data', async ()
   } finally {
     Schedule.find = originalFind;
     Schedule.countDocuments = originalCountDocuments;
+  }
+});
+
+test('unassigned candidate list includes every eligible participant and its team number', async () => {
+  const Participant = require('../models/Participant');
+  const originalScheduleFind = Schedule.find;
+  const originalParticipantFind = Participant.find;
+  let participantQueryCount = 0;
+  let eligibleFields = '';
+  Schedule.find = () => ({ select() { return this; }, lean: async () => [] });
+  Participant.find = () => {
+    participantQueryCount += 1;
+    const rows = participantQueryCount === 1
+      ? []
+      : [{ _id: 'late-entry', name: '刘志敏', schoolName: '测试单位', groupTeam: '2队', event: '集体拳', status: 'approved' }];
+    return {
+      select(fields) { if (participantQueryCount === 2) eligibleFields = fields; return this; },
+      sort() { return this; },
+      lean: async () => rows
+    };
+  };
+  const response = { statusCode: 0, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; } };
+  try {
+    await getUnassignedParticipants({ params: { competitionId: 'competition' } }, response, assert.fail);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body.summary.unassignedCount, 1);
+    assert.equal(response.body.data[0].name, '刘志敏');
+    assert.equal(response.body.data[0].groupTeam, '2队');
+    assert.match(eligibleFields, /groupTeam/);
+  } finally {
+    Schedule.find = originalScheduleFind;
+    Participant.find = originalParticipantFind;
   }
 });

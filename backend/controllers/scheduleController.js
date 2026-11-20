@@ -723,9 +723,10 @@ exports.createSchedule = async (req, res, next) => {
         competition: req.params.competitionId,
         isVirtualTeam: { $ne: true },
         status: { $ne: 'rejected' }
-      }).select('_id name schoolName grade ageGroup gender event additionalInfo isTest');
+      }).select('_id name schoolName groupTeam grade ageGroup gender event additionalInfo isTest');
       const memberById = new Map(members.map((member) => [member._id.toString(), member]));
       const virtualTeamIds = [];
+      const splitWushuCollectiveTeams = getCompetitionSportType(competition) === SPORT_TYPES.WUSHU && req.body.eventMode === 'collective';
 
       for (const rawTeam of req.body.collectiveTeams) {
         const memberIds = [...new Set((rawTeam?.memberIds || []).map(String))].filter((memberId) => memberById.has(memberId));
@@ -736,12 +737,21 @@ exports.createSchedule = async (req, res, next) => {
           const [first, second] = teamMembers;
           const reciprocal = first?.additionalInfo?.divingPair?.partnerName === second?.name && second?.additionalInfo?.divingPair?.partnerName === first?.name;
           if (pairIds.size !== 1 || !reciprocal || first?.event !== second?.event || String(first?.ageGroup || first?.grade) !== String(second?.ageGroup || second?.grade) || String(first?.schoolName || '') !== String(second?.schoolName || '')) return res.status(400).json({ success: false, message: '双人跳水赛程必须使用已完成互相配对、同单位、同组别、同项目的两位报名运动员' });
-        }        const teamName = String(rawTeam?.teamName || teamMembers[0]?.schoolName || '未填写代表单位').trim();
+        }
+        const schoolNames = [...new Set(teamMembers.map((member) => String(member.schoolName || '未填写代表单位').trim() || '未填写代表单位'))];
+        const teamNumbers = [...new Set(teamMembers.map((member) => String(member.groupTeam || '').trim()))];
+        if (splitWushuCollectiveTeams && (schoolNames.length > 1 || teamNumbers.length > 1)) {
+          return res.status(400).json({ success: false, message: '武术集体项目每支队伍只能选择同一代表单位、同一队伍编号的队员' });
+        }
+        const schoolName = schoolNames[0];
+        const groupTeam = splitWushuCollectiveTeams ? teamNumbers[0] : '';
+        const teamName = String(rawTeam?.teamName || (groupTeam ? `${schoolName}${groupTeam}` : schoolName)).trim();
         const virtualTeam = await Participant.create({
           competition: req.params.competitionId,
           name: teamName,
           teamName,
-          schoolName: teamName,
+          schoolName: splitWushuCollectiveTeams ? schoolName : teamName,
+          groupTeam,
           event: req.body.name,
           ageGroup: '集体项目',
           gender: 'mixed',
@@ -1265,7 +1275,7 @@ exports.getUnassignedParticipants = async (req, res, next) => {
       isVirtualTeam: { $ne: true },
       status: { $ne: 'rejected' }
     })
-      .select('name schoolName ageGroup event gender status isTest')
+      .select('name schoolName groupTeam ageGroup event gender status isTest')
       .sort({ schoolName: 1, name: 1 })
       .lean();
     const unassignedParticipants = eligibleParticipants.filter((participant) => !scheduledIds.has(participant._id.toString()));
