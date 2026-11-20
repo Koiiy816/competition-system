@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { getRankingProjectName } from '../utils/collectiveRanking.mjs';
 
 import { useNavigate } from 'react-router-dom';
 import {
@@ -628,7 +629,7 @@ const ResultsPage = () => {
 
     // 按比赛项目（赛程）分组成绩
     const grouped = results.reduce((groups, result) => {
-      const scheduleName = result.schedule?.name || '未分类项目';
+      const scheduleName = getRankingProjectName(result.schedule);
       if (!groups[scheduleName]) {
         groups[scheduleName] = [];
       }

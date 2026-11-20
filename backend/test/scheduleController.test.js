@@ -53,7 +53,9 @@ test('getSchedules navigation mode does not populate participant data', async ()
       query: { fields: 'navigation', court: '一号场地', limit: '1000' }
     }, response, assert.fail);
     assert.equal(receivedQuery.court, '一号场地');
-    assert.equal(selectedFields, '_id name court scheduleDate timeSlot order startTime');
+    for (const field of ['_id', 'name', 'court', 'scheduleDate', 'timeSlot', 'order', 'startTime', 'rankingGroupId', 'rankingGroupName', 'batchNumber']) {
+      assert.ok(selectedFields.split(' ').includes(field), `navigation includes ${field}`);
+    }
     assert.equal(populates.length, 0);
   } finally {
     Schedule.find = originalFind;

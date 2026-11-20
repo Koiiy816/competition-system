@@ -138,7 +138,7 @@ export default function LiveScoreboardPage() {
         const rows = rowsFor(schedule);
         const isDivingSchedule = isRoundDiving(schedule, rows);
         const key = isDivingSchedule ? divingGroupKey(schedule) : `schedule:${idOf(schedule)}`;
-        const group = groupMap.get(key) || { key, schedules: [], name: isDivingSchedule ? divingGroupName(schedule) : (schedule.eventName || schedule.name), isDiving: isDivingSchedule };
+        const group = groupMap.get(key) || { key, schedules: [], name: isDivingSchedule ? divingGroupName(schedule) : (schedule.rankingGroupName || schedule.eventName || schedule.name), isDiving: isDivingSchedule };
         group.schedules.push(schedule);
         groupMap.set(key, group);
       });
@@ -158,7 +158,10 @@ export default function LiveScoreboardPage() {
         ? [...currentGroup.schedules].sort((a, b) => publicActivity(b) - publicActivity(a) || activity(b) - activity(a) || Number(a.order || 0) - Number(b.order || 0))[0]
         : null;
       const makeScoreboardRows = (schedule) => {
-        const rawRows = schedule ? [...rowsFor(schedule)] : [];
+        const rawRows = schedule?.rankingGroupId
+          ? results.filter(result => idOf(result.schedule?.rankingGroupId) === idOf(schedule.rankingGroupId)
+            && !result.participant?.isTest && !result.details?.isAbsent)
+          : schedule ? [...rowsFor(schedule)] : [];
         const isDivingSchedule = isRoundDiving(schedule, rawRows);
         const publishedRound = isDivingSchedule ? Math.max(0, ...rawRows.map((result) => Number(result.details?.publishedRound || 0))) : 0;
         // 跳水只显示主裁逐人确认后的公开动作快照；未确认的后续动作不会参与累计分或排名。

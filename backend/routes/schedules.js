@@ -38,6 +38,8 @@ router.post('/import-excel', auth, authorize('admin', 'chief_referee'), schedule
 router.post('/collective-roster-preview', auth, authorize('admin', 'chief_referee'), scheduleController.previewCollectiveRosterImport);
 router.post('/import-collective-roster', auth, authorize('admin', 'chief_referee'), scheduleController.importCollectiveRoster);
 
+router.post('/:id/collective-batches', auth, authorize('admin', 'chief_referee'), scheduleController.splitCollectiveSchedule);
+
 // @route   PUT api/competitions/:competitionId/schedules/bulk/order
 // @desc    批量更新赛程排序
 // @access  私有/管理员、主裁

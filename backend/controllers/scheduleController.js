@@ -2,12 +2,90 @@ const Schedule = require('../models/Schedule');
 const { applyTrampolineJudgeCount } = require('../utils/trampolineScoring');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
+const Result = require('../models/Result');
 const { normalizeParticipantGender, getScheduleGender, formatScheduleName, parseScheduleIdentity } = require('../utils/scheduleNaming');
 const { broadcastScoreEvent } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
 const { syncTrampolineSchedules } = require('../utils/trampolineScheduleSync');
 
 const { getParticipantScheduleGroup, mergeUndersizedAgeGroups } = require('../utils/scheduleGrouping');
+const { validateBatches, acquireCollectiveLock } = require('../utils/collectiveBatches');
+
+// 分场只移动整支队伍；报名、队员、检录资料及项目排名身份保持不变。
+exports.splitCollectiveSchedule = async (req, res, next) => {
+  let unlock;
+  const createdIds = [];
+  let committed = false;
+  let originalSchedules = [];
+  let writesStarted = false;
+  try {
+    const source = await Schedule.findOne({ _id: req.params.id, competition: req.params.competitionId });
+    if (!source) return res.status(404).json({ success: false, message: '赛程不存在或不属于当前比赛' });
+    const competition = await Competition.findById(source.competition);
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.WUSHU) {
+      return res.status(400).json({ success: false, message: '此功能仅适用于武术集体项目' });
+    }
+    const groupId = source.rankingGroupId || source._id;
+    unlock = await acquireCollectiveLock(String(groupId));
+    const schedules = await Schedule.find({ competition: source.competition,
+      $or: [{ _id: groupId }, { rankingGroupId: groupId }] }).sort({ batchNumber: 1, _id: 1 });
+    if (!schedules.length) return res.status(409).json({ success: false, message: '赛程已变更，请刷新后重试' });
+    const teamIds = schedules.flatMap(schedule => schedule.participants.map(String));
+    const teams = await Participant.find({ _id: { $in: teamIds }, competition: source.competition }).select('isVirtualTeam');
+    if (!teams.length || teams.length !== teamIds.length || teams.some(team => !team.isVirtualTeam)) {
+      return res.status(400).json({ success: false, message: '只能对已按整支队伍编排的集体项目进行分场' });
+    }
+    const error = validateBatches(req.body.batches, teamIds);
+    if (error) return res.status(400).json({ success: false, message: error });
+    if (schedules.some(schedule => schedule.status !== 'scheduled')
+      || await Result.exists({ schedule: { $in: schedules.map(schedule => schedule._id) } })) {
+      return res.status(409).json({ success: false, message: '项目已开始或已有评分，请在比赛开始前完成分场编排' });
+    }
+    const rankingGroupName = source.rankingGroupName || source.name;
+    originalSchedules = schedules.map(schedule => schedule.toObject({ virtuals: false }));
+    const template = schedules[0].toObject();
+    const saved = [];
+    // 先建立新增批次，失败时可以直接清理；原赛程最后更新。
+    for (let index = 0; index < req.body.batches.length; index++) {
+      const batch = req.body.batches[index];
+      const data = {
+        name: rankingGroupName, rankingGroupId: groupId, rankingGroupName, batchNumber: index + 1,
+        participants: batch.participantIds, court: batch.court.trim(), location: batch.court.trim(),
+        scheduleDate: batch.scheduleDate, timeSlot: batch.timeSlot,
+        exactTime: String(batch.exactTime || '').trim(), order: index < schedules.length ? schedules[index].order : 0
+      };
+      if (index < schedules.length) saved.push({ id: schedules[index]._id, data });
+      else {
+        const { _id, id, __v, createdAt, updatedAt, results, ...defaults } = template;
+        const created = await Schedule.create({ ...defaults, ...data });
+        createdIds.push(created._id);
+        saved.push({ id: created._id, data });
+      }
+    }
+    writesStarted = true;
+    await Schedule.bulkWrite(saved.filter(row => !createdIds.some(id => String(id) === String(row.id)))
+      .map(row => ({ updateOne: { filter: { _id: row.id }, update: { $set: { ...row.data, updatedAt: new Date() } } } })));
+    if (schedules.length > saved.length) await Schedule.deleteMany({ _id: { $in: schedules.slice(saved.length).map(row => row._id) } });
+    committed = true;
+    return res.status(200).json({ success: true, message: `已安排 ${saved.length} 个批次，各场地成绩将按同一项目统一排名`,
+      data: await Schedule.find({ competition: source.competition, rankingGroupId: groupId }).sort({ batchNumber: 1 }).populate('participants') });
+  } catch (error) {
+    if (!committed) {
+      try {
+        // 本地 MongoDB 也可使用；不要求将已有数据库改成副本集。
+        if (writesStarted) await Schedule.bulkWrite(originalSchedules.map(schedule => ({
+          replaceOne: { filter: { _id: schedule._id }, replacement: schedule, upsert: true }
+        })));
+        if (createdIds.length) await Schedule.deleteMany({ _id: { $in: createdIds } });
+      } catch (rollbackError) {
+        error.message = `${error.message}；恢复原编排失败，请暂停该项目并检查数据库：${rollbackError.message}`;
+      }
+    }
+    next(error);
+  } finally {
+    if (unlock) unlock();
+  }
+};
 
 /**
  * 仅供管理员核对的分组预览：不创建赛程、不写入数据库、不随机排序。
@@ -458,7 +536,7 @@ exports.getSchedules = async (req, res, next) => {
     let schedules;
     if (navigationOnly) {
       schedules = await Schedule.find(query)
-        .select('_id name court scheduleDate timeSlot order startTime')
+        .select('_id name court scheduleDate timeSlot order startTime rankingGroupId rankingGroupName batchNumber')
         .skip(startIndex)
         .limit(limit)
         .sort({ scheduleDate: 1, timeSlot: 1, court: 1, order: 1, startTime: 1 })
@@ -773,6 +851,7 @@ exports.createSchedule = async (req, res, next) => {
     delete req.body.collectiveTeams;
     delete req.body.eventMode;
 
+    for (const field of ['rankingGroupId', 'rankingGroupName', 'batchNumber']) delete req.body[field];
     normalizeDivingScheduleConfig(req.body);
 
     // 创建赛程
@@ -829,6 +908,7 @@ exports.updateSchedule = async (req, res, next) => {
     // 不允许更改比赛ID
     delete req.body.competition;
 
+    for (const field of ['rankingGroupId', 'rankingGroupName', 'batchNumber']) delete req.body[field];
     normalizeDivingScheduleConfig(req.body);
 
     // 如果是裁判但不是管理员/组织者，限制只能更新状态和备注
