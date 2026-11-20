@@ -58,10 +58,10 @@ test('grouped export preserves displayed group order, titles, members and table 
   assert.match(sections[0].title, /^集体武术操 - 测试单位/);
   assert.match(sections[0].title, /少年组/);
   assert.match(sections[0].title, /人数：1/);
-  assert.deepEqual(sections[0].rows[0].cells.slice(0, 7), ['测试一队', '测试单位', '男', '少年组', '集体', '待审核', '报名备注']);
-  assert.equal(sections[0].rows[0].cells.length, 8);
+  assert.deepEqual(sections[0].rows[0].cells.slice(0, 8), ['测试一队', '测试单位', '1队', '男', '少年组', '集体', '待审核', '报名备注']);
+  assert.equal(sections[0].rows[0].cells.length, 9);
   assert.deepEqual(sections[1].rows.map(row => row.cells[0]), ['陈小明', '另一选手']);
-  assert.equal(sections[1].rows[0].cells[4], '个人');
+  assert.equal(sections[1].rows[0].cells[5], '个人');
   assert.ok(!JSON.stringify(sections).includes(participant.idCard));
 });
 
@@ -69,6 +69,6 @@ test('grouped export uses only supplied filtered groups and configured collectiv
   const sections = toWushuRegistrationGroups([{ event: '拳术', participants: [participant] }],
     { ...competition, events: [{ name: participant.event, isGroupEvent: true }] });
   assert.equal(sections[0].rows.length, 1);
-  assert.equal(sections[0].rows[0].cells[4], '集体');
+  assert.equal(sections[0].rows[0].cells[5], '集体');
   await assert.rejects(createWushuGroupedRegistrationPdf([], competition), /没有可导出的报名记录/);
 });

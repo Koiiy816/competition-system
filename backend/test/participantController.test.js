@@ -41,13 +41,14 @@ test('getMyParticipations only queries the current unit account records', async 
   }
 });
 
-test('event grouping uses the configured collective flag without a name suffix', async () => {
+test('wushu collective event grouping separates same-school teams by their team number', async () => {
   const originalFind = Participant.find;
   const originalCount = Participant.countDocuments;
   const originalCompetitionFind = Competition.findById;
   const rows = [
-    { name: '甲', schoolName: '同一单位', event: '太极扇十八式', ageGroup: 'A1组', gender: 'male' },
-    { name: '乙', schoolName: '同一单位', event: '太极扇十八式', ageGroup: 'B组', gender: 'female' }
+    { name: '甲', schoolName: '同一单位', event: '太极扇十八式', ageGroup: 'A1组', gender: 'male', groupTeam: '1队' },
+    { name: '乙', schoolName: '同一单位', event: '太极扇十八式', ageGroup: 'B组', gender: 'female', groupTeam: '2队' },
+    { name: '丙', schoolName: '同一单位', event: '太极扇十八式', ageGroup: 'C组', gender: 'male', groupTeam: '1队' }
   ];
   let findCalls = 0;
   Participant.countDocuments = async () => rows.length;
@@ -61,14 +62,17 @@ test('event grouping uses the configured collective flag without a name suffix',
       sort: async () => rows
     };
   };
-  Competition.findById = () => ({ select: async () => ({ events: [{ name: '太极扇十八式', isGroupEvent: true }] }) });
+  Competition.findById = () => ({ select: async () => ({ sportType: 'wushu', events: [{ name: '太极扇十八式', isGroupEvent: true }] }) });
   const response = { statusCode: 0, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; } };
   try {
     await getParticipants({ params: { competitionId: '507f1f77bcf86cd799439011' }, query: { groupBy: 'event' } }, response, assert.fail);
     assert.equal(response.statusCode, 200);
-    assert.equal(response.body.groupCount, 1);
+    assert.equal(response.body.groupCount, 2);
     assert.equal(response.body.data[0].schoolName, '同一单位');
     assert.equal(response.body.data[0].participants.length, 2);
+    assert.equal(response.body.data[0].groupTeam, '1队');
+    assert.equal(response.body.data[1].groupTeam, '2队');
+    assert.equal(response.body.data[0].isCollective, true);
     assert.equal(response.body.data[0].participants[0].isGroupEvent, true);
   } finally {
     Participant.find = originalFind;

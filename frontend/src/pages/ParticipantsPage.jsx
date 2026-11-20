@@ -2001,6 +2001,14 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                       size="small" 
                     />
                   )}
+                  {tabValue !== 2 && getSportType(selectedCompetition) === 'wushu' && group.isCollective && (
+                    <Chip
+                      label={group.groupTeam ? `队伍：${group.groupTeam}` : '队伍编号：未填写'}
+                      color={group.groupTeam ? 'success' : 'warning'}
+                      variant="outlined"
+                      size="small"
+                    />
+                  )}
                 </Box>
                 <Chip label={`人数：${group.roster ? group.roster.length : (group.participants || []).length}`} variant="outlined" size="small" sx={{ flexShrink: 0 }} />
               </Box>
@@ -2020,6 +2028,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                     <TableRow>
                       <TableCell>参赛者</TableCell>
                       <TableCell>所属单位</TableCell>
+                      {getSportType(selectedCompetition) === 'wushu' && group.isCollective && <TableCell>队伍编号</TableCell>}
                       <TableCell>性别</TableCell>
                       <TableCell>年龄组别</TableCell>
                       <TableCell>类型</TableCell>
@@ -2048,6 +2057,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                             </Box>
                           </TableCell>
                           <TableCell>{participant.schoolName || '-'}</TableCell>
+                          {getSportType(selectedCompetition) === 'wushu' && group.isCollective && <TableCell>{participant.groupTeam || group.groupTeam || '未填写'}</TableCell>}
                           <TableCell>{getGenderLabel(participant.gender)}</TableCell>
                           <TableCell sx={{ whiteSpace: 'nowrap' }}>{getAgeGroupDisplayName(registrationCompetition(participant), participant.ageGroup || participant.grade) || '-'}</TableCell>
                           <TableCell>{typeInfo.name}</TableCell>

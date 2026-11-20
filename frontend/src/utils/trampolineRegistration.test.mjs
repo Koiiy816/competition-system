@@ -12,6 +12,7 @@ test('按单位分组优先显示单位名称，蹦床单位没有项目字段�
   assert.equal(getParticipantGroupTitle(competition, {}, true), '未知单位');
   assert.equal(getParticipantGroupTitle(competition, { event: '大网U8组蹦床个人' }), '大网个人');
   assert.equal(getParticipantGroupTitle({ sportType: 'wushu' }, { displayName: '原项目标题' }), '原项目标题');
+  assert.equal(getParticipantGroupTitle({ sportType: 'wushu' }, { event: '集体拳', displayName: '单位甲 - 1队 - 集体拳', isCollective: true }), '集体拳');
 });
 
 test('旧赛程标题去除重复组别，当前场次和导航均可显示简洁名称', () => {

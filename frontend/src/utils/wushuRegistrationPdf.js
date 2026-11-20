@@ -3,8 +3,8 @@ const detailColumns = [
   ['参赛单位', 210], ['报名项目', 255], ['组别', 80], ['队伍', 85], ['报名状态', 80]
 ];
 const groupedColumns = [
-  ['参赛者', 150], ['所属单位', 180], ['性别', 60], ['年龄组别', 100],
-  ['类型', 65], ['状态', 75], ['备注', 246], ['报名时间', 130]
+  ['参赛者', 140], ['所属单位', 160], ['队伍编号', 85], ['性别', 55], ['年龄组别', 90],
+  ['类型', 60], ['状态', 70], ['备注', 220], ['报名时间', 130]
 ];
 const statusLabels = { pending: '待审核', approved: '已通过', rejected: '已拒绝' };
 const genderLabels = { male: '男', female: '女', mixed: '男女混合' };
@@ -23,13 +23,15 @@ export const toWushuRegistrationRows = (participants, competition) => participan
   }));
 
 export const toWushuRegistrationGroups = (groups, competition) => groups.map(group => ({
-  title: [group.displayName || group.event || '未分类项目', group.ageGroup,
+  title: [(group.isCollective ? group.event : group.displayName) || group.event || '未分类项目', group.ageGroup,
     group.schoolName !== '未知单位' && group.schoolName,
+    group.isCollective && group.groupTeam && `队伍：${group.groupTeam}`,
     `人数：${(group.participants || []).length}`].filter(Boolean).join('　｜　'),
   rows: (group.participants || []).map(participant => ({
     cells: [
       participant.type === 'team' ? participant.teamName : (participant.name || participant.user?.name || '未知参赛者'),
       participant.schoolName || '-',
+      participant.groupTeam || (group.isCollective ? group.groupTeam : '') || '-',
       ({ male: '男', female: '女' })[participant.gender] || participant.gender || '-',
       participant.ageGroup || participant.grade || '-',
       participant.isGroupEvent === true || competition.events?.some(event => event.name === participant.event && event.isGroupEvent) ? '集体' : '个人',

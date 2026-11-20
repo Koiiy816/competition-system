@@ -286,9 +286,12 @@ exports.getParticipants = async (req, res, next) => {
     // 支持按项目分组返回
     if (req.query.groupBy === 'event' || req.query.groupBy === 'school') {
       const competition = req.query.groupBy === 'event' && req.params.competitionId
-        ? await Competition.findById(req.params.competitionId).select('events.name events.isGroupEvent')
+        ? await Competition.findById(req.params.competitionId).select('events.name events.isGroupEvent type sportType')
         : null;
       const groupEvents = new Set((competition?.events || []).filter(event => event.isGroupEvent).map(event => event.name));
+      // 只有武术集体项目使用“队伍编号”拆分同一代表单位的多支队伍。
+      // 其他项目继续沿用原分组方式，避免改变既有查看与导出结果。
+      const splitWushuCollectiveTeams = getCompetitionSportType(competition) === SPORT_TYPES.WUSHU;
       const groupsMap = {};
       // 把项目配置带到分组结果中；前端“类型”列不再误用报名载体 type。
       participants.map((participant) => {
@@ -298,6 +301,7 @@ exports.getParticipants = async (req, res, next) => {
         let eventName = (p.event && p.event.trim()) ? p.event : '未分类项目';
         let ageGroup = (p.ageGroup && p.ageGroup.trim()) ? p.ageGroup : (p.grade && p.grade.trim() ? p.grade : '');
         let schoolName = (p.schoolName && p.schoolName.trim()) ? p.schoolName : '未知单位';
+        const groupTeam = (p.groupTeam && p.groupTeam.trim()) ? p.groupTeam.trim() : '';
         
         // 如果原本报名的项目名里写了“集体混合”，把它统一规范化为“集体项目”
         if (eventName.includes('集体混合')) {
@@ -329,14 +333,17 @@ exports.getParticipants = async (req, res, next) => {
           const isCollective = groupEvents.has(eventName) || eventName.includes('集体') || ageGroup.includes('集体混合') || ageGroup.includes('混合集体') || eventName.includes('武术操');
           
           if (isCollective) {
-             // 1. 如果是集体项目，必须以“单位（学校）”和“项目”作为最高级别的归类维度
-             const key = `${schoolName} - ${eventName}`;
+             // 集体项目以“单位 + 项目”为基础；武术额外以队伍编号区分同单位的不同队。
+             const teamSegment = splitWushuCollectiveTeams ? groupTeam : '';
+             const key = `${schoolName}\u0000${teamSegment}\u0000${eventName}`;
              
              if (!groupsMap[key]) {
                groupsMap[key] = {
                  event: eventName,
                  schoolName: schoolName,
-                 displayName: key,
+                 groupTeam: teamSegment,
+                 isCollective: true,
+                 displayName: [schoolName, teamSegment, eventName].filter(Boolean).join(' - '),
                  ageGroup: '',
                  participants: []
                };
@@ -374,6 +381,8 @@ exports.getParticipants = async (req, res, next) => {
         displayName: groupsMap[key].displayName || key,
         ageGroup: groupsMap[key].ageGroup,
         schoolName: groupsMap[key].schoolName,
+        groupTeam: groupsMap[key].groupTeam || '',
+        isCollective: groupsMap[key].isCollective === true,
         participants: groupsMap[key].participants
       }));
 

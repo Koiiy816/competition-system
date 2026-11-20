@@ -3,7 +3,8 @@ import { isTrampolineCompetition } from './competitionType.js';
 export const getParticipantGroupTitle = (competition, group, bySchool = false) =>
   bySchool ? group.schoolName || group.displayName || '未知单位'
     : isTrampolineCompetition(competition) ? getEventDisplayName(competition, { name: group.event })
-    : group.displayName || group.event || '未分类项目';
+    : group.isCollective ? group.event || group.displayName || '未分类项目'
+      : group.displayName || group.event || '未分类项目';
 
 export const getAgeGroupDisplayName = (competition, group) => {
   const name = typeof group === 'string' ? group : group?.name || '';
