@@ -29,10 +29,10 @@ compiled.require = spec => {
 };
 compiled._compile(transformed.code, filename);
 
-const renderPage = (name, participants) => {
+const renderPage = (name, participants, overrides = {}) => {
   cursor = 0;
-  states = [false, { _id: 'schedule', name, status: 'ongoing', scoringMode: 'standard' },
-    { sportType: 'trampoline' }, participants, {}, '', { _id: 'next', name: '混合集体 小网小学组 小网小学组蹦床操' }];
+  states = [false, { _id: 'schedule', name, status: 'ongoing', scoringMode: 'standard', ...overrides.schedule },
+    overrides.competition || { sportType: 'trampoline' }, participants, overrides.results || {}, '', { _id: 'next', name: '混合集体 小网小学组 小网小学组蹦床操' }];
   return renderToStaticMarkup(compiled.exports.default());
 };
 
@@ -46,6 +46,18 @@ test('小网评分整页显示三个输入，未检录时禁用、已检录时�
     assert.ok(html.includes('小学组 蹦床操'));
     assert.ok(!html.includes('小网U9组男子蹦床个人'));
   }
+});
+
+test('分场打分页保留全项目名次，不会将本场唯一队伍改排第一', () => {
+  const participant = { _id: 'team', name: '集体队伍', schoolName: '单位', checkInStatus: 'checked' };
+  const html = renderPage('集体拳', [participant], { competition: { sportType: 'wushu' },
+    schedule: { rankingGroupId: 'project', rankingGroupName: '集体拳', batchNumber: 2 },
+    results: { team: { status: 'verified', rank: 3, score: 8.5, details: { scores: Array(5).fill(8.5) } } } });
+  assert.ok(html.includes('项目总排名'));
+  assert.ok(html.includes('所有场地已确认成绩'));
+  const cells = (html.match(/<td\b[^>]*>[\s\S]*?<\/td>/g) || []).map(cell => cell.replace(/<style\b[^>]*>[\s\S]*?<\/style>/g, '').replace(/<[^>]*>/g, '').trim());
+  assert.ok(cells.includes('3'), '本场只有一队时仍显示跨场地总排名 3');
+  assert.ok(html.includes('第2批'));
 });
 
 test('大网整页显示两套共16个评分输入，蹦床操显示三个评分输入', () => {

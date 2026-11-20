@@ -13,6 +13,7 @@ export const getAgeGroupDisplayName = (competition, group) => {
 
 export const getScheduleDisplayName = (competition, schedule) => {
   const name = schedule?.name || '';
+  if (schedule?.rankingGroupId && schedule?.batchNumber) return `${name}（第${schedule.batchNumber}批 · 统一排名）`;
   if (!isTrampolineCompetition(competition)) return name;
   const group = name.match(/(?:大网|小网)?(U\d+组|小学组|幼儿组)/)?.[1];
   if (!group) return name;

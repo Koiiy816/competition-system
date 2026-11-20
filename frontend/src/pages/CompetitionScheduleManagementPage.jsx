@@ -27,6 +27,7 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { useAuth } from '../contexts/AuthContext';
 import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
+import CollectiveSplitDialog from '../components/CollectiveSplitDialog';
 import { getSportType, isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
 import { getScheduleDisplayName } from '../utils/trampolineRegistration';
 
@@ -217,7 +218,7 @@ const AssignScheduleDialog = memo(({ open, schedule, initialForm, onClose, onSav
 });
 
 // 提取独立的赛程卡片组件，实现列表级别的记忆化隔离，避免不必要的重新渲染
-const ScheduleCard = memo(({ schedule, competition, competitionId, isAdminOrOrganizer, onOpenAssignDialog, onDeleteSchedule }) => {
+const ScheduleCard = memo(({ schedule, competition, competitionId, isAdminOrOrganizer, onOpenAssignDialog, onDeleteSchedule, onSplit }) => {
   const navigate = useNavigate();
   
   const isGroupEvent = (schedule.participants || []).some((participant) => participant.isVirtualTeam || participant.type === 'team') || String(schedule.name || '').includes('集体') || (isTrampolineCompetition(competition) && String(schedule.name || '').includes('蹦床操'));
@@ -250,6 +251,11 @@ const ScheduleCard = memo(({ schedule, competition, competitionId, isAdminOrOrga
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.5, justifyContent: 'flex-end' }}>
             <Chip label={participantCountText} size="small" color="primary" variant="outlined" />
+            {isAdminOrOrganizer && getSportType(competition) === 'wushu' && (schedule.participants || []).length > 0 && schedule.participants.every(participant => participant.isVirtualTeam) && (
+              <Button size="small" variant="outlined" onClick={event => { event.stopPropagation(); onSplit(schedule); }}>
+                {schedule.rankingGroupId ? '调整分场' : '分场编排'}
+              </Button>
+            )}
             {isAdminOrOrganizer && (
               <Button 
                 size="small" 
@@ -337,6 +343,7 @@ const CompetitionScheduleManagementPage = () => {
   const [syncing, setSyncing] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [schedules, setSchedules] = useState([]);
+  const [splitSchedule, setSplitSchedule] = useState(null);
   const [competition, setCompetition] = useState(null);
   const isDivingWorkspace = isDivingCompetition(competition);
   const [error, setError] = useState('');
@@ -1292,6 +1299,7 @@ const CompetitionScheduleManagementPage = () => {
                     isAdminOrOrganizer={isAdminOrOrganizer}
                     onOpenAssignDialog={handleOpenAssignDialog}
                     onDeleteSchedule={handleDeleteSchedule}
+                    onSplit={setSplitSchedule}
                   />
                 </Grid>
               ))}
@@ -1650,6 +1658,8 @@ const CompetitionScheduleManagementPage = () => {
         </DialogActions>
       </Dialog>
       {/* 分配赛程弹窗 */}
+      <CollectiveSplitDialog schedule={splitSchedule} schedules={schedules} competitionId={id}
+        onClose={() => setSplitSchedule(null)} onSaved={message => { setSplitSchedule(null); setSuccess(message); fetchData(); }} />
       <AssignScheduleDialog
         open={assignDialogOpen}
         schedule={currentSchedule}

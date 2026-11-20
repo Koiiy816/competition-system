@@ -90,6 +90,10 @@ const ScheduleSchema = new mongoose.Schema({
   group: {
     type: String
   },
+  // 分场批次共享一个排名项目；场地和批次名称不参与成绩分组。
+  rankingGroupId: { type: mongoose.Schema.ObjectId },
+  rankingGroupName: { type: String, trim: true },
+  batchNumber: { type: Number, min: 1 },
   notes: {
     type: String
   },
@@ -105,6 +109,8 @@ const ScheduleSchema = new mongoose.Schema({
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
+
+ScheduleSchema.index({ competition: 1, rankingGroupId: 1 });
 
 // 更新updatedAt字段
 ScheduleSchema.pre('save', function(next) {

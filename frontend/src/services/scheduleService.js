@@ -14,6 +14,14 @@ const hasManagementPermission = () => {
  * @namespace scheduleService
  */
 const scheduleService = {
+  splitCollectiveSchedule: async (competitionId, scheduleId, batches) => {
+    try {
+      const response = await api.post(`/competitions/${competitionId}/schedules/${scheduleId}/collective-batches`, { batches });
+      return response.data;
+    } catch (error) {
+      throw error.response?.data || { message: '分场编排失败' };
+    }
+  },
   /**
    * 获取赛程列表
    * @param {string} competitionId - 比赛ID

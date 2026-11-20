@@ -8,6 +8,7 @@ const { calculateDivingDiveScore } = require('../utils/divingScoring');
 const { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
 const { broadcastScoreEvent, openScoreStream } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
+const { attachCollectiveRanks, acquireCollectiveLock } = require('../utils/collectiveBatches');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
 const scoreLocks = {};
@@ -465,7 +466,7 @@ exports.getResults = async (req, res, next) => {
     // 执行完整查询
     const results = await Result.find(query)
       .populate('competition', 'name')
-      .populate('schedule', 'name startTime location')
+      .populate('schedule', 'name startTime location court rankingGroupId rankingGroupName batchNumber')
       .populate({
         path: 'participant',
         select: 'user name schoolName type teamName isTest isVirtualTeam teamMembers', // 增加了 isVirtualTeam teamMembers
@@ -485,6 +486,8 @@ exports.getResults = async (req, res, next) => {
       .skip(startIndex)
       .limit(limit)
       .sort({ submittedAt: -1 });
+
+    await attachCollectiveRanks(results);
 
     // 分页结果
     const pagination = {};
@@ -524,7 +527,7 @@ exports.getResult = async (req, res, next) => {
   try {
     const result = await Result.findById(req.params.id)
       .populate('competition', 'name')
-      .populate('schedule', 'name startTime location type')
+      .populate('schedule', 'name startTime location type court rankingGroupId rankingGroupName batchNumber')
       .populate({
         path: 'participant',
         select: 'user type teamName isTest isVirtualTeam teamMembers',
@@ -548,6 +551,8 @@ exports.getResult = async (req, res, next) => {
         message: `未找到ID为${req.params.id}的成绩`
       });
     }
+
+    await attachCollectiveRanks([result]);
 
     res.status(200).json({
       success: true,
@@ -641,13 +646,22 @@ exports.submitScore = async (req, res, next) => {
 
   const lockKey = `${scheduleId}_${participantId}`;
   await acquireLock(lockKey);
+  let unlockCollective;
 
   try {
-    const schedule = await Schedule.findById(scheduleId).select('judgeCount status name competition participants');
+    let schedule = await Schedule.findById(scheduleId).select('judgeCount status name competition participants rankingGroupId');
     if (!schedule) {
       return res.status(404).json({ success: false, message: '未找到对应赛程' });
     }
     const competition = await Competition.findById(schedule.competition);
+    if (getCompetitionSportType(competition) === SPORT_TYPES.WUSHU) {
+      unlockCollective = await acquireCollectiveLock(String(schedule.rankingGroupId || schedule._id));
+      schedule = await Schedule.findById(scheduleId).select('judgeCount status name competition participants rankingGroupId');
+      if (!schedule || String(schedule.competition) !== req.params.competitionId
+        || !(schedule.participants || []).some(id => String(id) === String(participantId))) {
+        return res.status(400).json({ success: false, message: '该队伍或选手不属于当前场次，请刷新赛程后重新选择' });
+      }
+    }
     const scoringType = getTrampolineScoringType(competition, schedule);
     if (scoringType === 'large' && ![0, 1].includes(routineIndex)) {
       return res.status(400).json({ success: false, message: '请选择蹦床1或蹦床2套次' });
@@ -865,6 +879,7 @@ exports.submitScore = async (req, res, next) => {
   } catch (error) {
     next(error);
   } finally {
+    if (unlockCollective) unlockCollective();
     releaseLock(lockKey);
   }
 };
@@ -1093,7 +1108,7 @@ exports.importResults = async (req, res, next) => {
 exports.exportResults = async (req, res, next) => {
   try {
     const results = await Result.find({ competition: req.params.competitionId })
-      .populate('schedule', 'name startTime location')
+      .populate('schedule', 'name startTime location court rankingGroupId rankingGroupName batchNumber')
       .populate({
         path: 'participant',
         select: 'user type teamName',
@@ -1104,10 +1119,14 @@ exports.exportResults = async (req, res, next) => {
       })
       .sort({ createdAt: -1 });
 
+    await attachCollectiveRanks(results);
+
     // 转换为导出格式
     const exportData = results.map(result => ({
       id: result._id,
-      schedule: result.schedule?.name || '',
+      schedule: result.schedule?.rankingGroupName || result.schedule?.name || '',
+      court: result.schedule?.court || result.schedule?.location || '',
+      rank: result.rank,
       participant: result.participant?.user?.name || result.participant?.teamName || '',
       score: result.score,
       position: result.position,

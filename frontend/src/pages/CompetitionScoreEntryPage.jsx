@@ -696,6 +696,24 @@ const CompetitionScoreEntryPage = () => {
     setResults(nextResults);
   };
 
+  // 分场项目的其他场地也会改变本场队伍的总名次，主裁需同步读取全项目名次。
+  useEffect(() => {
+    if (!schedule?.rankingGroupId || !isChiefOrAdmin) return undefined;
+    let active = true;
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const response = await resultService.getResults(id, { scheduleId, limit: 1000 });
+        if (active) setResults(Object.fromEntries((response.data || []).map(result => [result.participant?._id || result.participant, result])));
+      } catch (err) { console.error('同步项目总排名失败:', err); }
+      finally { inFlight = false; }
+    };
+    const timer = window.setInterval(refresh, 3000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [id, scheduleId, schedule?.rankingGroupId, isChiefOrAdmin]);
+
   const fetchScheduleOnly = async () => {
     try {
       const schedRes = await scheduleService.getSchedule(id, scheduleId);
@@ -878,6 +896,7 @@ const CompetitionScoreEntryPage = () => {
         ...prev,
         [participantId]: res.data
       }));
+      if (schedule?.rankingGroupId && isChiefOrAdmin) await fetchResultsOnce();
     } catch (err) {
       alert(err.message || '保存失败');
       throw err;
@@ -983,6 +1002,11 @@ const CompetitionScoreEntryPage = () => {
 
   // 计算当前的实时排名 (必须放在所有 return 之前，遵循 Hooks 规则)
   const participantRanks = React.useMemo(() => {
+    if (schedule?.rankingGroupId) {
+      return Object.fromEntries(participants.map(participant => [participant._id,
+        participant.isTest || results[participant._id]?.status !== 'verified' ? '-' : (results[participant._id]?.rank ?? '-')
+      ]));
+    }
     // 排除测试人员，不让他们参与排名计算
     const scoresList = participants.filter(p => !p.isTest && (scoringType !== 'large'
       || (results[p._id]?.status === 'verified' && results[p._id]?.details?.routines?.length === 2
@@ -1173,6 +1197,7 @@ const CompetitionScoreEntryPage = () => {
             {unpairedSynchronizedCount > 0 && <Alert severity="warning" sx={{ mb: 2 }}>有 {unpairedSynchronizedCount} 条报名尚未组成有效双人组合，已从打分名单隐藏；请先完成双方配对。</Alert>}
             {scoringParticipants.map((participant) => <DivingScoreCard key={participant._id} participant={participant} schedule={schedule} initialResult={results[participant._id]} format={schedule?.divingFormat || 'individual'} scheduleStatus={schedule?.status} canEdit={canEdit} isChiefOrAdmin={isChiefOrAdmin} allowedIndex={allowedIndex} onSave={handleDivingSave} currentRank={participantRanks[participant._id]} checkInStatus={getParticipantCheckInStatus(participant)} canCheckIn={canCheckIn} onCheckIn={handleInlineCheckIn} isCheckInUpdating={checkInUpdatingId === participant._id} />)}
           </Box> : <Box sx={{ p: 2 }}>
+            {schedule?.rankingGroupId && <Alert severity="info" sx={{ mb: 2 }}>本场仅录入分配到当前批次的队伍。项目总排名汇总所有场地已确认成绩，其他场地成绩确认后自动更新。</Alert>}
             {scoringType && <Alert severity="info" sx={{ mb: 2 }}>{scoringType === 'large'
               ? '大网：蹦床1、蹦床2分别评分，两套得分相加。各套D分由难度裁判录入或修改。沿用现有单套公式：E1–E4去掉一个最高分和一个最低分，剩余两项相加再减扣分；D、T、H单独记录。'
               : '小网：E1＋E2－裁判长扣分。'}扣分请输入非负数。</Alert>}
@@ -1202,7 +1227,7 @@ const CompetitionScoreEntryPage = () => {
                   <TableCell width="7%" align="center" sx={scoringType ? { whiteSpace: 'nowrap', minWidth: 110, fontWeight: 'bold' } : undefined}>{scoringType ? '裁判长扣分' : '裁判长加减分'}</TableCell>
                   {isChiefOrAdmin && <TableCell width="8%" align="center">{scoringType === 'large' ? '套次得分' : '最后得分'}</TableCell>}
                   {isChiefOrAdmin && scoringType === 'large' && <TableCell align="center" sx={{ minWidth: 100 }}>两套总分</TableCell>}
-                  {isChiefOrAdmin && <TableCell width="5%" align="center">实时排名</TableCell>}
+                  {isChiefOrAdmin && <TableCell width="5%" align="center">{schedule?.rankingGroupId ? '项目总排名' : '实时排名'}</TableCell>}
                   <TableCell width="5%" align="center" className="no-print">操作</TableCell>
                 </TableRow>
               </TableHead>
