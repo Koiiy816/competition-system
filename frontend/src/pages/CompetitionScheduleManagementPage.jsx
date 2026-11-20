@@ -718,6 +718,21 @@ const CompetitionScheduleManagementPage = () => {
     return [participant.name, participant.schoolName, participant.groupTeam, participant.ageGroup, participant.event]
       .some((value) => String(value || '').toLowerCase().includes(keyword));
   });
+  const selectedProjectParticipantIdSet = new Set(selectedProjectParticipantIds);
+  const selectedFilteredProjectCandidateCount = filteredProjectCandidates
+    .filter((participant) => selectedProjectParticipantIdSet.has(participant._id)).length;
+  const allFilteredProjectCandidatesSelected = filteredProjectCandidates.length > 0
+    && selectedFilteredProjectCandidateCount === filteredProjectCandidates.length;
+  const handleToggleAllProjectCandidates = () => {
+    const candidateIds = new Set(filteredProjectCandidates.map((participant) => participant._id));
+    setSelectedProjectParticipantIds((current) => {
+      const allSelected = candidateIds.size > 0 && [...candidateIds].every((id) => current.includes(id));
+      return allSelected
+        ? current.filter((id) => !candidateIds.has(id))
+        : [...new Set([...current, ...candidateIds])];
+    });
+  };
+
   const handleClearAllSchedules = async () => {
     if (!window.confirm('危险操作！这将会彻底删除本比赛下的【所有赛程安排】，且无法恢复。是否继续？')) {
       return;
@@ -1512,10 +1527,28 @@ const CompetitionScheduleManagementPage = () => {
           {newProject.scoringMode === 'diving' && <Box sx={{ mb: 2, border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}><TextField select fullWidth label="跳水项目" value={newProject.divingFormat} onChange={(event) => setNewProject((current) => ({ ...current, divingFormat: event.target.value, eventMode: event.target.value === 'synchronized' ? 'collective' : current.eventMode }))} sx={{ mb: 1 }}><MenuItem value="individual">个人跳水（去最高、最低）</MenuItem><MenuItem value="synchronized">双人跳水（去最高、最低）</MenuItem></TextField><Alert severity="info" sx={{ mb: 1 }}>难度和动作名称可直接填写自订内容；官方动作可输入官方代码。建立后也可以从赛程卡片的“编辑”修改。</Alert>{(newProject.divingProgram || []).map((dive, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 0.8fr auto', gap: 1, mb: 1 }}><TextField size="small" label="动作代码" value={dive.actionCode || ''} onChange={(event) => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.map((item, itemIndex) => itemIndex === index ? { ...item, actionCode: event.target.value } : item) }))} /><TextField size="small" required label="动作名称" value={dive.actionName || ''} onChange={(event) => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.map((item, itemIndex) => itemIndex === index ? { ...item, actionName: event.target.value } : item) }))} /><TextField size="small" required type="number" label="难度" inputProps={{ min: 0, step: 0.1 }} value={dive.difficulty ?? ''} onChange={(event) => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.map((item, itemIndex) => itemIndex === index ? { ...item, difficulty: event.target.value } : item) }))} /><Button color="error" onClick={() => setNewProject((current) => ({ ...current, divingProgram: current.divingProgram.filter((_, itemIndex) => itemIndex !== index) }))}>删除</Button></Box>)}<Button variant="outlined" size="small" onClick={() => setNewProject((current) => ({ ...current, divingProgram: [...current.divingProgram, { actionCode: '', actionName: '', difficulty: '', source: 'custom' }] }))}>添加一轮动作</Button></Box>}
           <TextField fullWidth label={getSportType(competition) === 'wushu' ? '搜索姓名、代表单位、队伍编号、组别或报名项目' : '搜索姓名、代表单位、组别或报名项目'} value={projectCandidateSearch} onChange={(event) => setProjectCandidateSearch(event.target.value)} sx={{ mb: 1 }} />
           {newProject.eventMode === 'collective' && <Alert severity="info" sx={{ mb: 1 }}>{getSportType(competition) === 'wushu' ? '同一代表单位且队伍编号相同的勾选队员会自动组成一支队伍；不同队伍编号会自动拆分。' : '同一代表单位的勾选队员会自动组成一支队伍。'}</Alert>}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>已选择 {selectedProjectParticipantIds.length} 名{newProject.eventMode === 'collective' ? '队员' : '选手'}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 1 }}>
+            <Typography variant="body2" color="text.secondary">已选择 {selectedProjectParticipantIds.length} 名{newProject.eventMode === 'collective' ? '队员' : '选手'}</Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              disabled={projectCandidatesLoading || projectCreating || filteredProjectCandidates.length === 0}
+              onClick={handleToggleAllProjectCandidates}
+            >
+              {allFilteredProjectCandidatesSelected ? '取消全选' : projectCandidateSearch.trim() ? '全选搜索结果' : '一键全选'}（{filteredProjectCandidates.length} 名）
+            </Button>
+          </Box>
           {projectCandidatesLoading ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}><CircularProgress /></Box> : (
             <TableContainer sx={{ maxHeight: 380, border: 1, borderColor: 'divider' }}>
-              <Table stickyHeader size="small"><TableHead><TableRow><TableCell padding="checkbox" /><TableCell>姓名</TableCell><TableCell>代表单位</TableCell>{getSportType(competition) === 'wushu' && <TableCell>队伍编号</TableCell>}<TableCell>组别</TableCell><TableCell>报名项目</TableCell></TableRow></TableHead>
+              <Table stickyHeader size="small"><TableHead><TableRow><TableCell padding="checkbox">
+                <Checkbox
+                  checked={allFilteredProjectCandidatesSelected}
+                  indeterminate={selectedFilteredProjectCandidateCount > 0 && !allFilteredProjectCandidatesSelected}
+                  disabled={projectCandidatesLoading || projectCreating || filteredProjectCandidates.length === 0}
+                  onChange={handleToggleAllProjectCandidates}
+                  inputProps={{ 'aria-label': projectCandidateSearch.trim() ? '全选搜索结果' : '全选选手' }}
+                />
+              </TableCell><TableCell>姓名</TableCell><TableCell>代表单位</TableCell>{getSportType(competition) === 'wushu' && <TableCell>队伍编号</TableCell>}<TableCell>组别</TableCell><TableCell>报名项目</TableCell></TableRow></TableHead>
                 <TableBody>{filteredProjectCandidates.map((participant) => (<TableRow key={participant._id} hover sx={{ cursor: 'pointer' }} onClick={() => setSelectedProjectParticipantIds((current) => current.includes(participant._id) ? current.filter((participantId) => participantId !== participant._id) : [...current, participant._id])}><TableCell padding="checkbox"><Checkbox checked={selectedProjectParticipantIds.includes(participant._id)} onClick={(event) => event.stopPropagation()} onChange={() => setSelectedProjectParticipantIds((current) => current.includes(participant._id) ? current.filter((participantId) => participantId !== participant._id) : [...current, participant._id])} /></TableCell><TableCell>{participant.name || '-'}</TableCell><TableCell>{participant.schoolName || '-'}</TableCell>{getSportType(competition) === 'wushu' && <TableCell>{participant.groupTeam || '未填写'}</TableCell>}<TableCell>{participant.ageGroup || '-'}</TableCell><TableCell>{participant.event || '-'}</TableCell></TableRow>))}{!projectCandidatesLoading && filteredProjectCandidates.length === 0 && <TableRow><TableCell colSpan={getSportType(competition) === 'wushu' ? 6 : 5} align="center">没有符合条件的选手</TableCell></TableRow>}</TableBody>
               </Table>
             </TableContainer>
