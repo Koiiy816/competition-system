@@ -27,7 +27,7 @@ import competitionService from '../services/competitionService';
 import participantService from '../services/participantService';
 import { useAuth } from '../contexts/AuthContext';
 import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
-import { isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
+import { getSportType, isDivingCompetition, isTrampolineCompetition } from '../utils/competitionType';
 import { getScheduleDisplayName } from '../utils/trampolineRegistration';
 
 const parseScheduleExcel = (file) => new Promise((resolve, reject) => {
