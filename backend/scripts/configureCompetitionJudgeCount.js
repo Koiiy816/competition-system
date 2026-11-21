@@ -12,6 +12,7 @@ const mongoose = require('mongoose');
 const Competition = require('../models/Competition');
 const Schedule = require('../models/Schedule');
 const Result = require('../models/Result');
+require('../models/Participant'); // 注册 populate('participant') 所需的模型。
 const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
 
 require('dotenv').config({ path: path.resolve(__dirname, '../config/.env') });
