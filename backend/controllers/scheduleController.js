@@ -609,7 +609,7 @@ exports.getSchedule = async (req, res, next) => {
       .populate('competition', 'name startDate endDate location')
       .populate({
         path: 'participants',
-        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo',
+        select: 'user type teamName status name schoolName groupTeam grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo',
         populate: [
           {
             path: 'user',
@@ -617,7 +617,7 @@ exports.getSchedule = async (req, res, next) => {
           },
           {
             path: 'teamMembers',
-            select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo'
+            select: 'name schoolName groupTeam isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo'
           },
           {
             path: 'checkedInBy',
@@ -637,10 +637,10 @@ exports.getSchedule = async (req, res, next) => {
     if (await normalizeSynchronizedDivingParticipants(schedule)) {
       await schedule.populate({
         path: 'participants',
-        select: 'user type teamName status name schoolName grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo',
+        select: 'user type teamName status name schoolName groupTeam grade ageGroup event gender coach isVirtualTeam teamMembers isTest isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo',
         populate: [
           { path: 'user', select: 'name email' },
-          { path: 'teamMembers', select: 'name schoolName isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo' },
+          { path: 'teamMembers', select: 'name schoolName groupTeam isCheckedIn checkInStatus checkedInAt checkedInBy absentAt absentBy additionalInfo' },
           { path: 'checkedInBy', select: 'name email' }
         ]
       });

@@ -20,6 +20,17 @@ import { useAuth } from '../contexts/AuthContext';
 import DivingStartOrderPrint from '../components/DivingStartOrderPrint';
 import StartOrderPrint from '../components/StartOrderPrint';
 
+const participantUnitLabel = (participant) => {
+  const schoolName = String(participant?.schoolName || participant?.user?.schoolName || '').trim();
+  const memberTeamNumbers = [...new Set((participant?.teamMembers || [])
+    .map((member) => String(member?.groupTeam || '').trim())
+    .filter(Boolean))];
+  const directTeamNumber = String(participant?.groupTeam || '').trim();
+  const groupTeam = directTeamNumber || (memberTeamNumbers.length === 1 ? memberTeamNumbers[0] : '');
+  if (groupTeam && schoolName) return schoolName.includes(groupTeam) ? schoolName : `${schoolName} · ${groupTeam}`;
+  return schoolName || participant?.teamName || '-';
+};
+
 const CompetitionScheduleDetailPage = () => {
   const { id, scheduleId } = useParams();
   const navigate = useNavigate();
@@ -454,7 +465,7 @@ const CompetitionScheduleDetailPage = () => {
                                 <TableCell sx={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: '300px', lineHeight: '1.8' }}>
                                   {displayNameContent}
                                 </TableCell>
-                                <TableCell>{p.schoolName || (p.user && p.user.schoolName) || '-'}</TableCell>
+                                <TableCell>{participantUnitLabel(p)}</TableCell>
                                 <TableCell>{p.ageGroup || '-'}</TableCell>
                                 {isAdminOrOrganizer && (
                                   <TableCell align="center">

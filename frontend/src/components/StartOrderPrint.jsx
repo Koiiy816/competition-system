@@ -11,7 +11,16 @@ const participantName = (participant) => {
   return participant?.name || participant?.user?.name || participant?.teamName || '-';
 };
 
-const participantUnit = (participant) => participant?.schoolName || participant?.teamName || participant?.user?.schoolName || '-';
+const participantUnit = (participant) => {
+  const schoolName = String(participant?.schoolName || participant?.user?.schoolName || '').trim();
+  const memberTeamNumbers = [...new Set((participant?.teamMembers || [])
+    .map((member) => String(member?.groupTeam || '').trim())
+    .filter(Boolean))];
+  const directTeamNumber = String(participant?.groupTeam || '').trim();
+  const groupTeam = directTeamNumber || (memberTeamNumbers.length === 1 ? memberTeamNumbers[0] : '');
+  if (groupTeam && schoolName) return schoolName.includes(groupTeam) ? schoolName : `${schoolName} · ${groupTeam}`;
+  return schoolName || participant?.teamName || '-';
+};
 
 const participantGroup = (participant) => participant?.ageGroup || participant?.grade || participant?.user?.ageGroup || (isTeam(participant) ? '集体' : '-');
 
