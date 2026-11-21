@@ -187,7 +187,7 @@ export default function CompetitionDetailsPage({ isCreate = false, isEdit = fals
         data.awardRules = {
           ...(data.awardRules || {}),
           scoreboardDisplay: data.awardRules?.scoreboardDisplay
-            || (data.awardRules?.enabled && data.awardRules?.mode === 'legacy_percentage' ? 'prize' : 'rank')
+            || (data.awardRules?.enabled && ['legacy_percentage', 'wushu_floor_percentage'].includes(data.awardRules?.mode) ? 'prize' : 'rank')
         };
         setCompetition(data);
       } catch (err) {

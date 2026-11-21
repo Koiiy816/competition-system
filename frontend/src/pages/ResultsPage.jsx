@@ -1581,6 +1581,7 @@ const ResultsPage = () => {
 
     // 获取当前选中的比赛
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
+    const wushuFloorAwards = isWushuFloorAwardCompetition(selectedCompetition);
 
     return (
       <Box>
@@ -1700,7 +1701,7 @@ const ResultsPage = () => {
                           <CardHeader
                             avatar={
                               <Avatar sx={{ bgcolor: 'white', color: 'text.primary' }}>
-                                {index + 1}
+                                {wushuFloorAwards ? (ranking.awardLevel || '-') : (index + 1)}
                               </Avatar>
                             }
                             title={
@@ -1710,7 +1711,7 @@ const ResultsPage = () => {
                             }
                             subheader={
                               <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                                {schoolName}{ranking.isAwarded ? ' | 录取' : ' | 未录取'}
+                                {schoolName}{wushuFloorAwards ? ` | ${ranking.awardLevel || '未获奖'}` : (ranking.isAwarded ? ' | 录取' : ' | 未录取')}
                               </Typography>
                             }
                           />
@@ -1742,10 +1743,10 @@ const ResultsPage = () => {
                     <Table aria-label="排名表" stickyHeader>
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>排名</TableCell>
+                          <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>{wushuFloorAwards ? '奖项' : '排名'}</TableCell>
                           <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>参赛者</TableCell>
                           <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>代表队/学校</TableCell>
-                          <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>是否录取</TableCell>
+                          <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>{wushuFloorAwards ? '名次' : '是否录取'}</TableCell>
                           <TableCell sx={{ bgcolor: '#f5f5f5', fontWeight: 'bold' }}>最后得分</TableCell>
                         </TableRow>
                       </TableHead>
@@ -1767,10 +1768,10 @@ const ResultsPage = () => {
                           const schoolName = ranking.participant?.schoolName || ranking.participant?.teamName || '-';
                           return (
                             <TableRow key={ranking._id || index + 3}>
-                              <TableCell>{ranking.dynamicRank || index + 4}</TableCell>
+                              <TableCell>{wushuFloorAwards ? (ranking.awardLevel || '-') : (ranking.dynamicRank || index + 4)}</TableCell>
                               <TableCell>{participantName}</TableCell>
                               <TableCell>{schoolName}</TableCell>
-                              <TableCell>{ranking.isAwarded ? '录取' : '未录取'}</TableCell>
+                              <TableCell>{wushuFloorAwards ? (ranking.dynamicRank || index + 4) : (ranking.isAwarded ? '录取' : '未录取')}</TableCell>
                               <TableCell sx={{ fontWeight: 'bold', color: ranking.details?.isAbsent ? 'error.main' : 'inherit' }}>
                                 {ranking.details?.isAbsent ? '弃权' : (
                                   ranking.finalScore !== undefined ? ranking.finalScore : (

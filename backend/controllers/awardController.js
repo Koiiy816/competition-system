@@ -246,7 +246,7 @@ exports.getAwards = async (req, res, next) => {
     };
     Object.entries(specialAwards).forEach(([key, entries]) => entries.forEach(entry => { entry.ceremonyStatus = decisions.get(`${key}|${entry.recipientKey}`)?.status || 'pending'; }));
 
-    res.json({ success: true, data: { competition: { _id: competition._id, name: competition.name }, eventAwards, teamAwards, kings, specialAwards } });
+    res.json({ success: true, data: { competition: { _id: competition._id, name: competition.name, awardRules: competition.awardRules }, eventAwards, teamAwards, kings, specialAwards } });
   } catch (error) { next(error); }
 };
 
