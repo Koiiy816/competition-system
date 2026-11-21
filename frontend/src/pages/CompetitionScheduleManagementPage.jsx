@@ -807,6 +807,7 @@ const CompetitionScheduleManagementPage = () => {
         if (['female', 'f', '女', '女性'].includes(value)) return '女';
         return String(gender || '-');
       };
+      const isWushuExport = getSportType(competition) === 'wushu';
       const getEventName = (schedule) => String(schedule.name || '').replace(/[（(]\d+(?:人|队)[）)]\s*$/, '').trim() || '-';
       const isTeamParticipant = (participant) => participant.isVirtualTeam || participant.type === 'team' || ['集体', '集体项目', '混合集体'].includes(String(participant.ageGroup || ''));
       const isCollectiveSchedule = (schedule) => /集体/.test(String(schedule.name || '')) || (schedule.participants || []).some(isTeamParticipant);
@@ -814,18 +815,68 @@ const CompetitionScheduleManagementPage = () => {
       const getTeamMemberNames = (participant) => (participant.teamMembers || [])
         .map((member) => member.name || member.user?.name)
         .filter(Boolean);
+      const getTeamNumber = (participant) => {
+        const directTeamNumber = String(participant.groupTeam || '').trim();
+        if (directTeamNumber) return directTeamNumber;
+        const memberTeamNumbers = [...new Set((participant.teamMembers || [])
+          .map((member) => String(member.groupTeam || '').trim())
+          .filter(Boolean))];
+        return memberTeamNumbers.length === 1 ? memberTeamNumbers[0] : '';
+      };
+      const getUnitLabel = (participant) => {
+        const schoolName = String(participant.schoolName || participant.user?.schoolName || '').trim();
+        const groupTeam = isWushuExport && isTeamParticipant(participant) ? getTeamNumber(participant) : '';
+        if (schoolName && groupTeam) return schoolName.includes(groupTeam) ? schoolName : `${schoolName} · ${groupTeam}`;
+        return schoolName || participant.teamName || '-';
+      };
+      const formatCollectiveNames = (names, fallbackName) => {
+        if (!isWushuExport || !names.length) return names.join('、') || fallbackName;
+        const namesPerLine = 3;
+        return names.reduce((lines, name, index) => {
+          const lineIndex = Math.floor(index / namesPerLine);
+          lines[lineIndex] = lines[lineIndex] ? `${lines[lineIndex]}、${name}` : name;
+          return lines;
+        }, []).join('\n');
+      };
       const participantRow = (participant, schedule, index) => {
         const isTeam = isTeamParticipant(participant);
         const teamMemberNames = getTeamMemberNames(participant);
         const teamName = participant.teamName || participant.schoolName || participant.name || participant.user?.name || '-';
         return [
           index + 1,
-          isTeam ? (teamMemberNames.join('、') || teamName) : (participant.name || participant.user?.name || '-'),
+          isTeam ? formatCollectiveNames(teamMemberNames, teamName) : (participant.name || participant.user?.name || '-'),
           isTeam ? '集体' : formatGender(participant.gender || participant.user?.gender),
           isTeam ? '集体' : (participant.ageGroup || participant.user?.ageGroup || '-'),
           isTeam ? `${getEventName(schedule)}${teamMemberNames.length ? `（${teamMemberNames.length}人）` : ''}` : (participant.event || getEventName(schedule)),
-          participant.schoolName || participant.teamName || participant.user?.schoolName || '-'
+          getUnitLabel(participant)
         ];
+      };
+      const appendScheduleTables = (slotSchedules) => {
+        let itemNumber = 0;
+        slotSchedules.forEach((schedule) => {
+          itemNumber += 1;
+          const displayName = String(schedule.name || '未命名项目');
+          const eventTitle = /[（(]\d+(?:人|队)[）)]\s*$/.test(displayName)
+            ? displayName
+            : `${displayName}（${getCountLabel(schedule)}）`;
+          appendMergedRow(`${itemNumber}、${eventTitle}`, 'event', 25);
+          appendTableRow(['序号', '姓名', '性别', '组别', '项目', '单位'], 'header');
+          const participants = schedule.participants || [];
+          if (participants.length) {
+            participants.forEach((participant, participantIndex) => {
+              const isTeam = isTeamParticipant(participant);
+              const nameLines = isTeam ? formatCollectiveNames(getTeamMemberNames(participant), '').split('\n').filter(Boolean).length : 1;
+              appendTableRow(
+                participantRow(participant, schedule, participantIndex),
+                'body',
+                isTeam && isWushuExport ? Math.max(30, 14 + nameLines * 16) : (isTeam ? 42 : 25)
+              );
+            });
+          } else {
+            appendTableRow(['-', '暂无已编排选手', '', '', getEventName(schedule), '']);
+          }
+          appendTableRow(['', '', '', '', '', ''], 'blank');
+        });
       };
 
       appendMergedRow(competition?.name || '比赛', 'title', 55);
@@ -837,40 +888,24 @@ const CompetitionScheduleManagementPage = () => {
         const daySchedules = orderedSchedules.filter((schedule) => formatDate(schedule.scheduleDate) === date);
         const courts = [...new Set(daySchedules.map((schedule) => schedule.court))].sort(compareCourts);
         courts.forEach((court) => {
-          appendMergedRow(court, 'section', 25);
+          if (!isWushuExport) appendMergedRow(court, 'section', 25);
           slots.forEach((timeSlot) => {
             const slotSchedules = daySchedules.filter((schedule) => schedule.court === court && schedule.timeSlot === timeSlot);
             if (!slotSchedules.length) return;
+            if (isWushuExport) appendMergedRow(court, 'section', 25);
             const exactTime = slotSchedules.find((schedule) => schedule.exactTime)?.exactTime || '';
-            appendMergedRow(`${timeSlot}${exactTime ? exactTime : ''}`, 'section', 25);
-            let itemNumber = 0;
-            slotSchedules.forEach((schedule) => {
-              itemNumber += 1;
-              const displayName = String(schedule.name || '未命名项目');
-              const eventTitle = /[（(]\d+(?:人|队)[）)]\s*$/.test(displayName)
-                ? displayName
-                : `${displayName}（${getCountLabel(schedule)}）`;
-              appendMergedRow(`${itemNumber}、${eventTitle}`, 'event', 25);
-              appendTableRow(['序号', '姓名', '性别', '组别', '项目', '单位'], 'header');
-              const participants = schedule.participants || [];
-              if (participants.length) {
-                participants.forEach((participant, participantIndex) => appendTableRow(
-                  participantRow(participant, schedule, participantIndex),
-                  'body',
-                  isTeamParticipant(participant) ? 42 : 25
-                ));
-              } else {
-                appendTableRow(['-', '暂无已编排选手', '', '', getEventName(schedule), '']);
-              }
-              appendTableRow(['', '', '', '', '', ''], 'blank');
-            });
+            const timeLabel = exactTime && String(exactTime).startsWith(timeSlot) ? exactTime : `${timeSlot}${exactTime}`;
+            appendMergedRow(timeLabel, 'section', 25);
+            appendScheduleTables(slotSchedules);
           });
         });
       });
 
       const worksheet = XLSX.utils.aoa_to_sheet(rows);
       worksheet['!merges'] = merges;
-      worksheet['!cols'] = [{ wch: 5 }, { wch: 17 }, { wch: 5 }, { wch: 7 }, { wch: 20 }, { wch: 40 }];
+      worksheet['!cols'] = isWushuExport
+        ? [{ wch: 5 }, { wch: 26 }, { wch: 6 }, { wch: 7 }, { wch: 45 }, { wch: 41 }]
+        : [{ wch: 5 }, { wch: 17 }, { wch: 5 }, { wch: 7 }, { wch: 20 }, { wch: 40 }];
       worksheet['!rows'] = rowHeights;
       worksheet['!pageSetup'] = { orientation: 'portrait', paperSize: '9', fitToWidth: 1, fitToHeight: 0 };
       worksheet['!margins'] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
