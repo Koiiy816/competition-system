@@ -6,6 +6,7 @@ import resultService from '../services/resultService';
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { compareDivingEntries } from '../utils/divingAwards';
+import { getWushuFloorAwardLevel, isWushuFloorAwardCompetition, usesPrizeLevelAwards } from '../utils/awardRules';
 
 const REFRESH_INTERVAL = 2000;
 const DISPLAYED_RANKS = 6;
@@ -25,7 +26,7 @@ const usesPrizeLevelScoreboard = (competition) => {
   const rules = competition?.awardRules;
   if (rules?.scoreboardDisplay === 'prize') return true;
   if (rules?.scoreboardDisplay === 'rank') return false;
-  return Boolean(rules?.enabled && rules?.mode === 'legacy_percentage');
+  return usesPrizeLevelAwards(competition);
 };
 const divingCumulativeScore = (result, publishedRound) => (result?.details?.dives || []).slice(0, publishedRound).reduce((total, dive) => total + (scoreOf(dive?.score) || 0), 0);
 const isStrengthScore = (schedule, rows = []) => /素质力量|素質力量/.test(String(schedule?.name || '')) || rows.some((result) => result?.details?.scoringType === 'strength');
@@ -233,7 +234,7 @@ export default function LiveScoreboardPage() {
           {panels.map((panel) => <Button size="small" key={panel.court} variant={selectedCourt === panel.court ? 'contained' : 'outlined'} onClick={() => setSelectedCourt(panel.court)} sx={{ fontWeight: 700 }}>{panel.court}</Button>)}
         </Stack>
         <Box sx={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(Math.max(visiblePanels.length, 1), 2)}, minmax(0, 1fr))`, gap: 3 }}>
-          {visiblePanels.map((panel) => <CourtPanel key={panel.court} panel={panel} showPrizeLevels={usesPrizeLevelScoreboard(competition)} singlePanel={visiblePanels.length === 1} fullScreen={fullScreen} />)}
+          {visiblePanels.map((panel) => <CourtPanel key={panel.court} panel={panel} competition={competition} showPrizeLevels={usesPrizeLevelScoreboard(competition)} singlePanel={visiblePanels.length === 1} fullScreen={fullScreen} />)}
         </Box>
         {!visiblePanels.length && <Box sx={{ py: 12, textAlign: 'center', color: '#93a7bd', fontSize: 26 }}>尚未设置场地或暂时没有成绩</Box>}
       </Box>
@@ -241,7 +242,7 @@ export default function LiveScoreboardPage() {
   );
 }
 
-function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
+function CourtPanel({ panel, competition, showPrizeLevels, singlePanel, fullScreen }) {
   const rotationKey = (panel.subgroups || []).map((subgroup) => idOf(subgroup.schedule)).join('|');
   const [activeSubgroupIndex, setActiveSubgroupIndex] = useState(0);
   const activeSubgroup = panel.subgroups?.[activeSubgroupIndex] || panel.subgroups?.[0] || { rows: panel.rows, schedule: panel.schedule, isDiving: panel.isDiving, publishedRound: panel.publishedRound, subgroupName: panel.subgroupName };
@@ -319,10 +320,15 @@ function CourtPanel({ panel, showPrizeLevels, singlePanel, fullScreen }) {
         // 素质力量等项目会在后台保存正式名次；其余旧成绩尚未保存名次时保持原有排序序号，避免出现空白。
         const savedRank = Number(result.rank);
         const displayRank = activeSubgroup.isDiving ? absoluteIndex + 1 : (Number.isFinite(savedRank) && savedRank > 0 ? savedRank : absoluteIndex + 1);
-        const firstPrizeLimit = Math.max(1, Math.ceil(activeSubgroup.rows.filter((row) => !row.details?.isAbsent).length * 0.3));
-        const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
-        const awardLevel = absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
-        const awardColor = awardLevel === '一等奖' ? '#f7c948' : (awardLevel === '二等奖' ? '#9ec5ff' : '#d7a86e');
+        const completedCount = activeSubgroup.rows.filter((row) => !row.details?.isAbsent).length;
+        const awardLevel = isWushuFloorAwardCompetition(competition)
+          ? (getWushuFloorAwardLevel(displayRank, completedCount, activeSubgroup.schedule?.rankingGroupName || activeSubgroup.schedule?.eventName || activeSubgroup.schedule?.name) || '—')
+          : (() => {
+            const firstPrizeLimit = Math.max(1, Math.ceil(completedCount * 0.3));
+            const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(panel.completedParticipantCount * 0.6));
+            return absoluteIndex + 1 <= firstPrizeLimit ? '一等奖' : (absoluteIndex + 1 <= secondPrizeLimit ? '二等奖' : '三等奖');
+          })();
+        const awardColor = /金奖|一等奖/.test(awardLevel) ? '#f7c948' : (/银奖|二等奖/.test(awardLevel) ? '#9ec5ff' : '#d7a86e');
         return <Box key={result._id || `${index}-${idOf(participant)}`} sx={{ display: 'grid', gridTemplateColumns: SCOREBOARD_COLUMNS, columnGap: { xs: 1, md: 3 }, alignItems: 'center', px: { xs: 1.25, md: 2 }, py: activeSubgroup.isDiving ? 1.35 : 1.15, minHeight: activeSubgroup.isDiving ? 104 : (prominentRows ? singlePanelRowHeight : 86), borderTop: '1px solid #203b58', bgcolor: absoluteIndex % 2 ? '#0d2035' : '#0a192b' }}>
           <Box sx={{ color: usePrizeLevels ? awardColor : (displayRank <= 3 ? '#f7c948' : '#c7d2df'), fontWeight: 900, fontSize: { xs: 24, md: activeSubgroup.isDiving ? 42 : (prominentRows ? 34 : 29) } }}>{usePrizeLevels ? awardLevel : displayRank}</Box>
           <Box><Typography sx={{ fontSize: { xs: 19, md: activeSubgroup.isDiving ? 38 : (prominentRows ? 42 : 32) }, fontWeight: 800, color: '#f7d76a' }}>{participantName(participant)}</Typography>{teamMembers && <Typography sx={{ mt: .25, color: '#b8cce3', fontSize: { xs: 13, md: activeSubgroup.isDiving ? 18 : (prominentRows ? 20 : 17) } }}>{teamMembers}</Typography>}</Box>

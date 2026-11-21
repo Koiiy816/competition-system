@@ -9,6 +9,7 @@ import PrintIcon from '@mui/icons-material/Print';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DownloadIcon from '@mui/icons-material/Download';
+import * as XLSX from 'xlsx';
 import competitionService from '../services/competitionService';
 import scheduleService from '../services/scheduleService';
 import resultService from '../services/resultService';
@@ -17,6 +18,7 @@ import PrintPreviewModal from '../components/PrintPreviewModal';
 import { calculateDivingDiveScore } from '../utils/divingScoring';
 import { getScheduleDisplayName, getTrampolineScoringOptions, calculateTrampolineScore, getTrampolineJudgeIndex } from '../utils/trampolineRegistration';
 import { getTrampolineRoutineD } from '../utils/trampolinePlan';
+import { getWushuFloorAwardLevel, isWushuFloorAwardCompetition } from '../utils/awardRules';
 
 const normalizeCheckInStatus = (participant) => {
   if (!participant) return 'not_checked';
@@ -997,8 +999,30 @@ const CompetitionScoreEntryPage = () => {
     }
   };
 
-  const handleExportScoreSheetPdf = () => {
-    window.print();
+  const handleExportScoreSheetExcel = () => {
+    const completedCount = participants.filter((participant) => !participant.isTest && !isParticipantAbsent(participant, results[participant._id]) && getResultScore(results[participant._id]) > 0).length;
+    const isWushuAwards = isWushuFloorAwardCompetition(competition);
+    const rows = participants.filter((participant) => !participant.isTest).map((participant) => {
+      const result = results[participant._id];
+      const absent = isParticipantAbsent(participant, result);
+      const score = getResultScore(result);
+      const rank = participantRanks[participant._id] || '-';
+      const name = participant.isVirtualTeam
+        ? (participant.teamMembers || []).map((member) => member.name).filter(Boolean).join('、')
+        : (participant.teamName || participant.name || '未知');
+      const row = {
+        '排名': absent ? '-' : rank,
+        '姓名/队伍': name,
+        '单位': participant.schoolName || participant.teamName || '-',
+        '最终得分': absent ? '弃权' : (score > 0 ? score.toFixed(2) : '-')
+      };
+      if (isWushuAwards) row['奖项'] = absent ? '-' : (getWushuFloorAwardLevel(rank, completedCount, getScheduleDisplayName(competition, schedule)) || '-');
+      return row;
+    });
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '成绩公告');
+    XLSX.writeFile(workbook, `${getScheduleDisplayName(competition, schedule)} - 成绩公告.xlsx`);
   };
 
   // 计算当前的实时排名 (必须放在所有 return 之前，遵循 Hooks 规则)
@@ -1152,10 +1176,10 @@ const CompetitionScoreEntryPage = () => {
             <Button 
               variant="outlined" 
               startIcon={<DownloadIcon />} 
-              onClick={handleExportScoreSheetPdf}
+              onClick={handleExportScoreSheetExcel}
               sx={{ mr: 1 }}
             >
-              导出 PDF
+              导出 Excel
             </Button>
             {isAdmin && schedule?.scoringMode === 'diving' && !isStrengthSchedule(schedule) && <Button
               variant="outlined"
@@ -1327,7 +1351,7 @@ const CompetitionScoreEntryPage = () => {
       <PrintPreviewModal
         open={printModalOpen}
         onClose={() => setPrintModalOpen(false)}
-        schedule={schedule ? { ...schedule, name: getScheduleDisplayName(competition, schedule), competitionName: competition?.name || schedule?.competitionName, divingPrintType } : schedule}
+        schedule={schedule ? { ...schedule, name: getScheduleDisplayName(competition, schedule), competitionName: competition?.name || schedule?.competitionName, awardRules: competition?.awardRules, showPrizeLevels: isWushuFloorAwardCompetition(competition), divingPrintType } : schedule}
         participants={(schedule?.scoringMode === 'diving' ? scoringParticipants : participants).filter(p => !p.isTest)}
         results={results}
         user={user}

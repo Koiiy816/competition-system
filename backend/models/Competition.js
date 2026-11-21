@@ -297,7 +297,7 @@ const CompetitionSchema = new mongoose.Schema({
     // fixed_top_eight: actual competitors up to eighth place are admitted with fixed medals/certificates.
     mode: {
       type: String,
-      enum: ['legacy_percentage', 'top3_then_percentage', 'fixed_top_eight'],
+      enum: ['legacy_percentage', 'top3_then_percentage', 'fixed_top_eight', 'wushu_floor_percentage'],
       default: 'legacy_percentage'
     },
     // 大屏呈现与奖项计算分开配置；未设置的旧赛事沿用其原有按比例分等奖展示的行为。

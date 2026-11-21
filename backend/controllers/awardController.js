@@ -40,6 +40,25 @@ function remainingAwardCounts(count, rules = {}) {
 }
 
 function awardLevel(rank, total, rules) {
+  if (rules?.mode === 'wushu_floor_percentage') {
+    if (!rank || total <= 0) return null;
+    const collective = /集体/.test(String(rules?.scheduleName || ''));
+    if (collective) {
+      const firstLimit = Math.floor(total * 0.6);
+      const secondLimit = firstLimit + Math.floor(total * 0.4);
+      if (rank <= firstLimit) return '一等奖';
+      if (rank <= secondLimit) return '二等奖';
+      return null;
+    }
+    if (total < 3) return rank === 1 ? '金奖' : (rank === 2 ? '银奖' : null);
+    const goldLimit = Math.floor(total * 0.3);
+    const silverLimit = goldLimit + Math.floor(total * 0.4);
+    const bronzeLimit = silverLimit + Math.floor(total * 0.3);
+    if (rank <= goldLimit) return '金奖';
+    if (rank <= silverLimit) return '银奖';
+    if (rank <= bronzeLimit) return '铜奖';
+    return null;
+  }
   if (rules?.mode === 'fixed_top_eight') {
     if (!rank || rank > Math.min(8, total)) return null;
     return ['金牌', '银牌', '铜牌'][rank - 1] || '获奖证书';
@@ -143,7 +162,7 @@ exports.getAwards = async (req, res, next) => {
       const isDiving = schedule.scoringMode === 'diving' && !/素质力量|素質力量/.test(String(schedule.name || ''));
       const isStrength = /素质力量|素質力量/.test(String(schedule.name || '')) || rows.some(row => Array.isArray(row.events));
       const rankType = isDiving ? 'diving' : (isStrength ? 'strength' : null);
-      const list = ranked(rows, rankType).map(({ dives, events, ...item }) => ({ ...item, awardLevel: awardLevel(item.rank, rows.length, competition.awardRules) }));
+      const list = ranked(rows, rankType).map(({ dives, events, ...item }) => ({ ...item, awardLevel: awardLevel(item.rank, rows.length, { ...competition.awardRules, scheduleName: schedule.name }) }));
       return { scheduleId: keyOf(schedule), scheduleName: schedule.name, count: rows.length, awards: list };
     });
 
@@ -165,6 +184,8 @@ exports.getAwards = async (req, res, next) => {
     eventAwards.forEach(event => {
       const schedule = scheduleById.get(event.scheduleId);
       if (!countsForTeamScore(schedule)) return;
+      // 正雷杯只按项目发奖，不采用跳水式的团体积分榜。
+      if (competition.awardRules?.mode === 'wushu_floor_percentage') return;
       event.awards.forEach(item => {
         if (!eligible.has(item.recipientKey)) return;
         const percentageMode = competition.awardRules?.mode === 'legacy_percentage';

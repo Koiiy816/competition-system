@@ -3,6 +3,7 @@ import { Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typogra
 import PrintIcon from '@mui/icons-material/Print';
 import { isDivingResult, rankDivingAwardEntries } from '../utils/divingAwards';
 import { isStrengthResult, rankStrengthEntries } from '../utils/strengthRanking';
+import { getWushuFloorAwardLevel, isWushuFloorAwardCompetition } from '../utils/awardRules';
 
 const scoreOf = (result) => Number(result?.finalScore ?? result?.score ?? 0) || 0;
 const athlete = (participant) => participant?.isVirtualTeam ? (participant.teamMembers || []).map((item) => item.name).filter(Boolean).join('、') || '未知' : participant?.teamName || participant?.name || participant?.user?.name || '未知';
@@ -79,10 +80,13 @@ const PrintAllResultsModal = ({ open, onClose, groupedResults, competition, team
   const rankPage = ({ name, schedule, entries }) => {
     const leader = entries.find((entry) => !entry.absent)?.score || 0;
     const discipline = entries.some(({ result }) => isStrengthResult(result)) ? '跳水·素质力量' : '跳水';
+    const wushuAwards = isWushuFloorAwardCompetition(competition);
+    const completedCount = entries.filter((entry) => !entry.absent).length;
+    const headings = wushuAwards ? ['奖项', '姓名', '单位', '成绩', '备注'] : ['名次', '姓名', '单位', '成绩', '分差', '备注'];
     return <Box className="report-page" key={`${name}-rank`}>
-      {reportHeader('名次公告', name, discipline, schedule)}
-      <TableContainer className="report-table rank-table" sx={{ border: '1px solid black' }}><Table size="small"><TableHead><TableRow>{['名次', '姓名', '单位', '成绩', '分差', '备注'].map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
-        {entries.map((entry, index) => <TableRow key={entry.result._id || index}><TableCell align="center">{entry.rank}</TableCell><TableCell align="center">{athlete(entry.result.participant)}</TableCell><TableCell align="center">{unit(entry.result.participant)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : entry.score.toFixed(2)}</TableCell><TableCell align="center">{entry.absent || entry.rank === 1 ? '' : (leader - entry.score).toFixed(2)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : ''}</TableCell></TableRow>)}
+      {reportHeader(wushuAwards ? '成绩及奖项公告' : '名次公告', name, discipline, schedule)}
+      <TableContainer className="report-table rank-table" sx={{ border: '1px solid black' }}><Table size="small"><TableHead><TableRow>{headings.map((label) => <TableCell key={label} align="center">{label}</TableCell>)}</TableRow></TableHead><TableBody>
+        {entries.map((entry, index) => <TableRow key={entry.result._id || index}><TableCell align="center">{wushuAwards ? (entry.absent ? '弃权' : (getWushuFloorAwardLevel(entry.rank, completedCount, name) || '-')) : entry.rank}</TableCell><TableCell align="center">{athlete(entry.result.participant)}</TableCell><TableCell align="center">{unit(entry.result.participant)}</TableCell><TableCell align="center">{entry.absent ? '弃权' : entry.score.toFixed(2)}</TableCell>{!wushuAwards && <TableCell align="center">{entry.absent || entry.rank === 1 ? '' : (leader - entry.score).toFixed(2)}</TableCell>}<TableCell align="center">{entry.absent ? '弃权' : ''}</TableCell></TableRow>)}
       </TableBody></Table></TableContainer>
     </Box>;
   };

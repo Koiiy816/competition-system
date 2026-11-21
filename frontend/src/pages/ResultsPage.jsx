@@ -67,6 +67,7 @@ import PrintAllResultsModal from '../components/PrintAllResultsModal';
 import BrandWatermark from '../components/BrandWatermark';
 import { isDivingResult, rankDivingAwardEntries } from '../utils/divingAwards';
 import { isStrengthResult, rankStrengthEntries } from '../utils/strengthRanking';
+import { getWushuFloorAwardLevel, isWushuFloorAwardCompetition, usesPrizeLevelAwards } from '../utils/awardRules';
 
 // 标签面板组件
 function TabPanel(props) {
@@ -864,6 +865,7 @@ const ResultsPage = () => {
           }
         }
       const percentAwardMode = isPercentAwardCompetition(selectedCompetition);
+      const wushuFloorAwardMode = isWushuFloorAwardCompetition(selectedCompetition);
       const top3ThenPercentageMode = isTop3ThenPercentageCompetition(selectedCompetition);
       const fixedTopEightMode = isFixedTopEightCompetition(selectedCompetition);
       if (percentAwardMode) basePoints = selectedCompetition.awardRules?.teamPoints || [8, 7, 6, 5, 4, 3, 2, 1];
@@ -931,10 +933,12 @@ const ResultsPage = () => {
           const tieCount = normalMembers.length;
           const displayRank = isDivingSchedule ? divingRanks.get(currentMember) : (isStrengthSchedule ? strengthRanks.get(currentMember) : currentRankIndex + 1);
           const isDivingAwarded = isDivingSchedule && Boolean(divingAwards.get(currentMember));
-          const awardLevel = isDivingSchedule ? null : (top3ThenPercentageMode
+          const awardLevel = isDivingSchedule ? null : (wushuFloorAwardMode
+            ? getWushuFloorAwardLevel(displayRank, completedFormalCount, scheduleName)
+            : (top3ThenPercentageMode
             ? getTop3ThenPercentageAwardLevel(displayRank, completedFormalCount, selectedCompetition)
-            : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null)));
-          const isWithinAdmissionRange = isDivingSchedule ? isDivingAwarded : ((percentAwardMode || fixedTopEightMode) ? Boolean(awardLevel) : displayRank <= admissionCount);
+            : (fixedTopEightMode ? getFixedTopEightAwardLevel(displayRank, completedFormalCount) : (percentAwardMode ? getPercentAwardLevel(displayRank, formalCount, selectedCompetition) : null))));
+          const isWithinAdmissionRange = isDivingSchedule ? isDivingAwarded : ((percentAwardMode || fixedTopEightMode || wushuFloorAwardMode) ? Boolean(awardLevel) : displayRank <= admissionCount);
           const top3TeamPoints = top3ThenPercentageMode
             ? getTop3ThenPercentageTeamPoints(displayRank, awardLevel, selectedCompetition)
             : null;
@@ -979,6 +983,9 @@ const ResultsPage = () => {
                 && averagePoints > 0;
             } else if (percentAwardMode || fixedTopEightMode) {
               shouldCountForTeam = countsForTeamScoring(scheduleName, scheduleResults) && averagePoints > 0;
+            } else if (wushuFloorAwardMode) {
+              // 正雷杯只发布项目奖项，不沿用跳水的团体积分。
+              shouldCountForTeam = false;
             } else if (isLuohuTraditionalCompetition(selectedCompetition)) {
               shouldCountForTeam = luohuTeamRule === true && averagePoints > 0;
             } else if (isTargetCompetition) {
@@ -1063,15 +1070,16 @@ const ResultsPage = () => {
     setProcessedData({ groupedResults: grouped, teamRankings: teamRankingsArray });
   }, [results, competitions, filters.competitionId]);
 
-  // 当前比赛各代表队/学校取得的前三名：单人和双人/混双组合分开统计。
+  // 当前比赛各代表队/学校取得的奖项；正雷杯按其个人/集体奖项规则统计。
   // 双人栏按获奖组合数统计，方便按实际发放规则自行换算实体奖牌数量。
   const teamMedalSummary = useMemo(() => {
+    const wushuFloorAwards = isWushuFloorAwardCompetition(competitions.find(c => c._id === filters.competitionId));
     const summary = new Map();
     Object.values(processedData.groupedResults).forEach((scheduleResults) => {
       scheduleResults.forEach((result) => {
         const rank = Number(result.dynamicRank);
         const score = Number(result.finalScore ?? result.score ?? 0) || 0;
-        if (result.participant?.isTest || result.details?.isAbsent || score <= 0 || !Number.isInteger(rank) || rank < 1 || rank > 3) return;
+        if (result.participant?.isTest || result.details?.isAbsent || score <= 0 || !Number.isInteger(rank) || rank < 1) return;
         const schoolName = result.participant?.schoolName || result.participant?.teamName || result.participant?.user?.schoolName;
         if (!schoolName) return;
         if (!summary.has(schoolName)) {
@@ -1082,10 +1090,22 @@ const ResultsPage = () => {
             individualBronze: 0,
             pairGold: 0,
             pairSilver: 0,
-            pairBronze: 0
+            pairBronze: 0,
+            collectiveFirst: 0,
+            collectiveSecond: 0
           });
         }
         const medals = summary.get(schoolName);
+        if (wushuFloorAwards) {
+          const level = result.awardLevel;
+          if (level === '金奖') medals.individualGold += 1;
+          if (level === '银奖') medals.individualSilver += 1;
+          if (level === '铜奖') medals.individualBronze += 1;
+          if (level === '一等奖') medals.collectiveFirst += 1;
+          if (level === '二等奖') medals.collectiveSecond += 1;
+          return;
+        }
+        if (rank > 3) return;
         const isDivingPair = isDivingResult(result)
           && result.participant?.isVirtualTeam
           && result.participant?.teamMembers?.length === 2;
@@ -1107,9 +1127,11 @@ const ResultsPage = () => {
       || right.pairGold - left.pairGold
       || right.pairSilver - left.pairSilver
       || right.pairBronze - left.pairBronze
+      || right.collectiveFirst - left.collectiveFirst
+      || right.collectiveSecond - left.collectiveSecond
       || left.schoolName.localeCompare(right.schoolName, 'zh-Hans-CN')
     ));
-  }, [processedData.groupedResults]);
+  }, [processedData.groupedResults, competitions, filters.competitionId]);
 
   // 处理标签切换
   const handleTabChange = (event, newValue) => {
@@ -1189,12 +1211,13 @@ const ResultsPage = () => {
       : new Map();
     const selectedCompetition = competitions.find(c => c._id === filters.competitionId);
     const fixedTopEightModeForExport = isFixedTopEightCompetition(selectedCompetition);
-    const showPrizeLevelsForExport = isPercentAwardCompetition(selectedCompetition);
+    const showPrizeLevelsForExport = usesPrizeLevelAwards(selectedCompetition);
     const ruleSummary = getScheduleRuleSummary(selectedCompetition, scheduleName, validResults);
     const completedParticipantCount = validResults.filter(result => !result.details?.isAbsent).length;
     const getExportAwardLevel = (rank, isAbsent) => {
       const numericRank = Number(rank);
       if (isAbsent || !Number.isFinite(numericRank) || numericRank < 1 || completedParticipantCount <= 0) return '-';
+      if (isWushuFloorAwardCompetition(selectedCompetition)) return getWushuFloorAwardLevel(numericRank, completedParticipantCount, scheduleName) || '-';
       const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
       const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(completedParticipantCount * 0.6));
       if (numericRank <= firstPrizeLimit) return '一等奖';
@@ -1269,7 +1292,8 @@ const ResultsPage = () => {
       startTime: sourceSchedule?.startTime || selectedCompetition?.startDate || new Date(),
       location: sourceSchedule?.location || selectedCompetition?.location || '',
       court: sourceSchedule?.court || sourceSchedule?.location || '',
-      showPrizeLevels: isPercentAwardCompetition(selectedCompetition),
+      showPrizeLevels: usesPrizeLevelAwards(selectedCompetition),
+      awardRules: selectedCompetition?.awardRules,
       competitionName: selectedCompetition?.name || '比赛',
       scoringMode: scheduleResults.some((result) => result.details?.scoringType === 'diving' || Array.isArray(result.details?.dives)) ? 'diving' : 'standard',
       divingPrintType
@@ -1302,7 +1326,7 @@ const ResultsPage = () => {
 
   // 渲染成绩列表
   const selectedCompetitionForDisplay = competitions.find(c => c._id === filters.competitionId);
-  const showPrizeLevels = isPercentAwardCompetition(selectedCompetitionForDisplay);
+  const showPrizeLevels = usesPrizeLevelAwards(selectedCompetitionForDisplay);
   const renderRank = (rank) => {
     if (rank === 1) return <Chip label="1" sx={{ bgcolor: 'gold', color: 'white', fontWeight: 'bold' }} size="small" />;
     if (rank === 2) return <Chip label="2" sx={{ bgcolor: 'silver', color: 'white', fontWeight: 'bold' }} size="small" />;
@@ -2084,8 +2108,8 @@ const ResultsPage = () => {
               {filters.competitionId && (
                 <Paper sx={{ mb: 3, overflow: 'hidden' }}>
                   <Box sx={{ px: 2, py: 1.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
-                    <Typography variant="h6">代表队/学校金银铜统计</Typography>
-                    <Typography variant="body2">按各单项名次第一、第二、第三统计；双人/混双按获奖组合数列示，可自行换算实体奖牌数量。</Typography>
+                    <Typography variant="h6">{isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? '代表队奖项统计' : '代表队/学校金银铜统计'}</Typography>
+                    <Typography variant="body2">{isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? '个人项目按金、银、铜奖统计；集体项目按一等奖、二等奖统计。奖项名额按正雷杯规则向下取整。' : '按各单项名次第一、第二、第三统计；双人/混双按获奖组合数列示，可自行换算实体奖牌数量。'}</Typography>
                   </Box>
                   <Table size="small" aria-label="代表队学校金银铜统计表">
                     <TableHead>
@@ -2095,9 +2119,14 @@ const ResultsPage = () => {
                         <TableCell align="center">单人金</TableCell>
                         <TableCell align="center">单人银</TableCell>
                         <TableCell align="center">单人铜</TableCell>
-                        <TableCell align="center">双人/混双金</TableCell>
-                        <TableCell align="center">双人/混双银</TableCell>
-                        <TableCell align="center">双人/混双铜</TableCell>
+                        {isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? <>
+                          <TableCell align="center">集体一等奖</TableCell>
+                          <TableCell align="center">集体二等奖</TableCell>
+                        </> : <>
+                          <TableCell align="center">双人/混双金</TableCell>
+                          <TableCell align="center">双人/混双银</TableCell>
+                          <TableCell align="center">双人/混双铜</TableCell>
+                        </>}
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -2108,13 +2137,18 @@ const ResultsPage = () => {
                           <TableCell align="center">{team.individualGold}</TableCell>
                           <TableCell align="center">{team.individualSilver}</TableCell>
                           <TableCell align="center">{team.individualBronze}</TableCell>
-                          <TableCell align="center">{team.pairGold}</TableCell>
-                          <TableCell align="center">{team.pairSilver}</TableCell>
-                          <TableCell align="center">{team.pairBronze}</TableCell>
+                          {isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? <>
+                            <TableCell align="center">{team.collectiveFirst}</TableCell>
+                            <TableCell align="center">{team.collectiveSecond}</TableCell>
+                          </> : <>
+                            <TableCell align="center">{team.pairGold}</TableCell>
+                            <TableCell align="center">{team.pairSilver}</TableCell>
+                            <TableCell align="center">{team.pairBronze}</TableCell>
+                          </>}
                         </TableRow>
                       ))}
                       {teamMedalSummary.length === 0 && (
-                        <TableRow><TableCell colSpan={8} align="center">暂无前三名成绩</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? 7 : 8} align="center">暂无已获奖成绩</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>

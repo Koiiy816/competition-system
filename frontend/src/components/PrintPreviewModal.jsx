@@ -19,6 +19,7 @@ import {
 import PrintIcon from '@mui/icons-material/Print';
 import { rankDivingAwardEntries } from '../utils/divingAwards';
 import { rankStrengthEntries } from '../utils/strengthRanking';
+import { getWushuFloorAwardLevel, isWushuFloorAwardCompetition } from '../utils/awardRules';
 
 const savedDivingJudgeNames = () => {
   try {
@@ -165,6 +166,9 @@ const PrintPreviewModal = ({ open, onClose, schedule, participants, results, use
   };
   const getAwardLevel = (rank) => {
     if (!rank || rank === '-' || completedParticipantCount <= 0) return '-';
+    if (isWushuFloorAwardCompetition({ awardRules: schedule?.awardRules })) {
+      return getWushuFloorAwardLevel(rank, completedParticipantCount, schedule?.name) || '-';
+    }
     const firstPrizeLimit = Math.max(1, Math.ceil(completedParticipantCount * 0.3));
     const secondPrizeLimit = Math.max(firstPrizeLimit, Math.ceil(completedParticipantCount * 0.6));
     if (rank <= firstPrizeLimit) return '一等奖';
