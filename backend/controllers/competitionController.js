@@ -167,7 +167,7 @@ exports.getCompetition = async (req, res, next) => {
     let competitionQuery = Competition.findById(req.params.id);
 
     if (isScoreContext) {
-      competitionQuery = competitionQuery.select('name location status sportType type');
+      competitionQuery = competitionQuery.select('name location status sportType type standardJudgeCount');
     } else {
       competitionQuery = competitionQuery
         .populate('organizer', 'name email')

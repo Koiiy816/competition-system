@@ -585,7 +585,8 @@ const CompetitionScoreEntryPage = () => {
     schedule?.name?.includes('6月13') ||
     competition?.name?.includes('第五届南山区中小学教育集团联盟');
   const { scoringType, judgeLabels, hideParticipantName } = getTrampolineScoringOptions(competition, schedule);
-  const judgeCount = judgeLabels?.length || (isThreeRefereesMode ? 3 : (schedule?.judgeCount || 5));
+  const configuredJudgeCount = [3, 4, 5].includes(Number(competition?.standardJudgeCount)) ? Number(competition.standardJudgeCount) : null;
+  const judgeCount = judgeLabels?.length || configuredJudgeCount || (isThreeRefereesMode ? 3 : (schedule?.judgeCount || 5));
   if (!isChiefOrAdmin && user && scoringType) allowedIndex = getTrampolineJudgeIndex(user, scoringType);
   
   useEffect(() => {

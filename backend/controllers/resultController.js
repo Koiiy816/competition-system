@@ -8,6 +8,7 @@ const { calculateDivingDiveScore } = require('../utils/divingScoring');
 const { isStrengthSchedule, normalizeStrengthEvents, mergeStrengthEvents, pointsForRank } = require('../utils/strengthScoring');
 const { broadcastScoreEvent, openScoreStream } = require('../utils/scoreUpdateStream');
 const { getCompetitionSportType, SPORT_TYPES } = require('../utils/competitionType');
+const { getConfiguredJudgeCount } = require('../utils/competitionJudgeCount');
 const { attachCollectiveRanks, acquireCollectiveLock } = require('../utils/collectiveBatches');
 
 // --- 新增：内存并发锁，防止多名裁判同时打分互相覆盖（0分BUG） ---
@@ -666,7 +667,7 @@ exports.submitScore = async (req, res, next) => {
     if (scoringType === 'large' && ![0, 1].includes(routineIndex)) {
       return res.status(400).json({ success: false, message: '请选择蹦床1或蹦床2套次' });
     }
-    const judgeCount = scoringType ? (scoringType === 'large' ? 7 : 2) : (schedule.judgeCount || 5);
+    const judgeCount = scoringType ? (scoringType === 'large' ? 7 : 2) : (getConfiguredJudgeCount(competition) || schedule.judgeCount || 5);
     const scoreSlots = scoringType ? judgeCount : 5;
     const isChiefOrAdmin = req.user.roles?.includes('admin') || req.user.roles?.includes('chief_referee');
     if (scoringType && (!Array.isArray(scores) || (isChiefOrAdmin && deduction != null

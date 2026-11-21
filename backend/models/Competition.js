@@ -25,6 +25,12 @@ const CompetitionSchema = new mongoose.Schema({
     required: false,
     index: true
   },
+  // 普通计分项目的赛事级裁判人数。未设置时沿用各赛程原有设置（通常为 5 人）。
+  standardJudgeCount: {
+    type: Number,
+    enum: [3, 4, 5],
+    required: false
+  },
   rules: {
     type: String,
     required: false

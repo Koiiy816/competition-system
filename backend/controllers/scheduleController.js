@@ -1,5 +1,5 @@
 const Schedule = require('../models/Schedule');
-const { applyTrampolineJudgeCount } = require('../utils/trampolineScoring');
+const { applyCompetitionJudgeCount } = require('../utils/competitionJudgeCount');
 const Competition = require('../models/Competition');
 const Participant = require('../models/Participant');
 const Result = require('../models/Result');
@@ -175,7 +175,7 @@ exports.generateStartList = async (req, res, next) => {
         const normal = schedule.participants.filter((participant) => !isTestById.get(participant.toString()));
         const test = schedule.participants.filter((participant) => isTestById.get(participant.toString()));
         schedule.participants = [...shuffle(normal), ...shuffle(test)];
-        applyTrampolineJudgeCount(competition, schedule);
+        applyCompetitionJudgeCount(competition, schedule);
         await schedule.save();
       }));
       return res.status(200).json({
@@ -388,7 +388,7 @@ exports.generateStartList = async (req, res, next) => {
             }
             await subSchedule.save();
           } else {
-            subSchedule = await Schedule.create(applyTrampolineJudgeCount(competition, {
+            subSchedule = await Schedule.create(applyCompetitionJudgeCount(competition, {
               competition: competitionId,
               name: subScheduleName,
               type: 'preliminary',
@@ -446,7 +446,7 @@ exports.generateStartList = async (req, res, next) => {
           await schedule.save();
         } else {
           // 如果不存在，创建新赛程
-          schedule = await Schedule.create(applyTrampolineJudgeCount(competition, {
+          schedule = await Schedule.create(applyCompetitionJudgeCount(competition, {
             competition: competitionId,
             name: name,
             type: 'preliminary', // 默认为预赛
@@ -855,7 +855,7 @@ exports.createSchedule = async (req, res, next) => {
     normalizeDivingScheduleConfig(req.body);
 
     // 创建赛程
-    const schedule = await Schedule.create(applyTrampolineJudgeCount(competition, req.body));
+    const schedule = await Schedule.create(applyCompetitionJudgeCount(competition, req.body));
 
     res.status(201).json({
       success: true,
@@ -976,7 +976,7 @@ exports.updateSchedule = async (req, res, next) => {
     }
 
     if (isOrganizer || isAdmin) {
-      const config = applyTrampolineJudgeCount(competition, { name: req.body.name ?? schedule.name });
+      const config = applyCompetitionJudgeCount(competition, { name: req.body.name ?? schedule.name, scoringMode: req.body.scoringMode ?? schedule.scoringMode });
       if (config.judgeCount) req.body.judgeCount = config.judgeCount;
     }
     schedule = await Schedule.findByIdAndUpdate(req.params.id, req.body, {
@@ -2074,11 +2074,11 @@ exports.importCollectiveRoster = async (req, res, next) => {
         virtualTeamIds.push(virtualTeam._id);
       }
       if (item.scheduleId) {
-        const config = applyTrampolineJudgeCount(competition, { name: item.name });
+        const config = applyCompetitionJudgeCount(competition, { name: item.name });
         await Schedule.findByIdAndUpdate(item.scheduleId, { $set: { participants: virtualTeamIds, ...(config.judgeCount ? { judgeCount: config.judgeCount } : {}) } });
       } else {
         const times = collectivePendingScheduleTimes(competition);
-        await Schedule.create(applyTrampolineJudgeCount(competition, {
+        await Schedule.create(applyCompetitionJudgeCount(competition, {
           competition: req.params.competitionId,
           name: item.name,
           description: '由集体项目名单 Excel 导入；请管理员再编排日期、场地和时段。',
