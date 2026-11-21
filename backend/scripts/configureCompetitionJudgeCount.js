@@ -6,6 +6,9 @@
  *
  * 确认没有已录入的正式成绩后执行（测试成绩会保留且不阻止配置）：
  * node scripts/configureCompetitionJudgeCount.js --competition <比赛ID> --judge-count 3 --apply
+ *
+ * 如已明确确认不保留正式成绩，才可额外指定以下参数。它只会删除该比赛赛程下的正式成绩：
+ * node scripts/configureCompetitionJudgeCount.js --competition <比赛ID> --judge-count 3 --apply --clear-existing-results
  */
 const path = require('path');
 const mongoose = require('mongoose');
@@ -26,8 +29,9 @@ const main = async () => {
   const competitionId = readArg('competition');
   const judgeCount = Number(readArg('judge-count'));
   const apply = process.argv.includes('--apply');
+  const clearExistingResults = process.argv.includes('--clear-existing-results');
   if (!mongoose.isValidObjectId(competitionId) || ![3, 4, 5].includes(judgeCount)) {
-    throw new Error('用法：node scripts/configureCompetitionJudgeCount.js --competition <比赛ID> --judge-count 3 [--apply]');
+    throw new Error('用法：node scripts/configureCompetitionJudgeCount.js --competition <比赛ID> --judge-count 3 [--apply] [--clear-existing-results]');
   }
 
   await mongoose.connect(process.env.MONGO_URI);
@@ -43,11 +47,21 @@ const main = async () => {
     : [];
   const formalResultCount = results.filter((result) => !result.participant?.isTest).length;
   const testResultCount = results.length - formalResultCount;
-  const summary = { competition: competition.name, competitionId, judgeCount, scheduleCount: schedules.length, existingResultCount: results.length, formalResultCount, testResultCount, apply };
+  const summary = { competition: competition.name, competitionId, judgeCount, scheduleCount: schedules.length, existingResultCount: results.length, formalResultCount, testResultCount, apply, clearExistingResults };
   console.log(JSON.stringify(summary, null, 2));
 
   if (!apply) return;
-  if (formalResultCount > 0) throw new Error('发现已有正式成绩；为避免覆盖既有评分，请先联系维护人员确认成绩处理方式');
+  if (formalResultCount > 0 && !clearExistingResults) {
+    throw new Error('发现已有正式成绩；如确认不保留，请使用 --apply --clear-existing-results 后重试');
+  }
+
+  if (formalResultCount > 0) {
+    const formalResultIds = results
+      .filter((result) => !result.participant?.isTest)
+      .map((result) => result._id);
+    await Result.deleteMany({ _id: { $in: formalResultIds } });
+    console.log(`已删除该比赛的 ${formalResultIds.length} 条正式成绩；测试成绩未删除。`);
+  }
 
   await Competition.updateOne({ _id: competitionId }, { $set: { standardJudgeCount: judgeCount } });
   await Schedule.updateMany({ competition: competitionId, scoringMode: { $ne: 'diving' } }, { $set: { judgeCount } });
