@@ -4,7 +4,7 @@
  * 先预览：
  * node scripts/configureCompetitionJudgeCount.js --competition <比赛ID> --judge-count 3
  *
- * 确认没有已录入的成绩后执行：
+ * 确认没有已录入的正式成绩后执行（测试成绩会保留且不阻止配置）：
  * node scripts/configureCompetitionJudgeCount.js --competition <比赛ID> --judge-count 3 --apply
  */
 const path = require('path');
@@ -37,12 +37,16 @@ const main = async () => {
   }
 
   const schedules = await Schedule.find({ competition: competitionId }).select('_id name judgeCount').lean();
-  const resultCount = schedules.length ? await Result.countDocuments({ schedule: { $in: schedules.map((schedule) => schedule._id) } }) : 0;
-  const summary = { competition: competition.name, competitionId, judgeCount, scheduleCount: schedules.length, existingResultCount: resultCount, apply };
+  const results = schedules.length
+    ? await Result.find({ schedule: { $in: schedules.map((schedule) => schedule._id) } }).select('participant').populate('participant', 'isTest').lean()
+    : [];
+  const formalResultCount = results.filter((result) => !result.participant?.isTest).length;
+  const testResultCount = results.length - formalResultCount;
+  const summary = { competition: competition.name, competitionId, judgeCount, scheduleCount: schedules.length, existingResultCount: results.length, formalResultCount, testResultCount, apply };
   console.log(JSON.stringify(summary, null, 2));
 
   if (!apply) return;
-  if (resultCount > 0) throw new Error('发现已有成绩；为避免覆盖既有评分，请先联系维护人员确认成绩处理方式');
+  if (formalResultCount > 0) throw new Error('发现已有正式成绩；为避免覆盖既有评分，请先联系维护人员确认成绩处理方式');
 
   await Competition.updateOne({ _id: competitionId }, { $set: { standardJudgeCount: judgeCount } });
   await Schedule.updateMany({ competition: competitionId, scoringMode: { $ne: 'diving' } }, { $set: { judgeCount } });
