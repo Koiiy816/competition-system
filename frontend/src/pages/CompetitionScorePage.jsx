@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box, Typography, Paper, Button, CircularProgress, Alert, Container, 
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -12,21 +12,30 @@ import { getScheduleDisplayName } from '../utils/trampolineRegistration';
 const CompetitionScorePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
   const [competition, setCompetition] = useState(null);
   const [error, setError] = useState('');
   
+  const selectedCourt = searchParams.get('court') || '';
+
   // 从 sessionStorage 初始化页码，实现返回时记住页码
   const [datePage, setDatePage] = useState(() => {
-    const savedPage = sessionStorage.getItem(`scoreDatePage_${id}`);
+    const savedPage = sessionStorage.getItem(`scoreDatePage_${id}_${selectedCourt || 'all'}`);
     return savedPage ? parseInt(savedPage, 10) : 1;
   });
 
   // 当页码改变时，保存到 sessionStorage
   useEffect(() => {
-    sessionStorage.setItem(`scoreDatePage_${id}`, datePage.toString());
-  }, [datePage, id]);
+    sessionStorage.setItem(`scoreDatePage_${id}_${selectedCourt || 'all'}`, datePage.toString());
+  }, [datePage, id, selectedCourt]);
+
+  // 切换场地后从该场地的第一页开始显示，避免上一场地页码越界。
+  useEffect(() => {
+    const savedPage = sessionStorage.getItem(`scoreDatePage_${id}_${selectedCourt || 'all'}`);
+    setDatePage(savedPage ? parseInt(savedPage, 10) : 1);
+  }, [id, selectedCourt]);
 
   useEffect(() => {
     fetchSchedules();
@@ -55,13 +64,20 @@ const CompetitionScorePage = () => {
 
   // 注意这里需要按 order 排序以保证显示正确
   const assigned = schedules.filter(s => s.scheduleDate && s.timeSlot && s.court).sort((a, b) => (a.order || 0) - (b.order || 0));
-  const dates = [...new Set(assigned.map(s => s.scheduleDate))].sort();
-  const timeSlots = ['上午', '下午', '晚上'];
   const courts = [...new Set(assigned.map(s => s.court))].sort();
+  const hasMultipleCourts = courts.length > 1;
+  const activeCourt = hasMultipleCourts ? (courts.includes(selectedCourt) ? selectedCourt : '') : courts[0];
+  const visibleSchedules = activeCourt ? assigned.filter(s => s.court === activeCourt) : [];
+  const dates = [...new Set(visibleSchedules.map(s => s.scheduleDate))].sort();
+  const timeSlots = ['上午', '下午', '晚上'];
 
   const totalPages = dates.length;
   const safePage = Math.max(1, Math.min(datePage, totalPages));
   const paginatedDates = dates.slice(safePage - 1, safePage);
+
+  const chooseCourt = (court) => {
+    setSearchParams({ court });
+  };
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
@@ -76,8 +92,44 @@ const CompetitionScorePage = () => {
             暂无已排程的比赛日程。
           </Typography>
         </Paper>
+      ) : hasMultipleCourts && !activeCourt ? (
+        <Box>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            请先选择本次负责的场地，进入后只会显示该场地的比赛日程。无需额外创建账号，裁判可在需要时返回此处切换场地。
+          </Alert>
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold' }}>选择场地</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 2 }}>
+            {courts.map(court => {
+              const courtSchedules = assigned.filter(schedule => schedule.court === court);
+              const courtDates = [...new Set(courtSchedules.map(schedule => schedule.scheduleDate))].sort();
+              const participantCount = courtSchedules.reduce((total, schedule) => total + (schedule.participants?.length || 0), 0);
+              return (
+                <Paper
+                  key={court}
+                  variant="outlined"
+                  onClick={() => chooseCourt(court)}
+                  sx={{ p: 3, cursor: 'pointer', borderColor: 'primary.light', transition: '0.2s', '&:hover': { bgcolor: '#e3f2fd', transform: 'translateY(-2px)', boxShadow: 3 } }}
+                >
+                  <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold', mb: 1 }}>{court}</Typography>
+                  <Typography variant="body2" color="text.secondary">{courtSchedules.length} 个比赛项目 · {participantCount} 人/队</Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{courtDates.join('、')}</Typography>
+                  <Button variant="contained" size="small" sx={{ mt: 2 }} onClick={(event) => { event.stopPropagation(); chooseCourt(court); }}>进入该场地</Button>
+                </Paper>
+              );
+            })}
+          </Box>
+        </Box>
       ) : (
         <Box>
+          {hasMultipleCourts && (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, gap: 2 }}>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 'bold' }}>{activeCourt}</Typography>
+                <Typography variant="body2" color="text.secondary">仅显示该场地的比赛日程</Typography>
+              </Box>
+              <Button variant="outlined" onClick={() => setSearchParams({})}>切换场地</Button>
+            </Box>
+          )}
           {paginatedDates.map(date => (
             <Box key={date} sx={{ mb: 5 }}>
               <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold' }}>{date}</Typography>
@@ -86,25 +138,21 @@ const CompetitionScorePage = () => {
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#f5f5f5' }}>
                       <TableCell width="10%" sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold' }}>时间段</TableCell>
-                      {courts.map(court => (
-                        <TableCell key={court} align="center" sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold' }}>{court}</TableCell>
-                      ))}
+                      <TableCell align="center" sx={{ fontWeight: 'bold' }}>{activeCourt || '比赛项目'}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {timeSlots.map(slot => {
-                      const hasAnySchedule = courts.some(court => 
-                        assigned.some(s => s.scheduleDate === date && s.timeSlot === slot && s.court === court)
-                      );
+                      const hasAnySchedule = visibleSchedules.some(s => s.scheduleDate === date && s.timeSlot === slot);
                       if (!hasAnySchedule) return null;
 
                       return (
                         <TableRow key={slot}>
                           <TableCell sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold', bgcolor: '#fafafa' }}>{slot}</TableCell>
-                          {courts.map(court => {
-                            const cellSchedules = assigned.filter(s => s.scheduleDate === date && s.timeSlot === slot && s.court === court);
+                          {(() => {
+                            const cellSchedules = visibleSchedules.filter(s => s.scheduleDate === date && s.timeSlot === slot);
                             return (
-                              <TableCell key={court} align="center" sx={{ borderRight: '1px solid #e0e0e0', verticalAlign: 'top', width: `${100 / courts.length}%` }}>
+                              <TableCell align="center" sx={{ verticalAlign: 'top' }}>
                                 <Box sx={{ minHeight: '80px', height: '100%', p: 1 }}>
                                   {cellSchedules.map((s, index) => (
                                     <Paper 
@@ -152,7 +200,7 @@ const CompetitionScorePage = () => {
                                 </Box>
                               </TableCell>
                             );
-                          })}
+                          })()}
                         </TableRow>
                       );
                     })}
