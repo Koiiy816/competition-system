@@ -1,9 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { getTrampolineUnitQuota, normalizeTrampolineUnit } = require('../utils/trampolineCoachQuota');
+const { getTrampolineUnitQuota, normalizeTrampolineUnit, syncTrampolineCoachContacts } = require('../utils/trampolineCoachQuota');
 
 const row = (id, coach = '教练甲', extra = {}) => ({ _id: id, idCard: id, schoolName: '单位',
   name: `运动员${id}`, gender: 'male', coach, coachPhone: coach ? '123' : '', ...extra });
+
+test('完整教练名单优先于旧的第一名字段，第二名修改、删除和清空都要真实保存', () => {
+  const a = { name: '甲', phone: '123' }, b = { name: '乙', phone: '456' };
+  const participant = { coach: a.name, coachPhone: a.phone, additionalInfo: { notes: '保留', trampolineStaff: { coaches: [a, b], leader: { name: '领队', phone: '100' } } } };
+  for (const coaches of [[a, { name: '新乙', phone: '789' }], [a], [b], []]) {
+    const update = syncTrampolineCoachContacts(participant, { coach: a.name, coachPhone: a.phone, trampolineCoaches: coaches });
+    assert.deepEqual(update.additionalInfo.trampolineStaff.coaches, coaches);
+    assert.equal(update.coach, coaches[0]?.name || '');
+    assert.equal(update.coachPhone, coaches[0]?.phone || '');
+    assert.equal(update.additionalInfo.notes, '保留');
+    assert.deepEqual(update.additionalInfo.trampolineStaff.leader, participant.additionalInfo.trampolineStaff.leader);
+    assert.equal(Object.hasOwn(update, 'trampolineCoaches'), false);
+  }
+  assert.deepEqual(participant.additionalInfo.trampolineStaff.coaches, [a, b]);
+  assert.deepEqual(syncTrampolineCoachContacts({}, { trampolineCoaches: JSON.stringify([a, b]) }).additionalInfo.trampolineStaff.coaches, [a, b]);
+  for (const invalid of ['bad json', {}, [a, a], [{ name: '甲'.repeat(51) }]]) {
+    assert.throws(() => syncTrampolineCoachContacts(participant, { trampolineCoaches: invalid }), error => error.statusCode === 400);
+  }
+});
 
 test('按单位累计运动员和不同教练，拆批新增第二位教练在第6名运动员前拒绝', () => {
   for (const [count, limit] of [[1, 1], [5, 1], [6, 2], [10, 2], [11, 3]]) {

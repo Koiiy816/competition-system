@@ -33,6 +33,19 @@ export const getTrampolineCoachLimit = athleteCount => Math.ceil(athleteCount / 
 export const getFilledTrampolineCoaches = coaches => coaches.filter(person =>
   String(person?.name || '').trim() || String(person?.phone || '').trim());
 
+export const getTrampolineParticipantCoaches = participant => {
+  const people = [...(Array.isArray(participant?.additionalInfo?.trampolineStaff?.coaches) ? participant.additionalInfo.trampolineStaff.coaches : []),
+    { name: participant?.coach, phone: participant?.coachPhone }];
+  const unique = new Map();
+  for (const person of people) {
+    const name = String(person?.name ?? '').trim(), phone = String(person?.phone ?? '').trim();
+    if (!name && !phone) continue;
+    const key = JSON.stringify([name, phone].map(value => value.replace(/\s+/g, '').toUpperCase()));
+    if (!unique.has(key)) unique.set(key, { name, phone });
+  }
+  return [...unique.values()];
+};
+
 export const validateTrampolineStaff = (staff, athleteCount) => {
   const valid = person => typeof (person?.name ?? '') === 'string' && (person?.name ?? '').trim().length <= 50
     && typeof (person?.phone ?? '') === 'string' && (person?.phone ?? '').trim().length <= 30;

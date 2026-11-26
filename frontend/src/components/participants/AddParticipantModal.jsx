@@ -1,4 +1,5 @@
 import AthleteIdentitySelect from './AthleteIdentitySelect';
+import RenameTrampolineUnitDialog from './RenameTrampolineUnitDialog';
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -29,6 +30,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { parseChineseResidentIdentityNumber } from '../../utils/certificateInfo';
 import { createRequestKey } from '../../utils/requestKey';
 import { getAgeGroupDisplayName, getEventDisplayName } from '../../utils/trampolineRegistration';
+import { getTrampolineParticipantCoaches, getFilledTrampolineCoaches, validateTrampolineStaff } from '../../utils/trampolineStaff';
 
 const isDivingEntry = (competition) => isDivingCompetition(competition);
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
@@ -50,6 +52,9 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const [error, setError] = useState('');
   const [athleteNumber, setAthleteNumber] = useState('');
   const [athleteRequestKey, setAthleteRequestKey] = useState('');
+  const [coaches, setCoaches] = useState([]);
+  const [renameUnitOpen, setRenameUnitOpen] = useState(false);
+  const editTrampolineCoaches = Boolean(editData && isTrampolineCompetition(competition));
 
   const [formData, setFormData] = useState({
     name: '',
@@ -130,6 +135,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
           setCompetition(res.data);
           
           if (editData) {
+             setCoaches(isTrampolineCompetition(res.data) ? getTrampolineParticipantCoaches(editData) : []);
              // 填充编辑数据
              setFormData({
                 name: editData.type === 'team' ? (editData.members?.[0]?.name || '') : editData.name || '',
@@ -184,6 +190,8 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
         isTest: false
        });
        setErrors({});
+       setCoaches([]);
+       setRenameUnitOpen(false);
        setSelectedPhoto(null);
     }
   }, [open, competitionId, editData]);
@@ -324,6 +332,10 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
     if (!formData.event) newErrors.event = '请选择比赛项目';
     const eventConfig = competition?.events?.find((event) => event.name === formData.event);
     if (groupTeamRequired && eventConfig?.isGroupEvent && !formData.groupTeam.trim()) newErrors.groupTeam = '请填写队伍编号';
+    if (editTrampolineCoaches) {
+      const coachError = validateTrampolineStaff({ coaches }, 1);
+      if (coachError) newErrors.coaches = coachError;
+    }
     // 仅赛事明确要求照片时，管理员才可在此上传。
     
     setErrors(newErrors);
@@ -342,6 +354,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       const eventConfig = competition.events?.find(e => e.name === formData.event);
       const submitData = {
         ...formData,
+        ...(editTrampolineCoaches ? { trampolineCoaches: coaches } : {}),
         groupTeam: eventConfig?.isGroupEvent ? formData.groupTeam.trim() : '',
         ...(canManageAthleteIdentity ? { athleteNumber, athleteRequestKey, ...(editData ? { updatedAt: editData.updatedAt } : {}) } : {}),
         grade: formData.grade, // 确保 grade 字段也被正确更新
@@ -396,7 +409,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   const photoRequired = competition?.participantRequirements?.requirePhoto === true;
 
   return (
-    <Dialog open={open} onClose={!submitting ? onClose : null} maxWidth="md" fullWidth>
+    <><Dialog open={open} onClose={!submitting ? onClose : null} maxWidth="md" fullWidth>
       <DialogTitle>{editData ? '编辑参赛者' : '添加参赛者'}</DialogTitle>
       <DialogContent dividers>
         {loading ? (
@@ -472,8 +485,9 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 value={formData.schoolName}
                 onChange={handleChange}
                 error={!!errors.schoolName}
-                helperText={errors.schoolName || "集体项目将以此作为队伍名称"}
+                helperText={errors.schoolName || (editTrampolineCoaches && canManageTestStatus ? '此处保存仅修改当前报名；整个单位改名请使用下方入口' : '集体项目将以此作为队伍名称')}
               />
+              {editTrampolineCoaches && canManageTestStatus && <Button size="small" disabled={submitting} sx={{ mt: 1 }} onClick={() => setRenameUnitOpen(true)}>整个单位统一更名</Button>}
             </Grid>
 
             <Grid item xs={12} sm={6}>
@@ -682,6 +696,26 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               />
             </Grid>
 
+            {editTrampolineCoaches ? <Grid item xs={12}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>教练资料（选填，已填写{getFilledTrampolineCoaches(coaches).length}名）</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>以下为当前报名关联的全部教练。保存仅修改当前报名，系统会核验本单位累计教练名额。</Typography>
+              {coaches.length === 0 && <Typography color="text.secondary" sx={{ mb: 2 }}>未填写教练资料</Typography>}
+              {coaches.map((coach, index) => <Box key={index} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2, mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography>教练{index + 1}</Typography>
+                  <Button color="error" size="small" disabled={submitting} onClick={() => setCoaches(prev => prev.filter((_, i) => i !== index))}>删除教练{index + 1}</Button>
+                </Box>
+                <Grid container spacing={2}>
+                  {['name', 'phone'].map(field => <Grid item xs={12} sm={6} key={field}>
+                    <TextField fullWidth label={`教练${index + 1}${field === 'name' ? '姓名' : '电话'}`} value={coach[field]} disabled={submitting}
+                      inputProps={{ maxLength: field === 'name' ? 50 : 30 }}
+                      onChange={event => setCoaches(prev => prev.map((person, i) => i === index ? { ...person, [field]: event.target.value } : person))} />
+                  </Grid>)}
+                </Grid>
+              </Box>)}
+              {errors.coaches && <Alert severity="error" sx={{ mb: 2 }}>{errors.coaches}</Alert>}
+              <Button variant="outlined" disabled={submitting} onClick={() => setCoaches(prev => [...prev, { name: '', phone: '' }])}>添加教练</Button>
+            </Grid> : <>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -701,6 +735,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
                 onChange={handleChange}
               />
             </Grid>
+            </>}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -736,6 +771,9 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
         </Button>
       </DialogActions>
     </Dialog>
+    {editTrampolineCoaches && canManageTestStatus && <RenameTrampolineUnitDialog open={open && renameUnitOpen} competitionId={competitionId}
+      originalName={editData.schoolName || ''} initialName={formData.schoolName} onClose={() => setRenameUnitOpen(false)} onSuccess={result => { setRenameUnitOpen(false); onSuccess(result); }} />}
+    </>
   );
 };
 

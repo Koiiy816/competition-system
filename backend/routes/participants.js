@@ -10,6 +10,7 @@ router.post('/trampoline-batch', auth, authorize('organization'), uploadTrampoli
   participantController.createTrampolineBatch);
 router.post('/trampoline-check', auth, authorize('organization'), participantController.checkTrampolineRegistration);
 router.post('/trampoline-coach-quota', auth, authorize('organization'), participantController.getTrampolineCoachQuota);
+router.put('/trampoline-unit-name', auth, authorize('admin', 'chief_referee'), participantController.renameTrampolineUnit);
 
 router.get('/athlete-identities', auth, authorize('admin', 'chief_referee', 'organization'), require('../controllers/athleteIdentityController').list);
 router.post('/athlete-identities/merge-preview', auth, authorize('admin'), require('../controllers/athleteIdentityController').previewMerge);

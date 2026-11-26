@@ -2,6 +2,7 @@ const { createHash, randomUUID } = require('crypto');
 const Participant = require('../models/Participant');
 const Lock = require('../models/TrampolineRegistrationLock');
 const { getCompetitionSportType, SPORT_TYPES } = require('./competitionType');
+const { normalizeTrampolineCoaches } = require('./trampolineRegistration');
 
 const normalize = value => String(value || '').replace(/\s+/g, '').toUpperCase();
 const normalizeTrampolineUnit = normalize;
@@ -41,14 +42,12 @@ const getTrampolineQuotaPreview = async (competitionId, rows) => {
   return getTrampolineUnitQuota(existing, rows);
 };
 
-// 同一赛事、同一单位的“读取累计名额→保存”必须串行，避免并发拆单绕过。
-const withTrampolineCoachQuota = async (competition, rows, replaced, write) => {
-  if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return write();
-  const units = [...new Set([...rows, ...replaced].map(row => normalize(row.schoolName)).filter(Boolean))].sort();
+const withTrampolineUnitLocks = async (competitionId, names, write) => {
+  const units = [...new Set(names.map(normalize).filter(Boolean))].sort();
   const owner = randomUUID(), held = [];
   try {
     for (const unit of units) {
-      const key = createHash('sha256').update(JSON.stringify([String(competition._id), unit])).digest('hex');
+      const key = createHash('sha256').update(JSON.stringify([String(competitionId), unit])).digest('hex');
       try {
         await Lock.findOneAndUpdate({ _id: key, expiresAt: { $lte: new Date() } },
           { $set: { owner, expiresAt: new Date(Date.now() + 5 * 60 * 1000) } }, { upsert: true, new: true });
@@ -59,6 +58,17 @@ const withTrampolineCoachQuota = async (competition, rows, replaced, write) => {
         busy.statusCode = 409; throw busy;
       }
     }
+    return await write();
+  } finally {
+    await Promise.all(held.map(_id => Lock.deleteOne({ _id, owner }).catch(error => console.error('释放蹦床单位报名锁失败:', error.message))));
+  }
+};
+
+// 同一赛事、同一单位的“读取累计名额→保存”必须串行，避免并发拆单绕过。
+const withTrampolineCoachQuota = async (competition, rows, replaced, write) => {
+  if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return write();
+  const units = [...new Set([...rows, ...replaced].map(row => normalize(row.schoolName)).filter(Boolean))];
+  return withTrampolineUnitLocks(competition._id, units, async () => {
     const existing = await loadRows(competition._id);
     for (const unit of units) {
       const quota = getTrampolineUnitQuota(existing.filter(row => normalize(row.schoolName) === unit),
@@ -66,13 +76,22 @@ const withTrampolineCoachQuota = async (competition, rows, replaced, write) => {
       if (quota.error) { const error = new Error(quota.error); error.statusCode = 409; throw error; }
     }
     return await write();
-  } finally {
-    await Promise.all(held.map(_id => Lock.deleteOne({ _id, owner }).catch(error => console.error('释放蹦床单位报名锁失败:', error.message))));
-  }
+  });
 };
 
 // 旧编辑表单只修改第一名教练的字段时，同步共享资料，避免留下两套不同的教练名单。
 const syncTrampolineCoachContacts = (participant, changes) => {
+  if (Object.hasOwn(changes, 'trampolineCoaches')) {
+    let coaches;
+    try {
+      const value = typeof changes.trampolineCoaches === 'string' ? JSON.parse(changes.trampolineCoaches) : changes.trampolineCoaches;
+      coaches = normalizeTrampolineCoaches(value);
+    } catch (error) { error.statusCode = 400; throw error; }
+    const { trampolineCoaches, ...fields } = changes;
+    const info = { ...participant.additionalInfo, ...changes.additionalInfo };
+    return { ...fields, coach: coaches[0]?.name || '', coachPhone: coaches[0]?.phone || '',
+      additionalInfo: { ...info, trampolineStaff: { ...info.trampolineStaff, coaches } } };
+  }
   const info = changes.additionalInfo || participant.additionalInfo;
   const staff = info?.trampolineStaff;
   if (!Array.isArray(staff?.coaches)) return changes;
@@ -85,4 +104,4 @@ const syncTrampolineCoachContacts = (participant, changes) => {
     additionalInfo: { ...info, trampolineStaff: { ...staff, coaches } } };
 };
 
-module.exports = { getTrampolineUnitQuota, normalizeTrampolineUnit, getTrampolineQuotaPreview, withTrampolineCoachQuota, syncTrampolineCoachContacts };
+module.exports = { getTrampolineUnitQuota, normalizeTrampolineUnit, getTrampolineQuotaPreview, withTrampolineCoachQuota, withTrampolineUnitLocks, syncTrampolineCoachContacts };

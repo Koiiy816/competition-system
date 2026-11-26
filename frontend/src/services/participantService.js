@@ -14,6 +14,14 @@ const hasManagementPermission = () => {
  * @namespace participantService
  */
 const participantService = {
+  renameTrampolineUnit: async (competitionId, data) => {
+    try {
+      const response = await api.put(`/competitions/${competitionId}/participants/trampoline-unit-name`, data);
+      return response.data;
+    } catch (error) {
+      throw error.response ? error.response.data : { message: '单位更名失败' };
+    }
+  },
   updateRegistrationContent: async (competitionId, participantId, data) => {
     try {
       const response = await api.put(`/competitions/${competitionId}/participants/${participantId}/registration-content`, data);

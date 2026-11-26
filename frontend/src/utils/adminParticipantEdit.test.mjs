@@ -28,6 +28,7 @@ compiled.require = spec => {
   if (spec.includes('competitionService')) return { getCompetition: async () => ({ data: testCompetition }) };
   if (spec.includes('participantService')) return { updateParticipant: async (...args) => updates.push(args) };
   if (spec.includes('AthleteIdentitySelect')) return () => null;
+  if (spec.includes('RenameTrampolineUnitDialog')) return () => null;
   return originalRequire(spec);
 };
 compiled._compile(transformed.code, filename);
@@ -49,7 +50,7 @@ for (const edit of [false, true]) {
       assert.doesNotThrow(() => effects[0]());
       await Promise.resolve();
       const form = render(props);
-      assert.equal(form.props.children[0].props.children, edit ? '编辑参赛者' : '添加参赛者');
+      assert.ok(elements(form).some(node => node.props.children === (edit ? '编辑参赛者' : '添加参赛者')));
       assert.ok(states.some(value => typeof value === 'string' && /^[0-9a-f]{8}-/.test(value)));
       if (edit) assert.ok(states.includes('AT-existing'));
       render({ ...props, open: false });
@@ -101,6 +102,8 @@ test('administrator can save a collective registration with an empty team number
   assert.equal(updates.length, 1);
   assert.equal(updates[0][2].groupTeam, '');
   assert.equal(updates[0][2].athleteNumber, 'AT-existing');
+  assert.equal(Object.hasOwn(updates[0][2], 'trampolineCoaches'), false);
+  assert.ok(!elements(form).some(node => node.props.children === '整个单位统一更名'));
 });
 
 test('new collective registrations still require a team number', async () => {
@@ -127,5 +130,61 @@ test('管理员编辑蹦床报名使用简洁组别与项目名称，并隐藏�
     const option = nodes.find(e => e.props.value === '小网幼儿组蹦床操' && e.props.children?.[0] === '蹦床操');
     assert.equal(option?.props.children[0], '蹦床操');
     assert.ok(!nodes.some(e => e.props.name === 'groupTeam'));
+  } finally { testCompetition = previous; }
+});
+
+test('蹦床编辑显示全部教练，可修改第二名并将完整名单提交', async () => {
+  const previous = testCompetition;
+  try {
+    testCompetition = { sportType: 'trampoline', events: [{ name: '大网U8组蹦床个人', ageGroups: ['大网U8组'] }] };
+    states = []; updates.length = 0;
+    const coaches = [{ name: '教练甲', phone: '123' }, { name: '教练乙', phone: '456' }];
+    const props = { open: true, competitionId: 'competition', onSuccess: () => {}, editData: {
+      _id: 'entry', name: '选手', schoolName: '测试单位', event: '大网U8组蹦床个人', grade: '大网U8组', gender: 'male',
+      coach: '教练甲', coachPhone: '123', additionalInfo: { trampolineStaff: { coaches } }
+    } };
+    render(props); await effects[0]();
+    let nodes = elements(render(props));
+    assert.equal(nodes.find(e => e.props.label === '教练1姓名').props.value, '教练甲');
+    assert.equal(nodes.find(e => e.props.label === '教练2姓名').props.value, '教练乙');
+    assert.equal(nodes.find(e => e.props.label === '教练2电话').props.value, '456');
+    assert.ok(!nodes.some(e => e.props.name === 'coach'));
+    const rename = nodes.find(e => e.props.children === '整个单位统一更名');
+    assert.ok(rename);
+    rename.props.onClick();
+    const renameDialog = elements(render(props)).find(e => e.props.originalName === '测试单位');
+    assert.equal(renameDialog.props.open, true);
+    assert.equal(renameDialog.props.competitionId, 'competition');
+    nodes.find(e => e.props.label === '教练2电话').props.onChange({ target: { value: '789' } });
+    nodes.find(e => e.props.onReady).props.onReady(true);
+    nodes = elements(render(props));
+    await nodes.find(e => e.props.children === '保存修改').props.onClick();
+    assert.equal(updates.length, 1);
+    assert.deepEqual(updates[0][2].trampolineCoaches, [coaches[0], { name: '教练乙', phone: '789' }]);
+  } finally { testCompetition = previous; }
+});
+
+test('蹦床编辑可以删除任意教练并清空全部，空白资料不强制填写', async () => {
+  const previous = testCompetition;
+  try {
+    testCompetition = { sportType: 'trampoline', events: [{ name: '大网U8组蹦床个人', ageGroups: ['大网U8组'] }] };
+    states = []; updates.length = 0;
+    const props = { open: true, competitionId: 'competition', onSuccess: () => {}, editData: {
+      _id: 'entry', name: '选手', schoolName: '测试单位', event: '大网U8组蹦床个人', grade: '大网U8组', gender: 'male',
+      coach: '甲', coachPhone: '123', additionalInfo: { trampolineStaff: { coaches: [{ name: '甲', phone: '123' }, { name: '乙', phone: '456' }] } }
+    } };
+    render(props); await effects[0]();
+    let nodes = elements(render(props));
+    const buttonText = e => Array.isArray(e.props.children) ? e.props.children.join('') : e.props.children;
+    nodes.find(e => e.props.onClick && buttonText(e) === '删除教练1').props.onClick();
+    nodes = elements(render(props));
+    assert.equal(nodes.find(e => e.props.label === '教练1姓名').props.value, '乙');
+    assert.ok(!nodes.some(e => e.props.label === '教练2姓名'));
+    nodes.find(e => e.props.onClick && buttonText(e) === '删除教练1').props.onClick();
+    nodes = elements(render(props));
+    assert.ok(!nodes.some(e => /^教练\d姓名$/.test(e.props.label || '')));
+    nodes.find(e => e.props.onReady).props.onReady(true);
+    await elements(render(props)).find(e => e.props.children === '保存修改').props.onClick();
+    assert.deepEqual(updates[0][2].trampolineCoaches, []);
   } finally { testCompetition = previous; }
 });
