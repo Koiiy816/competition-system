@@ -106,6 +106,8 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationDocumentArchiveUserId, setRegistrationDocumentArchiveUserId] = useState('');
   const [registrationDocumentDeletingUserId, setRegistrationDocumentDeletingUserId] = useState('');
   const [registrationDocumentDeletingAttachmentId, setRegistrationDocumentDeletingAttachmentId] = useState('');
+  const [registrationDocumentPreview, setRegistrationDocumentPreview] = useState(null);
+  const [registrationDocumentPreviewLoading, setRegistrationDocumentPreviewLoading] = useState('');
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
@@ -298,6 +300,65 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
       setRegistrationDocumentArchiveUserId('');
     }
   };
+
+  const closeRegistrationDocumentPreview = () => setRegistrationDocumentPreview(null);
+
+  const previewRegistrationDocumentAttachment = async (unit, attachment) => {
+    if (!filters.competitionId || !unit?.userId || !attachment?._id) return;
+    if (!String(attachment.mimetype || '').startsWith('image/')) {
+      setError('当前仅支持直接预览图片文件；PDF 等其他文件请单独下载查看。');
+      return;
+    }
+    setRegistrationDocumentPreviewLoading(attachment._id);
+    setError('');
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview/${unit.userId}/attachments/${attachment._id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || '预览材料失败');
+      }
+      const blob = await response.blob();
+      setRegistrationDocumentPreview({ name: attachment.originalName, url: URL.createObjectURL(blob) });
+    } catch (previewError) {
+      setError(previewError.message || '预览材料失败');
+    } finally {
+      setRegistrationDocumentPreviewLoading('');
+    }
+  };
+
+  const downloadRegistrationDocumentAttachment = async (unit, attachment) => {
+    if (!filters.competitionId || !unit?.userId || !attachment?._id) return;
+    setRegistrationDocumentPreviewLoading(attachment._id);
+    setError('');
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview/${unit.userId}/attachments/${attachment._id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || '下载材料失败');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = attachment.originalName || '报名材料';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (downloadError) {
+      setError(downloadError.message || '下载材料失败');
+    } finally {
+      setRegistrationDocumentPreviewLoading('');
+    }
+  };
+
+  useEffect(() => () => {
+    if (registrationDocumentPreview?.url) URL.revokeObjectURL(registrationDocumentPreview.url);
+  }, [registrationDocumentPreview]);
 
   const deleteRegistrationDocumentArchive = async (unit) => {
     if (!filters.competitionId || !unit?.userId) return;
@@ -2568,6 +2629,27 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                     {deleting ? '正在删除…' : '删除全部材料'}
                                   </Button>
                                 </Box>
+                                {(() => {
+                                  const participantIds = unit.athletes.flatMap(athlete => athlete.ids);
+                                  const unassociatedAttachments = (unit.attachments || []).filter(file => !participantIds.includes(String(file.participant)));
+                                  return unassociatedAttachments.length > 0 && <Box sx={{ mb: 1, py: 0.75, pl: 1, borderLeft: '2px solid', borderColor: 'warning.main', bgcolor: 'warning.50' }}>
+                                    <Typography variant="body2" fontWeight="medium">未关联具体选手的材料（{unassociatedAttachments.length} 份）</Typography>
+                                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>这些文件已上传，但不会计入某名选手的提交状态；可预览确认后单独删除并重新按选手上传。</Typography>
+                                    {unassociatedAttachments.map(file => {
+                                      const label = registrationDocumentSlots.find(slot => slot.key === file.type)?.label || file.type;
+                                      const deletingFile = registrationDocumentDeletingAttachmentId === file._id;
+                                      const loadingFile = registrationDocumentPreviewLoading === file._id;
+                                      const imageFile = String(file.mimetype || '').startsWith('image/');
+                                      return <Box key={file._id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                        {imageFile && <PhotoIcon color="primary" fontSize="small" />}
+                                        <Typography variant="caption" color="text.secondary">{label}：{file.originalName}{file.uploadedAt ? `（${new Date(file.uploadedAt).toLocaleString('zh-CN')}）` : ''}</Typography>
+                                        {imageFile && <Tooltip title="预览图片"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => previewRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <VisibilityIcon fontSize="small" />}</IconButton></span></Tooltip>}
+                                        <Tooltip title="单独下载这份材料"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => downloadRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <DownloadIcon fontSize="small" />}</IconButton></span></Tooltip>
+                                        <Tooltip title="删除这一份材料"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentDeletingAttachmentId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => deleteRegistrationDocumentAttachmentAsAdmin(unit, file)}>{deletingFile ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
+                                      </Box>;
+                                    })}
+                                  </Box>;
+                                })()}
                                 {unit.athletes.length === 0 ? <Typography variant="caption" color="text.secondary">该单位报名已清空；如不需要继续留档，可删除全部材料。</Typography> : unit.athletes.map(athlete => {
                                   const athleteAttachments = (unit.attachments || []).filter(file => athlete.ids.includes(String(file.participant)));
                                   return <Box key={`${unit.userId}-${athlete.name}`} sx={{ py: 0.75, borderTop: '1px solid', borderColor: 'divider' }}>
@@ -2582,8 +2664,13 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                       {athleteAttachments.map(file => {
                                         const label = registrationDocumentSlots.find(slot => slot.key === file.type)?.label || file.type;
                                         const deletingFile = registrationDocumentDeletingAttachmentId === file._id;
+                                        const loadingFile = registrationDocumentPreviewLoading === file._id;
+                                        const imageFile = String(file.mimetype || '').startsWith('image/');
                                         return <Box key={file._id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                                          {imageFile && <PhotoIcon color="primary" fontSize="small" />}
                                           <Typography variant="caption" color="text.secondary">{label}：{file.originalName}{file.uploadedAt ? `（${new Date(file.uploadedAt).toLocaleString('zh-CN')}）` : ''}</Typography>
+                                          {imageFile && <Tooltip title="预览图片"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => previewRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <VisibilityIcon fontSize="small" />}</IconButton></span></Tooltip>}
+                                          <Tooltip title="单独下载这份材料"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => downloadRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <DownloadIcon fontSize="small" />}</IconButton></span></Tooltip>
                                           <Tooltip title="删除这一份选手材料"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentDeletingAttachmentId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => deleteRegistrationDocumentAttachmentAsAdmin(unit, file)}>{deletingFile ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
                                         </Box>;
                                       })}
@@ -2801,6 +2888,14 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
             关闭
           </Button>
         </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(registrationDocumentPreview)} onClose={closeRegistrationDocumentPreview} maxWidth="lg" fullWidth>
+        <DialogTitle>{registrationDocumentPreview?.name || '材料图片预览'}</DialogTitle>
+        <DialogContent dividers sx={{ display: 'flex', justifyContent: 'center', bgcolor: 'grey.100', minHeight: 240 }}>
+          {registrationDocumentPreview?.url && <Box component="img" src={registrationDocumentPreview.url} alt={registrationDocumentPreview.name} sx={{ maxWidth: '100%', maxHeight: '72vh', objectFit: 'contain' }} />}
+        </DialogContent>
+        <DialogActions><Button onClick={closeRegistrationDocumentPreview}>关闭</Button></DialogActions>
       </Dialog>
 
       <MergeAthleteDialog open={mergeAthleteOpen} competitionId={filters.competitionId} onClose={() => setMergeAthleteOpen(false)} onSuccess={async result => {

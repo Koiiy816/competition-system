@@ -18,6 +18,7 @@ router.post('/athlete-identities/merge', auth, authorize('admin'), require('../c
 router.get('/registration-documents', auth, authorize('organization'), participantController.getRegistrationDocuments);
 router.get('/registration-documents/overview', auth, authorize('admin'), participantController.getRegistrationDocumentOverview);
 router.get('/registration-documents/overview/:userId/archive', auth, authorize('admin'), participantController.downloadRegistrationDocumentArchive);
+router.get('/registration-documents/overview/:userId/attachments/:attachmentId', auth, authorize('admin'), participantController.viewRegistrationDocumentAttachmentAsAdmin);
 router.delete('/registration-documents/overview/:userId/attachments/:attachmentId', auth, authorize('admin'), participantController.deleteRegistrationDocumentAttachmentAsAdmin);
 router.delete('/registration-documents/overview/:userId', auth, authorize('admin'), participantController.deleteRegistrationDocumentArchive);
 

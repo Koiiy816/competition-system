@@ -921,7 +921,8 @@ exports.getRegistrationDocumentOverview = async (req, res, next) => {
         attachmentCount: document.attachments.length,
         attachments: document.attachments.map(attachment => ({
           _id: String(attachment._id), type: attachment.type, participant: attachment.participant,
-          originalName: attachment.originalName, uploadedAt: attachment.uploadedAt
+          originalName: attachment.originalName, mimetype: attachment.mimetype, size: attachment.size,
+          uploadedAt: attachment.uploadedAt
         })),
         athletes: athleteGroups
       };
@@ -968,6 +969,33 @@ exports.downloadRegistrationDocumentArchive = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// 管理员在线查看或单独下载某一份报名材料。图片可在总览中直接预览，其他文件保持下载处理。
+exports.viewRegistrationDocumentAttachmentAsAdmin = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
+
+    const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.params.userId });
+    if (!document) return res.status(404).json({ success: false, message: '未找到该单位的报名材料' });
+    const attachmentId = String(req.params.attachmentId || '');
+    const legacyType = attachmentId.replace(/^legacy-/, '');
+    const attachment = attachmentId.startsWith('legacy-') && REGISTRATION_DOCUMENT_TYPES.includes(legacyType)
+      ? document[legacyType]
+      : document.attachments.id(attachmentId);
+    if (!attachment?.filename) return res.status(404).json({ success: false, message: '未找到该材料' });
+
+    const filePath = path.join(__dirname, '..', 'uploads', 'registration-documents', path.basename(attachment.filename || ''));
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: '服务器上的材料文件不存在' });
+
+    const safeName = String(attachment.originalName || attachment.filename || '报名材料').replace(/[\r\n"]/g, '_');
+    res.setHeader('Content-Type', attachment.mimetype || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(safeName)}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.sendFile(filePath);
+  } catch (error) { next(error); }
+};
+
 // 管理员删除某参赛单位在本赛事留下的全部材料及服务器原文件。
 exports.deleteRegistrationDocumentArchive = async (req, res, next) => {
   try {
@@ -994,8 +1022,17 @@ exports.deleteRegistrationDocumentAttachmentAsAdmin = async (req, res, next) => 
     if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
     const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.params.userId });
     if (!document) return res.status(404).json({ success: false, message: '未找到该单位的报名材料' });
-    const attachment = document.attachments.id(req.params.attachmentId);
-    if (!attachment) return res.status(404).json({ success: false, message: '未找到该材料，历史单文件请使用删除全部材料' });
+    const attachmentId = String(req.params.attachmentId || '');
+    const legacyType = attachmentId.replace(/^legacy-/, '');
+    if (attachmentId.startsWith('legacy-') && REGISTRATION_DOCUMENT_TYPES.includes(legacyType) && document[legacyType]?.filename) {
+      const filename = document[legacyType].filename;
+      document.set(legacyType, undefined);
+      await document.save();
+      removeStoredRegistrationDocument(filename);
+      return res.status(200).json({ success: true, message: '历史材料已删除' });
+    }
+    const attachment = document.attachments.id(attachmentId);
+    if (!attachment) return res.status(404).json({ success: false, message: '未找到该材料' });
     const filename = attachment.filename;
     attachment.deleteOne();
     await document.save();
