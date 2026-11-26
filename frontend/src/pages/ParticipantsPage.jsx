@@ -3004,8 +3004,8 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           }}
           competitionId={filters.competitionId}
           editData={editingParticipant}
-          onSuccess={async () => {
-            setSuccessMessage(editingParticipant ? '参赛者修改成功' : '参赛者添加成功');
+          onSuccess={async (result) => {
+            setSuccessMessage(result?.message || (editingParticipant ? '参赛者修改成功' : '参赛者添加成功'));
             setAddParticipantDialogOpen(false);
             setEditingParticipant(null);
             await refreshLists(); // 统一调用刷新列表方法

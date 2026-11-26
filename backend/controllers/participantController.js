@@ -3,7 +3,7 @@ const { resolveAthleteNumber } = require('../utils/athleteIdentity');
 const { validateTrampolineRegistration, normalizeTrampolineStaff } = require('../utils/trampolineRegistration');
 const { getTrampolineRegistrationKey, findTrampolineDuplicate, isTrampolineDuplicateError, getTrampolineBirthDateError, findTrampolineIdentityConflict } = require('../utils/trampolineIdentity');
 const { bindTrampolineIdentities } = require('../utils/trampolineIdentityBinding');
-const { getTrampolineQuotaPreview, withTrampolineCoachQuota, syncTrampolineCoachContacts, normalizeTrampolineUnit } = require('../utils/trampolineCoachQuota');
+const { getTrampolineQuotaPreview, getTrampolineUnitQuota, withTrampolineCoachQuota, withTrampolineUnitLocks, syncTrampolineCoachContacts, normalizeTrampolineUnit } = require('../utils/trampolineCoachQuota');
 const { normalizeTrampolinePlan, isLargeTrampolineEvent } = require('../utils/trampolinePlan');
 const Competition = require('../models/Competition');
 const RegistrationDocument = require('../models/RegistrationDocument');
@@ -1103,6 +1103,43 @@ exports.deleteRegistrationDocument = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// 整个单位更名先锁定原名和新名，再按最终名单核验，不逐名搬移。
+exports.renameTrampolineUnit = async (req, res, next) => {
+  try {
+    const { oldSchoolName, newSchoolName } = req.body;
+    if ([oldSchoolName, newSchoolName].some(value => typeof value !== 'string' || !value.trim() || value.trim().length > 100)) {
+      return res.status(400).json({ success: false, message: '请填写原单位和新单位名称，名称最多100字' });
+    }
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '整单位更名仅适用于蹦床赛事' });
+    const source = normalizeTrampolineUnit(oldSchoolName), target = normalizeTrampolineUnit(newSchoolName);
+    const data = await withTrampolineUnitLocks(competition._id, [source, target], async () => {
+      const existing = await Participant.find({ competition: competition._id }).lean();
+      const rows = existing.filter(row => normalizeTrampolineUnit(row.schoolName) === source);
+      if (!rows.length) { const error = new Error('未找到原单位的报名，请刷新后重试'); error.statusCode = 404; throw error; }
+      if (source !== target && existing.some(row => normalizeTrampolineUnit(row.schoolName) === target)) {
+        const error = new Error('新名称已存在对应的参赛单位，请核对名称；统一更名不能合并两个单位'); error.statusCode = 409; throw error;
+      }
+      const quota = getTrampolineUnitQuota(rows);
+      if (quota.error) { const error = new Error(quota.error); error.statusCode = 409; throw error; }
+      const name = newSchoolName.trim();
+      const updatedAt = new Date(Math.max(Date.now(), ...rows.map(row => new Date(row.updatedAt || 0).getTime() + 1)));
+      await Participant.updateMany({ competition: competition._id, _id: { $in: rows.map(row => row._id) } }, [{ $set: {
+        schoolName: { $literal: name }, updatedAt: { $literal: updatedAt },
+        // 保留自定义队名与队员姓名，仅同步由单位名称生成的队名。
+        teamName: { $cond: [{ $eq: ['$teamName', '$schoolName'] }, { $literal: name }, '$teamName'] },
+        name: { $cond: [{ $and: [{ $eq: ['$isVirtualTeam', true] }, { $eq: ['$name', '$schoolName'] }] }, { $literal: name }, '$name'] }
+      } }]);
+      return { schoolName: name, registrationCount: rows.filter(row => !row.isVirtualTeam).length, athleteCount: quota.athleteCount, coachCount: quota.coachCount };
+    });
+    return res.status(200).json({ success: true, data, message: `单位已统一更名为“${data.schoolName}”，已更新${data.registrationCount}条报名` });
+  } catch (error) {
+    if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
+    next(error);
+  }
+};
+
 exports.updateParticipant = async (req, res, next) => {
   try {
     let participant = await Participant.findById(req.params.id);
@@ -1204,7 +1241,11 @@ exports.updateParticipant = async (req, res, next) => {
 
     req.body.updatedAt = new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1));
     const quotaCompetition = await Competition.findById(participant.competition);
-    if (getCompetitionSportType(quotaCompetition) === SPORT_TYPES.TRAMPOLINE) Object.assign(req.body, syncTrampolineCoachContacts(participant.toObject(), req.body));
+    if (getCompetitionSportType(quotaCompetition) === SPORT_TYPES.TRAMPOLINE) {
+      const contacts = syncTrampolineCoachContacts(participant.toObject(), req.body);
+      delete req.body.trampolineCoaches;
+      Object.assign(req.body, contacts);
+    }
     participant = await withTrampolineCoachQuota(quotaCompetition, [{ ...participant.toObject(), ...req.body }], [participant.toObject()], () => Participant.findOneAndUpdate({ _id: req.params.id, updatedAt: participant.updatedAt }, req.body, {
       new: true,
       runValidators: true

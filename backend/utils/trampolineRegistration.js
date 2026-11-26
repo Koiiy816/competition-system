@@ -19,23 +19,27 @@ const validateTrampolineRegistration = (competition, body) => {
   return null;
 };
 
+const normalizeTrampolinePerson = (value, label) => {
+  const name = value?.name ?? '', phone = value?.phone ?? '';
+  if (typeof name !== 'string' || name.trim().length > 50 || typeof phone !== 'string' || phone.trim().length > 30) {
+    throw new Error(`${label}姓名最多50字，电话最多30字，请使用文本填写`);
+  }
+  return { name: name.trim(), phone: phone.trim() };
+};
+
+const normalizeTrampolineCoaches = values => {
+  if (!Array.isArray(values)) throw new Error('教练资料格式不正确');
+  const coaches = values.map((value, index) => normalizeTrampolinePerson(value, `教练${index + 1}`))
+    .filter(value => value.name || value.phone);
+  if (new Set(coaches.map(value => `${value.name.toLowerCase()}|${value.phone}`)).size !== coaches.length) throw new Error('请勿重复添加同一名教练');
+  return coaches;
+};
+
 const normalizeTrampolineStaff = (staff, participants) => {
   if (!Array.isArray(participants) || !participants.length) throw new Error('请先添加运动员');
   const missing = participants.findIndex(row => !String(row?.idCard || '').trim());
   if (missing !== -1) throw new Error(`第${missing + 1}条报名（${participants[missing]?.name || '未填写姓名'}）：请填写运动员证件号码`);
-  const person = (value, label) => {
-    const name = value?.name ?? '', phone = value?.phone ?? '';
-    if (typeof name !== 'string' || name.trim().length > 50 || typeof phone !== 'string' || phone.trim().length > 30) {
-      throw new Error(`${label}姓名最多50字，电话最多30字，请使用文本填写`);
-    }
-    return { name: name.trim(), phone: phone.trim() };
-  };
-  const leader = person(staff?.leader, '领队');
-  if (staff?.coaches != null && !Array.isArray(staff.coaches)) throw new Error('教练资料格式不正确');
-  const coaches = (staff?.coaches || []).map((value, index) => person(value, `教练${index + 1}`))
-    .filter(value => value.name || value.phone);
-  if (new Set(coaches.map(value => `${value.name.toLowerCase()}|${value.phone}`)).size !== coaches.length) throw new Error('请勿重复添加同一名教练');
-  return { leader, coaches };
+  return { leader: normalizeTrampolinePerson(staff?.leader, '领队'), coaches: normalizeTrampolineCoaches(staff?.coaches ?? []) };
 };
 
-module.exports = { validateTrampolineRegistration, normalizeTrampolineStaff };
+module.exports = { validateTrampolineRegistration, normalizeTrampolineStaff, normalizeTrampolineCoaches };

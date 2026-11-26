@@ -1,6 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getTrampolineAthleteCount, getTrampolineCoachLimit, validateTrampolineStaff, findTrampolineDuplicate, findTrampolineIdentityConflict } from './trampolineStaff.js';
+import { getTrampolineAthleteCount, getTrampolineCoachLimit, validateTrampolineStaff, findTrampolineDuplicate, findTrampolineIdentityConflict, getTrampolineParticipantCoaches } from './trampolineStaff.js';
+
+test('编辑读取完整教练名单，兼容旧字段，显示不同电话的额外记录且不重复显示第一名', () => {
+  const a = { name: '甲', phone: '123' }, b = { name: '乙', phone: '456' };
+  const participant = { coach: '甲', coachPhone: '123', additionalInfo: { trampolineStaff: { coaches: [a, b] } } };
+  assert.deepEqual(getTrampolineParticipantCoaches(participant), [a, b]);
+  assert.deepEqual(getTrampolineParticipantCoaches({ coach: '甲', coachPhone: '123' }), [a]);
+  assert.deepEqual(getTrampolineParticipantCoaches({ ...participant, coachPhone: '789' }), [a, b, { name: '甲', phone: '789' }]);
+  assert.deepEqual(getTrampolineParticipantCoaches({}), []);
+});
 
 test('同一运动员多项目只计一人，5/6/10/11人的教练限额正确', () => {
   assert.equal(getTrampolineAthleteCount([{ idCard: 'ABC' }, { idCard: ' abc ' }]), 1);
