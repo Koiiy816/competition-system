@@ -33,12 +33,16 @@ import { getAgeGroupDisplayName, getEventDisplayName } from '../../utils/trampol
 const isDivingEntry = (competition) => isDivingCompetition(competition);
 const isLandDivingEntry = (participant = {}) => /陆上|陸上/.test([participant.event, participant.category].filter(Boolean).join(' '));
 const isStrengthEntry = (participant = {}) => /素质力量/.test([participant.event, participant.category].filter(Boolean).join(' '));
+const supportsAthleteIdentityBinding = (competition) => ['wushu', 'trampoline', 'diving'].includes(getSportType(competition));
 
 const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canManageTestStatus = user?.roles?.includes('admin') || user?.roles?.includes('chief_referee');
   const [competition, setCompetition] = useState(null);
+  // 武术保留新增和编辑时的编号关联；蹦床、跳水按当前需求仅在管理员编辑已有报名时提供关联。
+  const canManageAthleteIdentity = Boolean(canManageTestStatus && supportsAthleteIdentityBinding(competition)
+    && (editData || getSportType(competition) === 'wushu'));
   const groupTeamRequired = !isTrampolineCompetition(competition) && !(editData && user?.roles?.includes('admin'));
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -327,7 +331,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
   };
 
   const handleSubmit = async () => {
-    if (canManageTestStatus && getSportType(competition) === 'wushu' && !identityReady) { setError('请确认参赛者编号关联'); return; }
+    if (canManageAthleteIdentity && !identityReady) { setError('请确认参赛者编号关联'); return; }
     if (!validate()) return;
     
     setSubmitting(true);
@@ -339,7 +343,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
       const submitData = {
         ...formData,
         groupTeam: eventConfig?.isGroupEvent ? formData.groupTeam.trim() : '',
-        ...(getSportType(competition) === 'wushu' ? { athleteNumber, athleteRequestKey, ...(editData ? { updatedAt: editData.updatedAt } : {}) } : {}),
+        ...(canManageAthleteIdentity ? { athleteNumber, athleteRequestKey, ...(editData ? { updatedAt: editData.updatedAt } : {}) } : {}),
         grade: formData.grade, // 确保 grade 字段也被正确更新
         ageGroup: formData.grade, // 保持与前台报名一致，保存到 ageGroup 字段
         ...(editData ? {} : { status: 'approved' })
@@ -407,7 +411,7 @@ const AddParticipantModal = ({ open, onClose, competitionId, onSuccess, editData
               </Grid>
             )}
 
-            {canManageTestStatus && getSportType(competition) === 'wushu' && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
+            {canManageAthleteIdentity && <Grid item xs={12}><AthleteIdentitySelect competitionId={competitionId} value={athleteNumber} onChange={setAthleteNumber} onReady={setIdentityReady} disabled={submitting} /></Grid>}
             {showDivingPlan && (
               <Grid item xs={12}>
                 <Box sx={{ border: 1, borderColor: 'primary.light', borderRadius: 1, p: 2 }}>
