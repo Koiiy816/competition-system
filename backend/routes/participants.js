@@ -19,6 +19,7 @@ router.get('/registration-documents', auth, authorize('organization'), participa
 router.get('/registration-documents/overview', auth, authorize('admin'), participantController.getRegistrationDocumentOverview);
 router.get('/registration-documents/overview/:userId/archive', auth, authorize('admin'), participantController.downloadRegistrationDocumentArchive);
 router.get('/registration-documents/overview/:userId/attachments/:attachmentId', auth, authorize('admin'), participantController.viewRegistrationDocumentAttachmentAsAdmin);
+router.patch('/registration-documents/overview/:userId/attachments/:attachmentId', auth, authorize('admin'), participantController.assignRegistrationDocumentAttachmentAsAdmin);
 router.delete('/registration-documents/overview/:userId/attachments/:attachmentId', auth, authorize('admin'), participantController.deleteRegistrationDocumentAttachmentAsAdmin);
 router.delete('/registration-documents/overview/:userId', auth, authorize('admin'), participantController.deleteRegistrationDocumentArchive);
 

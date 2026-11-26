@@ -108,6 +108,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   const [registrationDocumentDeletingAttachmentId, setRegistrationDocumentDeletingAttachmentId] = useState('');
   const [registrationDocumentPreview, setRegistrationDocumentPreview] = useState(null);
   const [registrationDocumentPreviewLoading, setRegistrationDocumentPreviewLoading] = useState('');
+  const [registrationDocumentAssociation, setRegistrationDocumentAssociation] = useState(null);
+  const [registrationDocumentAssociationTarget, setRegistrationDocumentAssociationTarget] = useState('');
+  const [registrationDocumentAssociationSaving, setRegistrationDocumentAssociationSaving] = useState(false);
   const [registrationDocumentUploading, setRegistrationDocumentUploading] = useState('');
   const [registrationDocumentParticipantId, setRegistrationDocumentParticipantId] = useState('');
   const [mergeAthleteOpen, setMergeAthleteOpen] = useState(false);
@@ -302,6 +305,57 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
   };
 
   const closeRegistrationDocumentPreview = () => setRegistrationDocumentPreview(null);
+
+  const openRegistrationDocumentAssociation = (unit, attachment) => {
+    setRegistrationDocumentAssociation({ unit, attachment });
+    const currentGroup = unit.athletes.find(athlete => athlete.ids.includes(String(attachment.participant)));
+    setRegistrationDocumentAssociationTarget(currentGroup?.ids[0] || '');
+  };
+
+  const closeRegistrationDocumentAssociation = () => {
+    if (registrationDocumentAssociationSaving) return;
+    setRegistrationDocumentAssociation(null);
+    setRegistrationDocumentAssociationTarget('');
+  };
+
+  const saveRegistrationDocumentAssociation = async () => {
+    const unit = registrationDocumentAssociation?.unit;
+    const attachment = registrationDocumentAssociation?.attachment;
+    if (!filters.competitionId || !unit?.userId || !attachment?._id || !registrationDocumentAssociationTarget) return;
+    setRegistrationDocumentAssociationSaving(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/competitions/${filters.competitionId}/participants/registration-documents/overview/${unit.userId}/attachments/${attachment._id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId: registrationDocumentAssociationTarget })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.message || '关联材料失败');
+      const nextAttachmentId = result.data?.attachmentId || attachment._id;
+      setRegistrationDocumentOverview(previous => previous.map(item => {
+        if (item.userId !== unit.userId) return item;
+        const attachments = item.attachments.map(file => String(file._id) === String(attachment._id)
+          ? { ...file, _id: nextAttachmentId, participant: registrationDocumentAssociationTarget }
+          : file);
+        return {
+          ...item,
+          attachments,
+          athletes: item.athletes.map(athlete => ({
+            ...athlete,
+            submittedTypes: registrationDocumentSlots.filter(({ key }) => attachments.some(file => file.type === key && athlete.ids.includes(String(file.participant))))
+          }))
+        };
+      }));
+      setSuccessMessage(result.message || '材料关联已保存。');
+      setRegistrationDocumentAssociation(null);
+      setRegistrationDocumentAssociationTarget('');
+    } catch (associationError) {
+      setError(associationError.message || '关联材料失败');
+    } finally {
+      setRegistrationDocumentAssociationSaving(false);
+    }
+  };
 
   const previewRegistrationDocumentAttachment = async (unit, attachment) => {
     if (!filters.competitionId || !unit?.userId || !attachment?._id) return;
@@ -2645,6 +2699,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                         <Typography variant="caption" color="text.secondary">{label}：{file.originalName}{file.uploadedAt ? `（${new Date(file.uploadedAt).toLocaleString('zh-CN')}）` : ''}</Typography>
                                         {imageFile && <Tooltip title="预览图片"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => previewRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <VisibilityIcon fontSize="small" />}</IconButton></span></Tooltip>}
                                         <Tooltip title="单独下载这份材料"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => downloadRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <DownloadIcon fontSize="small" />}</IconButton></span></Tooltip>
+                                        <Tooltip title="关联到选手"><span><IconButton size="small" color="primary" disabled={registrationDocumentAssociationSaving} onClick={() => openRegistrationDocumentAssociation(unit, file)}><PersonIcon fontSize="small" /></IconButton></span></Tooltip>
                                         <Tooltip title="删除这一份材料"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentDeletingAttachmentId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => deleteRegistrationDocumentAttachmentAsAdmin(unit, file)}>{deletingFile ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
                                       </Box>;
                                     })}
@@ -2671,6 +2726,7 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
                                           <Typography variant="caption" color="text.secondary">{label}：{file.originalName}{file.uploadedAt ? `（${new Date(file.uploadedAt).toLocaleString('zh-CN')}）` : ''}</Typography>
                                           {imageFile && <Tooltip title="预览图片"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => previewRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <VisibilityIcon fontSize="small" />}</IconButton></span></Tooltip>}
                                           <Tooltip title="单独下载这份材料"><span><IconButton size="small" color="primary" disabled={Boolean(registrationDocumentPreviewLoading)} onClick={() => downloadRegistrationDocumentAttachment(unit, file)}>{loadingFile ? <CircularProgress size={16} /> : <DownloadIcon fontSize="small" />}</IconButton></span></Tooltip>
+                                          <Tooltip title="更改关联选手"><span><IconButton size="small" color="primary" disabled={registrationDocumentAssociationSaving} onClick={() => openRegistrationDocumentAssociation(unit, file)}><PersonIcon fontSize="small" /></IconButton></span></Tooltip>
                                           <Tooltip title="删除这一份选手材料"><span><IconButton size="small" color="error" disabled={Boolean(registrationDocumentDeletingAttachmentId) || Boolean(registrationDocumentDeletingUserId)} onClick={() => deleteRegistrationDocumentAttachmentAsAdmin(unit, file)}>{deletingFile ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}</IconButton></span></Tooltip>
                                         </Box>;
                                       })}
@@ -2896,6 +2952,37 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
           {registrationDocumentPreview?.url && <Box component="img" src={registrationDocumentPreview.url} alt={registrationDocumentPreview.name} sx={{ maxWidth: '100%', maxHeight: '72vh', objectFit: 'contain' }} />}
         </DialogContent>
         <DialogActions><Button onClick={closeRegistrationDocumentPreview}>关闭</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(registrationDocumentAssociation)} onClose={closeRegistrationDocumentAssociation} maxWidth="sm" fullWidth>
+        <DialogTitle>关联材料到选手</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            {registrationDocumentAssociation?.attachment?.originalName || '该材料'} 将归入所选选手的材料记录；同一选手的多个报名项目会共同显示此材料。
+          </DialogContentText>
+          <FormControl fullWidth required>
+            <InputLabel id="registration-document-association-label">选择选手</InputLabel>
+            <Select
+              labelId="registration-document-association-label"
+              label="选择选手"
+              value={registrationDocumentAssociationTarget}
+              onChange={event => setRegistrationDocumentAssociationTarget(event.target.value)}
+              disabled={registrationDocumentAssociationSaving}
+            >
+              {registrationDocumentAssociation?.unit?.athletes.map(athlete => (
+                <MenuItem key={athlete.ids[0]} value={athlete.ids[0]}>
+                  {athlete.name}{athlete.ids.length > 1 ? `（${athlete.ids.length} 个报名项目）` : ''}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeRegistrationDocumentAssociation} disabled={registrationDocumentAssociationSaving}>取消</Button>
+          <Button variant="contained" onClick={saveRegistrationDocumentAssociation} disabled={!registrationDocumentAssociationTarget || registrationDocumentAssociationSaving}>
+            {registrationDocumentAssociationSaving ? '保存中…' : '确认关联'}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <MergeAthleteDialog open={mergeAthleteOpen} competitionId={filters.competitionId} onClose={() => setMergeAthleteOpen(false)} onSuccess={async result => {

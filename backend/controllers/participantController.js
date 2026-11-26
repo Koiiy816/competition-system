@@ -996,6 +996,43 @@ exports.viewRegistrationDocumentAttachmentAsAdmin = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
+// 管理员可在核验后把已有材料关联（或改关联）到同一参赛单位的指定选手，不必删除重传。
+exports.assignRegistrationDocumentAttachmentAsAdmin = async (req, res, next) => {
+  try {
+    const competition = await Competition.findById(req.params.competitionId);
+    if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
+    if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '报名材料功能仅适用于蹦床赛事' });
+
+    const participantId = String(req.body.participantId || '').trim();
+    if (!participantId) return res.status(400).json({ success: false, message: '请选择要关联的选手' });
+    const participant = await Participant.findOne({ _id: participantId, competition: competition._id, user: req.params.userId, isVirtualTeam: { $ne: true } }).select('_id name teamName');
+    if (!participant) return res.status(400).json({ success: false, message: '所选选手不属于该单位或本次比赛' });
+
+    const document = await RegistrationDocument.findOne({ competition: competition._id, user: req.params.userId });
+    if (!document) return res.status(404).json({ success: false, message: '未找到该单位的报名材料' });
+    const attachmentId = String(req.params.attachmentId || '');
+    const legacyType = attachmentId.replace(/^legacy-/, '');
+    let attachment = document.attachments.id(attachmentId);
+    if (attachmentId.startsWith('legacy-') && REGISTRATION_DOCUMENT_TYPES.includes(legacyType) && document[legacyType]?.filename) {
+      const legacyAttachment = document[legacyType];
+      document.attachments.push({
+        type: legacyType, participant: participant._id, filename: legacyAttachment.filename,
+        originalName: legacyAttachment.originalName, mimetype: legacyAttachment.mimetype,
+        size: legacyAttachment.size, uploadedAt: document.updatedAt || new Date()
+      });
+      document.set(legacyType, undefined);
+      attachment = document.attachments[document.attachments.length - 1];
+    }
+    if (!attachment) return res.status(404).json({ success: false, message: '未找到该材料' });
+
+    attachment.participant = participant._id;
+    await document.save();
+    return res.status(200).json({ success: true, message: `材料已关联到${participant.name || participant.teamName || '该选手'}`, data: {
+      oldAttachmentId: attachmentId, attachmentId: String(attachment._id), participantId: String(participant._id)
+    } });
+  } catch (error) { next(error); }
+};
+
 // 管理员删除某参赛单位在本赛事留下的全部材料及服务器原文件。
 exports.deleteRegistrationDocumentArchive = async (req, res, next) => {
   try {
