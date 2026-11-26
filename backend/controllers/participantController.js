@@ -773,9 +773,9 @@ exports.updateRegistrationContent = async (req, res, next) => {
     }
     const contactFields = ['teamLeader', 'leaderPhone', 'coach', 'coachPhone'];
     const optionalFields = ['schoolName', 'groupTeam', ...contactFields];
-    const allowed = ['event', 'ageGroup', 'eventDetail', 'updatedAt', 'athleteNumber', ...optionalFields];
+    const allowed = ['event', 'ageGroup', 'eventDetail', 'updatedAt', 'athleteNumber', ...optionalFields, ...(sportType === SPORT_TYPES.TRAMPOLINE ? ['trampolineCoaches'] : [])];
     if (!req.body || Object.keys(req.body).some(key => !allowed.includes(key))) return fail(400, '提交了不允许修改的字段');
-    const required = allowed.filter(key => !optionalFields.includes(key) && (sportType === SPORT_TYPES.WUSHU || key !== 'athleteNumber'));
+    const required = allowed.filter(key => !optionalFields.includes(key) && key !== 'trampolineCoaches' && (sportType === SPORT_TYPES.WUSHU || key !== 'athleteNumber'));
     if (required.some(key => typeof req.body[key] !== 'string') || optionalFields.some(key => req.body[key] !== undefined && typeof req.body[key] !== 'string')) return fail(400, '请提交完整的项目资料及记录版本');
     if (new Date(req.body.updatedAt).getTime() !== new Date(participant.updatedAt).getTime()) return fail(409, '报名已被修改，请刷新后重试');
     const eventName = req.body.event.trim();
@@ -822,7 +822,9 @@ exports.updateRegistrationContent = async (req, res, next) => {
       category: event.category || '', manualEventGroup: '', status: 'pending',
       additionalInfo: { ...participant.additionalInfo, eventDetail: detail, eventDetailLabel: event.registrationDetail?.label || '' },
       updatedAt: new Date(Math.max(Date.now(), new Date(participant.updatedAt).getTime() + 1)) };
-    if (sportType === SPORT_TYPES.TRAMPOLINE) changes = syncTrampolineCoachContacts(participant.toObject(), changes);
+    if (sportType === SPORT_TYPES.TRAMPOLINE) changes = syncTrampolineCoachContacts(participant.toObject(), {
+      ...changes, ...(Object.hasOwn(req.body, 'trampolineCoaches') ? { trampolineCoaches: req.body.trampolineCoaches } : {})
+    });
     const updated = await withTrampolineCoachQuota(competition, [{ ...participant.toObject(), ...changes }], [participant.toObject()], () => Participant.findOneAndUpdate(
       { _id: participant._id, user: req.user.id, competition: participant.competition,
         updatedAt: participant.updatedAt, status: participant.status, athleteNumber: participant.athleteNumber,
@@ -1113,27 +1115,59 @@ exports.renameTrampolineUnit = async (req, res, next) => {
     const competition = await Competition.findById(req.params.competitionId);
     if (!competition) return res.status(404).json({ success: false, message: '比赛不存在' });
     if (getCompetitionSportType(competition) !== SPORT_TYPES.TRAMPOLINE) return res.status(403).json({ success: false, message: '整单位更名仅适用于蹦床赛事' });
+    const isPrivileged = req.user.roles?.some(role => ['admin', 'chief_referee'].includes(role));
+    if (!isPrivileged && (!req.user.roles?.includes('organization') || !canUserAccessCompetitionType(req.user, competition))) {
+      return res.status(403).json({ success: false, message: '此功能仅适用于获授权的蹦床单位账号' });
+    }
     const source = normalizeTrampolineUnit(oldSchoolName), target = normalizeTrampolineUnit(newSchoolName);
     const data = await withTrampolineUnitLocks(competition._id, [source, target], async () => {
+      const fail = (code, message) => { const error = new Error(message); error.statusCode = code; throw error; };
       const existing = await Participant.find({ competition: competition._id }).lean();
-      const rows = existing.filter(row => normalizeTrampolineUnit(row.schoolName) === source);
-      if (!rows.length) { const error = new Error('未找到原单位的报名，请刷新后重试'); error.statusCode = 404; throw error; }
+      const sourceRows = existing.filter(row => normalizeTrampolineUnit(row.schoolName) === source);
+      const rows = isPrivileged ? sourceRows : sourceRows.filter(row => String(row.user) === req.user.id);
+      if (!rows.length) fail(404, '未找到原单位可更名的报名，请刷新后重试');
+      if (!isPrivileged) {
+        const setting = await require('../models/SystemSetting').findOne({ key: 'wushu_registration_edit_enabled' });
+        if (setting?.value !== true) fail(403, '管理员尚未开启报名项目编辑功能');
+        const deadline = new Date(competition.registrationDeadline).getTime();
+        if (!competition.registrationDeadline || !Number.isFinite(deadline) || Date.now() >= deadline) fail(400, '报名已截止或未设置有效截止时间');
+        if (competition.status !== 'registration') fail(400, '该比赛当前不在报名阶段');
+        const entered = rows.find(row => row.isVirtualTeam || row.isCheckedIn || ['checked', 'absent'].includes(row.checkInStatus));
+        if (entered) fail(409, `${entered.name}的报名已进入比赛流程，请联系管理员统一更名`);
+        const ids = rows.map(row => row._id);
+        const [scheduled, result, virtualTeam] = await Promise.all([
+          require('../models/Schedule').findOne({ competition: competition._id, participants: { $in: ids } }).select('participants'),
+          require('../models/Result').findOne({ competition: competition._id, participant: { $in: ids } }).select('participant'),
+          Participant.findOne({ competition: competition._id, isVirtualTeam: true, teamMembers: { $in: ids } }).select('teamMembers')
+        ]);
+        if (scheduled || result || virtualTeam) {
+          const linked = new Set([...(scheduled?.participants || []), ...(result ? [result.participant] : []), ...(virtualTeam?.teamMembers || [])].map(String));
+          const row = rows.find(item => linked.has(String(item._id)));
+          fail(409, `${row.name}的报名已关联${scheduled ? '赛程' : result ? '成绩' : '集体队伍'}，请联系管理员统一更名`);
+        }
+        if (source !== target) {
+          const remaining = getTrampolineUnitQuota(sourceRows, [], ids);
+          if (remaining.error) fail(409, `更名后原单位名额不符合要求：${remaining.error}；请联系管理员统一更名`);
+        }
+      }
       if (source !== target && existing.some(row => normalizeTrampolineUnit(row.schoolName) === target)) {
         const error = new Error('新名称已存在对应的参赛单位，请核对名称；统一更名不能合并两个单位'); error.statusCode = 409; throw error;
       }
-      const quota = getTrampolineUnitQuota(rows);
+      const nextRows = isPrivileged ? rows : rows.map(row => ({ ...row, status: 'pending' }));
+      const quota = getTrampolineUnitQuota(source === target ? sourceRows : [], nextRows, rows.map(row => row._id));
       if (quota.error) { const error = new Error(quota.error); error.statusCode = 409; throw error; }
       const name = newSchoolName.trim();
       const updatedAt = new Date(Math.max(Date.now(), ...rows.map(row => new Date(row.updatedAt || 0).getTime() + 1)));
-      await Participant.updateMany({ competition: competition._id, _id: { $in: rows.map(row => row._id) } }, [{ $set: {
+      await Participant.updateMany({ competition: competition._id, _id: { $in: rows.map(row => row._id) }, ...(!isPrivileged ? { user: req.user.id } : {}) }, [{ $set: {
         schoolName: { $literal: name }, updatedAt: { $literal: updatedAt },
+        ...(!isPrivileged ? { status: 'pending' } : {}),
         // 保留自定义队名与队员姓名，仅同步由单位名称生成的队名。
         teamName: { $cond: [{ $eq: ['$teamName', '$schoolName'] }, { $literal: name }, '$teamName'] },
         name: { $cond: [{ $and: [{ $eq: ['$isVirtualTeam', true] }, { $eq: ['$name', '$schoolName'] }] }, { $literal: name }, '$name'] }
       } }]);
       return { schoolName: name, registrationCount: rows.filter(row => !row.isVirtualTeam).length, athleteCount: quota.athleteCount, coachCount: quota.coachCount };
     });
-    return res.status(200).json({ success: true, data, message: `单位已统一更名为“${data.schoolName}”，已更新${data.registrationCount}条报名` });
+    return res.status(200).json({ success: true, data, message: `单位已统一更名为“${data.schoolName}”，已更新${data.registrationCount}条报名${isPrivileged ? '' : '，请等待重新审核'}` });
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
     next(error);

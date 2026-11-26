@@ -63,3 +63,12 @@ test('更名拒绝或名称无效时留在弹窗内展示原因，不报告成�
   assert.equal(request, null);
   assert.ok(render(props).some(e => e.props.severity === 'error' && /填写新单位/.test(e.props.children)));
 });
+
+test('单位端更名弹窗明确本账号范围和重新审核，管理员仍显示跨账号范围', () => {
+  states = [];
+  const props = { open: true, originalName: '原单位' };
+  for (const ownRegistrationsOnly of [true, false]) {
+    const alert = render({ ...props, ownRegistrationsOnly }).find(e => e.props.severity === 'info');
+    assert.match(alert.props.children, ownRegistrationsOnly ? /仅将本账号.*待审核.*其他账号的报名不受影响/ : /包括不同账号提交/);
+  }
+});
