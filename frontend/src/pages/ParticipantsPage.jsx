@@ -2989,9 +2989,9 @@ const ParticipantsPage = ({ myRegistrations = false }) => {
         setSuccessMessage(`编号已统一为 ${result.target.number}；合并后 ${result.participantCount} 人，费用 ${result.fee} 元`);
         await refreshLists();
       }} />
-      <EditRegistrationModal participant={registrationEditing} onClose={() => setRegistrationEditing(null)} onSuccess={() => {
+      <EditRegistrationModal participant={registrationEditing} onClose={() => setRegistrationEditing(null)} onSuccess={result => {
         setRegistrationEditing(null);
-        setSuccessMessage('报名信息已修改，请等待重新审核');
+        setSuccessMessage(result?.message || '报名信息已修改，请等待重新审核');
         refreshLists();
       }} />
       {/* 添加参赛者模态框 */}
