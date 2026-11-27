@@ -2110,7 +2110,7 @@ const ResultsPage = () => {
                 <Paper sx={{ mb: 3, overflow: 'hidden' }}>
                   <Box sx={{ px: 2, py: 1.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
                     <Typography variant="h6">{isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? '代表队奖项统计' : '代表队/学校金银铜统计'}</Typography>
-                    <Typography variant="body2">{isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? '个人项目按金、银、铜奖统计；集体项目按一等奖、二等奖统计。奖项名额按正雷杯规则向下取整。' : '按各单项名次第一、第二、第三统计；双人/混双按获奖组合数列示，可自行换算实体奖牌数量。'}</Typography>
+                    <Typography variant="body2">{isWushuFloorAwardCompetition(selectedCompetitionForDisplay) ? '个人项目按金、银、铜奖统计；集体项目按一等奖、二等奖统计。奖项名额按正雷杯规则四舍五入，最后一档覆盖其余全部完赛对象。' : '按各单项名次第一、第二、第三统计；双人/混双按获奖组合数列示，可自行换算实体奖牌数量。'}</Typography>
                   </Box>
                   <Table size="small" aria-label="代表队学校金银铜统计表">
                     <TableHead>

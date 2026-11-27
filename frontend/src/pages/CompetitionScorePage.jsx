@@ -8,6 +8,7 @@ import {
 import scheduleService from '../services/scheduleService';
 import competitionService from '../services/competitionService';
 import { getScheduleDisplayName } from '../utils/trampolineRegistration';
+import { compareCourts } from '../utils/courtSort';
 
 const CompetitionScorePage = () => {
   const { id } = useParams();
@@ -64,7 +65,7 @@ const CompetitionScorePage = () => {
 
   // 注意这里需要按 order 排序以保证显示正确
   const assigned = schedules.filter(s => s.scheduleDate && s.timeSlot && s.court).sort((a, b) => (a.order || 0) - (b.order || 0));
-  const courts = [...new Set(assigned.map(s => s.court))].sort();
+  const courts = [...new Set(assigned.map(s => s.court))].sort(compareCourts);
   const hasMultipleCourts = courts.length > 1;
   const activeCourt = hasMultipleCourts ? (courts.includes(selectedCourt) ? selectedCourt : '') : courts[0];
   const visibleSchedules = activeCourt ? assigned.filter(s => s.court === activeCourt) : [];

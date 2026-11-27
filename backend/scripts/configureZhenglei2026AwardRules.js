@@ -23,7 +23,7 @@ async function main() {
     enabled: true,
     mode: 'wushu_floor_percentage',
     scoreboardDisplay: 'prize',
-    // 个人：金/银/铜=3:4:3；集体：一/二等=6:4，均由程序向下取整。
+    // 个人：金/银/铜=3:4:3；集体：一/二等=6:4，按四舍五入的累计边界录取。
     mergeGroupsBelow: 0
   };
   console.log(JSON.stringify({ competition: competition.name, competitionId: String(competition._id), awardRules, apply }, null, 2));

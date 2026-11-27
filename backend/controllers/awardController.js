@@ -44,20 +44,16 @@ function awardLevel(rank, total, rules) {
     if (!rank || total <= 0) return null;
     const collective = /集体/.test(String(rules?.scheduleName || ''));
     if (collective) {
-      const firstLimit = Math.floor(total * 0.6);
-      const secondLimit = firstLimit + Math.floor(total * 0.4);
+      const firstLimit = Math.round(total * 0.6);
       if (rank <= firstLimit) return '一等奖';
-      if (rank <= secondLimit) return '二等奖';
-      return null;
+      return rank <= total ? '二等奖' : null;
     }
     if (total < 3) return rank === 1 ? '金奖' : (rank === 2 ? '银奖' : null);
-    const goldLimit = Math.floor(total * 0.3);
-    const silverLimit = goldLimit + Math.floor(total * 0.4);
-    const bronzeLimit = silverLimit + Math.floor(total * 0.3);
+    const goldLimit = Math.round(total * 0.3);
+    const silverLimit = Math.round(total * 0.7);
     if (rank <= goldLimit) return '金奖';
     if (rank <= silverLimit) return '银奖';
-    if (rank <= bronzeLimit) return '铜奖';
-    return null;
+    return rank <= total ? '铜奖' : null;
   }
   if (rules?.mode === 'fixed_top_eight') {
     if (!rank || rank > Math.min(8, total)) return null;

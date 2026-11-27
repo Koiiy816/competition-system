@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import scheduleService from '../services/scheduleService';
+import { compareCourts } from '../utils/courtSort';
 
 const normalizeCheckInStatus = (participant) => {
   if (!participant) return 'not_checked';
@@ -32,13 +33,14 @@ const normalizeCheckInStatus = (participant) => {
 const CompetitionCheckInPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const makeupMode = new URLSearchParams(location.search).get('makeup') === '1';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const makeupMode = searchParams.get('makeup') === '1';
+  const selectedCourt = searchParams.get('court') || '';
   const [loading, setLoading] = useState(true);
   const [schedules, setSchedules] = useState([]);
   const [error, setError] = useState('');
   const [datePage, setDatePage] = useState(() => {
-    const savedPage = sessionStorage.getItem(`checkInDatePage_${id}`);
+    const savedPage = sessionStorage.getItem(`checkInDatePage_${id}_${selectedCourt || 'all'}`);
     return savedPage ? parseInt(savedPage, 10) : 1;
   });
   const [uncheckedOpen, setUncheckedOpen] = useState(false);
@@ -48,8 +50,13 @@ const CompetitionCheckInPage = () => {
   const [uncheckedSearch, setUncheckedSearch] = useState('');
 
   useEffect(() => {
-    sessionStorage.setItem(`checkInDatePage_${id}`, datePage.toString());
-  }, [datePage, id]);
+    sessionStorage.setItem(`checkInDatePage_${id}_${selectedCourt || 'all'}`, datePage.toString());
+  }, [datePage, id, selectedCourt]);
+
+  useEffect(() => {
+    const savedPage = sessionStorage.getItem(`checkInDatePage_${id}_${selectedCourt || 'all'}`);
+    setDatePage(savedPage ? parseInt(savedPage, 10) : 1);
+  }, [id, selectedCourt]);
 
   useEffect(() => {
     const fetchSchedules = async () => {
@@ -111,7 +118,7 @@ const CompetitionCheckInPage = () => {
           timeSlot: schedule.timeSlot,
           court: schedule.court
         }];
-        })).sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || String(a.court || '').localeCompare(String(b.court || '')) || String(a.scheduleName || '').localeCompare(String(b.scheduleName || ''), 'zh-CN'));
+        })).sort((a, b) => String(a.scheduleDate || '').localeCompare(String(b.scheduleDate || '')) || compareCourts(a.court, b.court) || String(a.scheduleName || '').localeCompare(String(b.scheduleName || ''), 'zh-CN'));
       setUncheckedRows(rows);
     } catch (err) {
       setUncheckedError(err.message || '加载未检录选手失败');
@@ -137,12 +144,27 @@ const CompetitionCheckInPage = () => {
   const assigned = schedules
     .filter(s => s.scheduleDate && s.timeSlot && s.court)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
-  const dates = [...new Set(assigned.map(s => s.scheduleDate))].sort();
   const timeSlots = ['上午', '下午', '晚上'];
-  const courts = [...new Set(assigned.map(s => s.court))].sort();
-  const totalPages = dates.length;
+  const courts = [...new Set(assigned.map(s => s.court))].sort(compareCourts);
+  const hasMultipleCourts = courts.length > 1;
+  const activeCourt = hasMultipleCourts ? (courts.includes(selectedCourt) ? selectedCourt : '') : courts[0];
+  const visibleSchedules = activeCourt ? assigned.filter((schedule) => schedule.court === activeCourt) : [];
+  const visibleDates = [...new Set(visibleSchedules.map(s => s.scheduleDate))].sort();
+  const totalPages = visibleDates.length;
   const safePage = Math.max(1, Math.min(datePage, totalPages || 1));
-  const paginatedDates = dates.slice(safePage - 1, safePage);
+  const paginatedDates = visibleDates.slice(safePage - 1, safePage);
+
+  const chooseCourt = (court) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('court', court);
+    setSearchParams(nextParams);
+  };
+
+  const clearCourt = () => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('court');
+    setSearchParams(nextParams);
+  };
 
   return (
     <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
@@ -158,22 +180,44 @@ const CompetitionCheckInPage = () => {
 
       {assigned.length === 0 ? (
         <Paper sx={{ p: 4, textAlign: 'center' }}><Typography variant="h6" color="text.secondary">暂无已排程的比赛日程。</Typography></Paper>
+      ) : hasMultipleCourts && !activeCourt ? (
+        <Box>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            请先选择本次负责的场地，进入后只会显示该场地的比赛日程；需要时可返回此处切换场地。
+          </Alert>
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold' }}>选择场地</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 2 }}>
+            {courts.map(court => {
+              const courtSchedules = assigned.filter(schedule => schedule.court === court);
+              const courtDates = [...new Set(courtSchedules.map(schedule => schedule.scheduleDate))].sort();
+              const participantCount = courtSchedules.reduce((total, schedule) => total + (schedule.participants?.length || 0), 0);
+              return <Paper key={court} variant="outlined" onClick={() => chooseCourt(court)} sx={{ p: 3, cursor: 'pointer', borderColor: 'primary.light', transition: '0.2s', '&:hover': { bgcolor: '#e8f5e9', transform: 'translateY(-2px)', boxShadow: 3 } }}>
+                <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold', mb: 1 }}>{court}</Typography>
+                <Typography variant="body2" color="text.secondary">{courtSchedules.length} 个比赛项目 · {participantCount} 人/队</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{courtDates.join('、')}</Typography>
+                <Button variant="contained" size="small" color="success" sx={{ mt: 2 }} onClick={(event) => { event.stopPropagation(); chooseCourt(court); }}>进入该场地</Button>
+              </Paper>;
+            })}
+          </Box>
+        </Box>
       ) : (
         <Box>
+          {hasMultipleCourts && <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, gap: 2 }}>
+            <Box><Typography variant="h5" sx={{ fontWeight: 'bold' }}>{activeCourt}</Typography><Typography variant="body2" color="text.secondary">仅显示该场地的比赛日程</Typography></Box>
+            <Button variant="outlined" onClick={clearCourt}>切换场地</Button>
+          </Box>}
           {paginatedDates.map(date => (
             <Box key={date} sx={{ mb: 5 }}>
               <Typography variant="h5" sx={{ mb: 2, fontWeight: 'bold' }}>{date}</Typography>
               <TableContainer component={Paper} variant="outlined">
                 <Table sx={{ border: '1px solid #e0e0e0' }}><TableHead><TableRow sx={{ bgcolor: '#f5f5f5' }}>
                   <TableCell width="10%" sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold' }}>时间段</TableCell>
-                  {courts.map(court => <TableCell key={court} align="center" sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold' }}>{court}</TableCell>)}
+                  <TableCell align="center" sx={{ fontWeight: 'bold' }}>{activeCourt || '比赛项目'}</TableCell>
                 </TableRow></TableHead><TableBody>{timeSlots.map(slot => {
-                  const hasAnySchedule = courts.some(court => assigned.some(s => s.scheduleDate === date && s.timeSlot === slot && s.court === court));
+                  const hasAnySchedule = visibleSchedules.some(s => s.scheduleDate === date && s.timeSlot === slot);
                   if (!hasAnySchedule) return null;
-                  return <TableRow key={slot}><TableCell sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold', bgcolor: '#fafafa' }}>{slot}</TableCell>{courts.map(court => {
-                    const cellSchedules = assigned.filter(s => s.scheduleDate === date && s.timeSlot === slot && s.court === court);
-                    return <TableCell key={court} align="center" sx={{ borderRight: '1px solid #e0e0e0', verticalAlign: 'top', width: `${100 / courts.length}%` }}><Box sx={{ minHeight: '80px', p: 1 }}>{cellSchedules.map((s, index) => <Paper key={s._id} elevation={1} onClick={() => navigate(`/competitions/${id}/check-in/${s._id}`)} sx={{ p: 1.5, mb: 1.5, bgcolor: '#e8f5e9', border: '1px solid #81c784', cursor: 'pointer', transition: '0.2s', '&:hover': { bgcolor: '#c8e6c9', transform: 'translateY(-2px)', boxShadow: 3 } }}><Typography variant="body2" sx={{ fontWeight: 'bold', color: '#2e7d32', textAlign: 'left' }}><span style={{ display: 'inline-block', backgroundColor: '#2e7d32', color: 'white', borderRadius: '4px', padding: '1px 6px', marginRight: '6px', fontSize: '0.85em' }}>{index + 1}</span>{s.name}</Typography><Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'left' }}>{s.participants?.length > 0 && s.participants[0].isVirtualTeam ? `${s.participants.length}队 ${s.participants.reduce((acc, p) => acc + (p.teamMembers ? p.teamMembers.length : 0), 0)}人` : `${s.participants?.length || 0}人`}</Typography></Paper>)}</Box></TableCell>;
-                  })}</TableRow>;
+                  const cellSchedules = visibleSchedules.filter(s => s.scheduleDate === date && s.timeSlot === slot);
+                  return <TableRow key={slot}><TableCell sx={{ borderRight: '1px solid #e0e0e0', fontWeight: 'bold', bgcolor: '#fafafa' }}>{slot}</TableCell><TableCell align="center" sx={{ verticalAlign: 'top' }}><Box sx={{ minHeight: '80px', p: 1 }}>{cellSchedules.map((s, index) => <Paper key={s._id} elevation={1} onClick={() => navigate(`/competitions/${id}/check-in/${s._id}`)} sx={{ p: 1.5, mb: 1.5, bgcolor: '#e8f5e9', border: '1px solid #81c784', cursor: 'pointer', transition: '0.2s', '&:hover': { bgcolor: '#c8e6c9', transform: 'translateY(-2px)', boxShadow: 3 } }}><Typography variant="body2" sx={{ fontWeight: 'bold', color: '#2e7d32', textAlign: 'left' }}><span style={{ display: 'inline-block', backgroundColor: '#2e7d32', color: 'white', borderRadius: '4px', padding: '1px 6px', marginRight: '6px', fontSize: '0.85em' }}>{index + 1}</span>{s.name}</Typography><Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'left' }}>{s.participants?.length > 0 && s.participants[0].isVirtualTeam ? `${s.participants.length}队 ${s.participants.reduce((acc, p) => acc + (p.teamMembers ? p.teamMembers.length : 0), 0)}人` : `${s.participants?.length || 0}人`}</Typography></Paper>)}</Box></TableCell></TableRow>;
                 })}</TableBody></Table>
               </TableContainer>
             </Box>
